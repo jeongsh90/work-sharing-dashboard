@@ -1,0 +1,18 @@
+---
+description: Work Sharing Dashboard 역할 경계와 하네스 위임
+alwaysApply: true
+---
+
+# Work Sharing Dashboard
+
+제품 기준은 `docs/product/overview.md`다. 범위 변경은 기획 하네스만 한다.
+
+작업을 해당 역할 하네스에 넘긴다.
+
+- 흐름, 화면 목록, 필드, 인수 조건: `wsd-planner`
+- 화면 구성, 토큰, 상태별 UI: `wsd-designer`
+- HTML/CSS 마크업: `wsd-publisher`
+- React 화면과 API 연동: `wsd-frontend`
+- 인증, 작업 API, 저장: `wsd-backend`
+
+한 역할은 자기 경로만 수정한다. 다른 역할 산출물이 없으면 그 내용을 지어 구현하지 말고, 필요한 산출물을 적는다.
