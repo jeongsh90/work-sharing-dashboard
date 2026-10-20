@@ -16,9 +16,9 @@ export default defineConfig({
   server: {
     host: true,
     allowedHosts: ['.ts.net'],
-  },
-  preview: {
-    host: true,
-    allowedHosts: ['.ts.net'],
+    // 로컬 개발에서는 apps/api 서버(4173)로 로그인 요청을 넘긴다.
+    proxy: {
+      '/api': 'http://localhost:4173',
+    },
   },
 })
