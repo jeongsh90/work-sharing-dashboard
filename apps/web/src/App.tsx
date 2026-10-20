@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 
+import { AppSidebar } from '@/components/app-sidebar'
 import { LoginForm } from '@/components/login-form'
-import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { loadSession, logout, verifySession, type Session } from '@/lib/auth'
+import { MENU_GROUPS } from '@/lib/menu'
 
 function environmentName() {
   const { hostname } = window.location
@@ -11,8 +14,11 @@ function environmentName() {
   return '로컬'
 }
 
+const MENU_TITLES = new Map(MENU_GROUPS.flatMap((g) => g.items).map((item) => [item.id, item.title]))
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession)
+  const [activeId, setActiveId] = useState('home')
 
   useEffect(() => {
     verifySession().then(setSession)
@@ -29,25 +35,27 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="flex items-center justify-end gap-3 border-b px-6 py-3 text-sm">
-        <span>
-          {session.name} ({session.id})
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            await logout()
-            setSession(null)
-          }}
-        >
-          로그아웃
-        </Button>
-      </header>
-      <main className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-muted-foreground">{environmentName()}</p>
-      </main>
-    </div>
+    <SidebarProvider>
+      <AppSidebar
+        session={session}
+        activeId={activeId}
+        onNavigate={setActiveId}
+        onLogout={async () => {
+          await logout()
+          setSession(null)
+          setActiveId('home')
+        }}
+      />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-center" />
+          <h1 className="text-sm font-medium">{MENU_TITLES.get(activeId)}</h1>
+        </header>
+        <main className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-muted-foreground">{environmentName()}</p>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
