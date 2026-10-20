@@ -1,7 +1,8 @@
-import { FilePlus2, LogOut, UserRound } from "lucide-react"
+import { FilePlus2 } from "lucide-react"
 
 import type { Session } from "@/lib/auth"
 import { MENU_GROUPS } from "@/lib/menu"
+import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
@@ -68,25 +69,7 @@ export function AppSidebar({
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip={`${session.name} (${session.id})`}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-accent">
-                <UserRound className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{session.name}</span>
-                <span className="truncate text-xs">{session.id}</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip="로그아웃" onClick={onLogout}>
-              <LogOut />
-              <span>로그아웃</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <NavUser session={session} onNavigate={onNavigate} onLogout={onLogout} />
       </SidebarFooter>
     </Sidebar>
   )
