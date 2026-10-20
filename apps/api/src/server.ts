@@ -44,6 +44,11 @@ function applyCors(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Vary', 'Origin')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    // Tailscale 에 연결된 PC 에서는 ts.net 주소가 내부망(100.x)으로 풀린다.
+    // 공개 사이트(GitHub Pages)에서 오는 요청을 브라우저가 내부망 요청으로 보고 확인을 요구하므로 허용한다.
+    if (req.headers['access-control-request-private-network'] === 'true') {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true')
+    }
   }
 }
 
