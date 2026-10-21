@@ -35,7 +35,13 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" onClick={() => onNavigate("home")} tooltip="홈">
+            {/* 로고: 누르면 홈. 마우스를 올려도 배경·툴팁은 없다 */}
+            <SidebarMenuButton
+              size="lg"
+              aria-label="홈"
+              className="hover:bg-transparent hover:text-sidebar-foreground active:bg-transparent active:text-sidebar-foreground"
+              onClick={() => onNavigate("home")}
+            >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <FilePlus2 className="size-4" />
               </div>
