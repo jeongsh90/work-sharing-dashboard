@@ -69,10 +69,12 @@ function ItemFields({
   rows,
   onChange,
   showErrors,
+  error,
 }: {
   rows: ItemRow[]
   onChange: (rows: ItemRow[]) => void
   showErrors: boolean
+  error?: string // 내용 추가 버튼 위에 보인다
 }) {
   const update = (i: number, key: keyof ItemRow, value: string) =>
     onChange(
@@ -141,6 +143,7 @@ function ItemFields({
           )
         })}
       </ol>
+      {error && <FieldError>{error}</FieldError>}
       <Button type="button" size="sm" className="self-center" onClick={() => onChange([...rows, EMPTY_ITEM])}>
         <Plus data-icon="inline-start" />
         내용 추가
@@ -341,8 +344,8 @@ export function RequestForm({
               clear("items")
             }}
             showErrors={!!errors.items}
+            error={errors.items}
           />
-          {errors.items && <FieldError>{errors.items}</FieldError>}
         </Field>
         <Field>
           <FieldLabel>참고 자료</FieldLabel>

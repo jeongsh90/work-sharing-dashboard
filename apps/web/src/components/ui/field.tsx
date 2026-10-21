@@ -50,7 +50,8 @@ function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const fieldVariants = cva(
-  "group/field flex w-full gap-2 data-[invalid=true]:text-destructive",
+  // 잘못 입력해도 칸 테두리와 오류 문구만 빨갛게 하고, 라벨·아이콘·버튼은 원래 색을 둔다.
+  "group/field flex w-full gap-2",
   {
     variants: {
       orientation: {
