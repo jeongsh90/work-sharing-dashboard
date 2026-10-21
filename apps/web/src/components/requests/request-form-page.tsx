@@ -141,7 +141,7 @@ function ItemFields({
           )
         })}
       </ol>
-      <Button type="button" variant="outline" size="sm" className="self-center" onClick={() => onChange([...rows, EMPTY_ITEM])}>
+      <Button type="button" size="sm" className="self-center" onClick={() => onChange([...rows, EMPTY_ITEM])}>
         <Plus data-icon="inline-start" />
         내용 추가
       </Button>
@@ -249,6 +249,10 @@ export function RequestForm({
   }
 
   const invalid = (key: string) => (errors[key] ? true : undefined)
+  // 고치기 시작한 칸의 오류 문구는 바로 지운다(다음 보내기 때 다시 검사).
+  const clear = (key: string) => {
+    if (errors[key]) setErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)))
+  }
 
   return (
     <form onSubmit={submit} noValidate>
@@ -259,7 +263,10 @@ export function RequestForm({
             id="req-title"
             value={title}
             maxLength={100}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value)
+              clear("title")
+            }}
             placeholder="예: 11월 1주차 메인 배너 - 겨울 국밥 기획전"
             aria-invalid={invalid("title")}
           />
@@ -268,7 +275,13 @@ export function RequestForm({
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <Field data-invalid={invalid("workType")}>
             <FieldLabel htmlFor="req-type">작업 종류</FieldLabel>
-            <Select value={workType} onValueChange={setWorkType}>
+            <Select
+              value={workType}
+              onValueChange={(v) => {
+                setWorkType(v)
+                clear("workType")
+              }}
+            >
               <SelectTrigger id="req-type" className="w-full" aria-invalid={invalid("workType")}>
                 <SelectValue placeholder="골라 주세요" />
               </SelectTrigger>
@@ -291,7 +304,10 @@ export function RequestForm({
             <DateRangePicker
               id="req-period"
               value={range}
-              onChange={setRange}
+              onChange={(r) => {
+                setRange(r)
+                clear("period")
+              }}
               disabled={initial ? undefined : { before: today }}
               invalid={!!errors.period}
             />
@@ -318,7 +334,14 @@ export function RequestForm({
           <FieldDescription>
             사이즈별로 요청 내용을 적어 주세요. 자유 사이즈면 너비·높이는 비워 두세요.
           </FieldDescription>
-          <ItemFields rows={items} onChange={setItems} showErrors={!!errors.items} />
+          <ItemFields
+            rows={items}
+            onChange={(rows) => {
+              setItems(rows)
+              clear("items")
+            }}
+            showErrors={!!errors.items}
+          />
           {errors.items && <FieldError>{errors.items}</FieldError>}
         </Field>
         <Field>
