@@ -22,6 +22,8 @@ export type PublicUser = {
   presence: string
   active: boolean
   canLogin: boolean
+  approved: boolean // 회원가입 후 슈퍼관리자 승인 여부
+  createdAt: number
 }
 
 type UserRow = {
@@ -35,6 +37,8 @@ type UserRow = {
   salt: string | null
   hash: string | null
   active: number
+  approved: number
+  created_at: number
 }
 
 function toPublic(u: UserRow): PublicUser {
@@ -48,6 +52,8 @@ function toPublic(u: UserRow): PublicUser {
     presence: u.presence,
     active: u.active === 1,
     canLogin: !!u.hash,
+    approved: u.approved === 1,
+    createdAt: u.created_at,
   }
 }
 
@@ -93,12 +99,26 @@ export async function setPassword(id: string, password: string) {
 
 export type UserFields = Pick<PublicUser, 'name' | 'role' | 'rank' | 'position' | 'department'>
 
-export function createUser(id: string, fields: UserFields) {
+export function createUser(id: string, fields: UserFields, { approved = true } = {}) {
   run(
-    `INSERT INTO users (id, name, role, rank, position, department, created_at)
-     VALUES (:id, :name, :role, :rank, :position, :department, :now)`,
-    { id, ...fields, now: Date.now() },
+    `INSERT INTO users (id, name, role, rank, position, department, approved, created_at)
+     VALUES (:id, :name, :role, :rank, :position, :department, :approved, :now)`,
+    { id, ...fields, approved: approved ? 1 : 0, now: Date.now() },
   )
+}
+
+// 가입 승인: 역할을 정해 승인한다.
+export function approveUser(id: string, role: Role) {
+  run('UPDATE users SET approved = 1, role = :role WHERE id = :id', { id, role })
+}
+
+// 가입 거절: 승인 전 계정은 남긴 기록이 없으므로 지운다.
+export function deletePendingUser(id: string) {
+  run('DELETE FROM users WHERE id = :id AND approved = 0', { id })
+}
+
+export function superadminIds() {
+  return all<{ id: string }>("SELECT id FROM users WHERE role = 'superadmin' AND active = 1 AND approved = 1").map((u) => u.id)
 }
 
 export function updateUser(id: string, fields: Partial<UserFields & { presence: string; active: boolean }>) {
@@ -130,7 +150,7 @@ export function createSession(userId: string) {
 export function sessionUser(token: string) {
   const row = get<UserRow & { expires_at: number }>(
     `SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = :h AND u.active = 1`,
+     WHERE s.token_hash = :h AND u.active = 1 AND u.approved = 1`,
     { h: tokenHash(token) },
   )
   if (!row || row.expires_at < Date.now()) return null

@@ -19,14 +19,12 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div"> & { onLogin: (session: Session) => void }) {
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     setPending(true)
-    setNotice(null)
     const result = await login(String(form.get("id") ?? ""), String(form.get("password") ?? ""))
     setPending(false)
     if (result.ok) {
@@ -82,16 +80,7 @@ export function LoginForm({
               </Field>
               <FieldDescription className="text-center">
                 계정이 없으신가요?{" "}
-                <a
-                  href="#"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setNotice("회원가입 페이지는 준비 중입니다.")
-                  }}
-                >
-                  회원가입
-                </a>
-                {notice && <span className="mt-1 block">{notice}</span>}
+                <a href="#/signup">회원가입</a>
               </FieldDescription>
             </FieldGroup>
           </form>

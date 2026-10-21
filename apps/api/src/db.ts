@@ -167,6 +167,10 @@ function addColumn(table: string, column: string, definition: string) {
 
 // 요청자가 원하는 작업 시작일(작업 기간의 시작). 마감은 due_at
 addColumn('requests', 'requested_start_at', 'INTEGER')
+// 회원가입으로 만든 계정은 슈퍼관리자가 승인해야(approved = 1) 로그인할 수 있다. 기존 계정은 승인된 것으로 둔다.
+addColumn('users', 'approved', 'INTEGER NOT NULL DEFAULT 1')
+// 요청과 관계없는 알림(가입 승인 요청 등)이 열 화면. 예: 'team'
+addColumn('notifications', 'link', 'TEXT')
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {

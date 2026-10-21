@@ -15,6 +15,7 @@ export type AppNotification = {
   type: NotificationType
   message: string
   requestId: number | null
+  link: string | null // 요청과 관계없는 알림이 열 화면(예: 가입 승인 요청 → 'team')
   createdAt: number
   read: boolean
 }

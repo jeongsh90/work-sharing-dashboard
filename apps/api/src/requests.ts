@@ -673,10 +673,30 @@ export function insertFile(file: { id: string; uploaderId: string; name: string;
 // ── 알림 ──────────────────────────────────────────────
 
 export function listNotifications(userId: string) {
-  return all<{ id: number; request_id: number | null; message: string; created_at: number; read_at: number | null }>(
+  return all<{ id: number; request_id: number | null; link: string | null; message: string; created_at: number; read_at: number | null }>(
     'SELECT * FROM notifications WHERE user_id = :userId ORDER BY id DESC LIMIT 100',
     { userId },
-  ).map((n) => ({ id: n.id, requestId: n.request_id, message: n.message, createdAt: n.created_at, read: n.read_at !== null }))
+  ).map((n) => ({
+    id: n.id,
+    requestId: n.request_id,
+    link: n.link,
+    message: n.message,
+    createdAt: n.created_at,
+    read: n.read_at !== null,
+  }))
+}
+
+// 요청과 관계없는 알림(가입 승인 요청 등). link 는 눌렀을 때 열 화면
+export function notifyLink(userIds: string[], message: string, link: string) {
+  const now = Date.now()
+  for (const userId of userIds) {
+    run('INSERT INTO notifications (user_id, link, message, created_at) VALUES (:userId, :link, :message, :now)', {
+      userId,
+      link,
+      message,
+      now,
+    })
+  }
 }
 
 export function markNotificationsRead(userId: string) {

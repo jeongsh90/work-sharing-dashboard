@@ -11,6 +11,7 @@ import { LoginForm } from '@/components/login-form'
 import { RequestDetailPage } from '@/components/requests/request-detail-page'
 import { RequestFormPage } from '@/components/requests/request-form-page'
 import { RequestListPage } from '@/components/requests/request-list-page'
+import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { UNAUTHORIZED_EVENT } from '@/lib/api'
@@ -67,9 +68,14 @@ export default function App() {
 
   if (!session) {
     return (
-      <div className={`flex min-h-svh flex-col items-center justify-center bg-muted p-6 md:p-10 ${FADE_IN}`}>
+      <div className="flex min-h-svh flex-col items-center justify-center bg-muted p-6 md:p-10">
         <div className="w-full max-w-sm md:max-w-4xl">
-          <LoginForm onLogin={setSession} />
+          {/* 로그인 전에는 회원가입(#/signup)과 로그인만 있다. */}
+          {route.page === 'signup' ? (
+            <SignupForm key="signup" className={FADE_IN} />
+          ) : (
+            <LoginForm key="login" className={FADE_IN} onLogin={setSession} />
+          )}
         </div>
       </div>
     )

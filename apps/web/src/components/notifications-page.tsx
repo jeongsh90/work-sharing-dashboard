@@ -4,7 +4,7 @@ import { Section } from "@/components/home/home-page"
 import { PAGE_GRID } from "@/lib/layout"
 import { useNotifications } from "@/lib/notifications"
 import { timeAgo } from "@/lib/requests"
-import { openRequest } from "@/lib/router"
+import { navigate, openRequest } from "@/lib/router"
 
 export function NotificationsPage() {
   const { items } = useNotifications()
@@ -24,8 +24,8 @@ export function NotificationsPage() {
                 <button
                   type="button"
                   className="flex w-full items-start gap-3 px-4 py-3 text-left text-sm hover:bg-muted/50 disabled:cursor-default"
-                  disabled={!n.requestId}
-                  onClick={() => n.requestId && openRequest(n.requestId)}
+                  disabled={!n.requestId && !n.link}
+                  onClick={() => (n.requestId ? openRequest(n.requestId) : n.link && navigate(n.link))}
                 >
                   <span
                     className={`mt-1.5 size-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-destructive"}`}

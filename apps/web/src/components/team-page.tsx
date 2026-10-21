@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Plus } from "lucide-react"
+import { Check, Plus, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import { PageState } from "@/components/page-state"
 import { api, ApiError } from "@/lib/api"
 import { COMPANY_EMAIL_DOMAIN, ROLE_LABEL, type Role, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
+import { formatDateTime } from "@/lib/requests"
 import { invalidate, useUsers, type UserInfo } from "@/lib/store"
 
 // 팀 관리(관리자): 계정 만들기, 역할·부서 바꾸기, 비밀번호 정해 주기, 사용 중지
@@ -29,11 +30,16 @@ export function TeamPage({ session }: { session: Session }) {
 
   if (!users) return <PageState error={error} />
 
+  // 승인 전 계정은 슈퍼관리자에게만 온다. 위쪽 가입 승인 대기에서 따로 처리한다.
+  const pending = users.filter((u) => !u.approved)
+  const members = users.filter((u) => u.approved)
+
   return (
     <div className={PAGE_GRID}>
+      {session.role === "superadmin" && <PendingSignups users={pending} />}
       <Section
         title="계정"
-        aside={<span className="text-sm text-muted-foreground">{users.length}명</span>}
+        aside={<span className="text-sm text-muted-foreground">{members.length}명</span>}
         action={
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus data-icon="inline-start" />
@@ -57,7 +63,7 @@ export function TeamPage({ session }: { session: Session }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((u) => {
+              {members.map((u) => {
                 const locked = u.role === "superadmin" && session.role !== "superadmin"
                 return (
                   <TableRow key={u.id} className={u.active ? undefined : "text-muted-foreground"}>
@@ -100,6 +106,107 @@ export function TeamPage({ session }: { session: Session }) {
         />
       )}
     </div>
+  )
+}
+
+// 가입 승인 대기: 슈퍼관리자가 역할을 정해 승인하거나 거절한다.
+function PendingSignups({ users }: { users: UserInfo[] }) {
+  const [roles, setRoles] = useState<Record<string, Role>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const decide = async (u: UserInfo, action: "approve" | "reject") => {
+    if (action === "reject" && !window.confirm(`${u.name}(${u.id}) 가입 신청을 거절할까요? 신청 정보는 지워집니다.`)) return
+    setBusy(u.id)
+    setError(null)
+    try {
+      await api(`/users/${encodeURIComponent(u.id)}/${action}`, { body: action === "approve" ? { role: roles[u.id] ?? u.role } : {} })
+      invalidate()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "처리하지 못했습니다.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Section
+      title="가입 승인 대기"
+      aside={
+        <Badge variant={users.length > 0 ? "default" : "secondary"} className="tabular-nums">
+          {users.length}건
+        </Badge>
+      }
+    >
+      {users.length === 0 ? (
+        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+          승인을 기다리는 가입 신청이 없습니다.
+        </p>
+      ) : (
+        <div className="rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">이름</TableHead>
+                <TableHead>회사 이메일</TableHead>
+                <TableHead>부서 · 직급</TableHead>
+                <TableHead>신청일</TableHead>
+                <TableHead>역할</TableHead>
+                <TableHead className="pr-4 text-right">
+                  <span className="sr-only">승인</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell className="pl-4 font-medium">{u.name}</TableCell>
+                  <TableCell>{u.id}</TableCell>
+                  <TableCell>{[u.department, u.rank].filter(Boolean).join(" · ") || "-"}</TableCell>
+                  <TableCell>{formatDateTime(new Date(u.createdAt))}</TableCell>
+                  <TableCell>
+                    <Select
+                      value={roles[u.id] ?? u.role}
+                      onValueChange={(v) => setRoles({ ...roles, [u.id]: v as Role })}
+                    >
+                      <SelectTrigger className="w-32" aria-label={`${u.name} 역할`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {ROLE_LABEL[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="pr-4 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" disabled={busy !== null} onClick={() => decide(u, "approve")}>
+                        <Check data-icon="inline-start" />
+                        승인
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        disabled={busy !== null}
+                        onClick={() => decide(u, "reject")}
+                      >
+                        <X data-icon="inline-start" />
+                        거절
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </Section>
   )
 }
 

@@ -79,6 +79,8 @@ export type UserInfo = Designer & {
   presence: Presence
   active: boolean
   canLogin: boolean
+  approved: boolean // 회원가입 후 슈퍼관리자 승인 여부
+  createdAt: number
 }
 
 export function useUsers() {
@@ -89,7 +91,7 @@ export function useUsers() {
 // 홈의 디자인팀 카드와 담당 지정에 쓰는 작업자 목록
 export function useDesigners() {
   const { users } = useUsers()
-  return useMemo(() => users?.filter((u) => u.active && u.role === 'designer') ?? null, [users])
+  return useMemo(() => users?.filter((u) => u.active && u.approved && u.role === 'designer') ?? null, [users])
 }
 
 export function useUserNames() {

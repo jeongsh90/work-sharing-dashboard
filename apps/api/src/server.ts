@@ -26,6 +26,7 @@ import {
   insertFile,
   listNotifications,
   listRequests,
+  notifyLink,
   markNotificationsRead,
   performAction,
   requestDetail,
@@ -34,8 +35,10 @@ import {
   type Action,
 } from './requests.ts'
 import {
+  approveUser,
   createSession,
   createUser,
+  deletePendingUser,
   deleteSession,
   findUser,
   isManager,
@@ -44,6 +47,7 @@ import {
   ROLES,
   sessionUser,
   setPassword,
+  superadminIds,
   updateUser,
   verifyUser,
   type PublicUser,
@@ -51,6 +55,10 @@ import {
 } from './users.ts'
 
 const failures = new Map<string, { count: number; lockedUntil: number }>()
+// 회원가입 남용 막기: 같은 주소(IP)에서 한 시간에 5번까지
+const signups = new Map<string, number[]>()
+const SIGNUP_LIMIT = 5
+const SIGNUP_WINDOW_MS = 60 * 60 * 1000
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -141,6 +149,9 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse) {
   }
 
   failures.delete(id)
+  if (!user.approved) {
+    return sendJson(res, 403, { error: '가입 승인을 기다리고 있습니다. 슈퍼관리자가 승인하면 로그인할 수 있습니다.' })
+  }
   sendJson(res, 200, { token: createSession(user.id), user })
 }
 
@@ -184,6 +195,36 @@ async function handleFile(req: IncomingMessage, res: ServerResponse, user: Publi
   await pipeline(createReadStream(join(UPLOAD_DIR, file.id)), res)
 }
 
+// 회원가입: 회사 이메일로만 가입하고, 슈퍼관리자가 승인해야 로그인할 수 있다.
+async function handleSignup(req: IncomingMessage, res: ServerResponse) {
+  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim()
+  const recent = (signups.get(ip) ?? []).filter((t) => t > Date.now() - SIGNUP_WINDOW_MS)
+  if (recent.length >= SIGNUP_LIMIT) throw new HttpError(429, '가입 신청이 너무 많습니다. 잠시 뒤에 다시 시도해 주세요.')
+
+  const body = await readJson(req)
+  const id = typeof body.id === 'string' ? body.id.trim().toLowerCase() : ''
+  if (!new RegExp(`^[a-z0-9._-]+@${COMPANY_EMAIL_DOMAIN.replace('.', '\\.')}$`).test(id) || id.length > 60) {
+    throw new HttpError(400, `회사 이메일(@${COMPANY_EMAIL_DOMAIN})을 입력해 주세요.`)
+  }
+  const f = userFields(body)
+  if (!f.name) throw new HttpError(400, '이름을 입력해 주세요.')
+  if (!f.department) throw new HttpError(400, '부서를 입력해 주세요.')
+  // 가입할 때는 요청자·작업자만 고를 수 있다. 관리자 역할은 슈퍼관리자가 정한다.
+  const role: Role = f.role === 'designer' ? 'designer' : 'requester'
+  const password = checkPassword(body.password)
+  if (findUser(id)) throw new HttpError(409, '이미 가입했거나 승인을 기다리는 이메일입니다.')
+
+  createUser(id, { name: f.name, role, rank: f.rank ?? '', position: '', department: f.department }, { approved: false })
+  await setPassword(id, password)
+  signups.set(ip, [...recent, Date.now()])
+  notifyLink(superadminIds(), `가입 승인 요청: ${f.name} (${f.department}, ${id})`, 'team')
+  sendJson(res, 201, { ok: true })
+}
+
+function requireSuperadmin(user: PublicUser) {
+  if (user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자만 가입을 승인할 수 있습니다.')
+}
+
 function userFields(body: Record<string, unknown>) {
   const str = (v: unknown, max = 40) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined)
   const role = body.role === undefined ? undefined : ROLES.includes(body.role as Role) ? (body.role as Role) : null
@@ -207,6 +248,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   const method = req.method ?? 'GET'
 
   if (method === 'POST' && path === '/api/login') return handleLogin(req, res)
+  if (method === 'POST' && path === '/api/signup') return handleSignup(req, res)
 
   if (method === 'POST' && path === '/api/logout') {
     const token = bearer(req)
@@ -239,8 +281,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   // ── 사용자(팀 관리) ──
   if (path === '/api/users') {
     if (method === 'GET') {
-      const users = listUsers()
-      // 관리자가 아니면 비활성 계정과 로그인 가능 여부는 감춘다.
+      // 승인 전 계정은 슈퍼관리자에게만 보인다. 관리자가 아니면 비활성 계정과 로그인 가능 여부도 감춘다.
+      const users = listUsers().filter((u) => u.approved || user.role === 'superadmin')
       return sendJson(res, 200, isManager(user) ? users : users.filter((u) => u.active).map((u) => ({ ...u, canLogin: false })))
     }
     if (method === 'POST') {
@@ -259,6 +301,19 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       if (body.password) await setPassword(id, checkPassword(body.password))
       return sendJson(res, 201, { user: findUser(id) })
     }
+  }
+  if ((m = path.match(/^\/api\/users\/([^/]+)\/(approve|reject)$/)) && method === 'POST') {
+    requireSuperadmin(user)
+    const target = findUser(decodeURIComponent(m[1]))
+    if (!target || target.approved) throw new HttpError(404, '승인을 기다리는 가입 신청이 없습니다.')
+    if (m[2] === 'reject') {
+      deletePendingUser(target.id)
+      return sendJson(res, 200, { ok: true })
+    }
+    const body = await readJson(req)
+    const role = ROLES.includes(body.role as Role) ? (body.role as Role) : target.role
+    approveUser(target.id, role)
+    return sendJson(res, 200, { user: findUser(target.id) })
   }
   if ((m = path.match(/^\/api\/users\/([^/]+)$/)) && method === 'PATCH') {
     requireManager(user)
