@@ -6,6 +6,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 화면별 글자 크기 변수. text-card-name 처럼 클래스로 쓴다. */
+@theme {
+    --text-card-name: 1.25rem; /* 디자인팀 카드의 작업자 이름(20px) */
+    --text-card-name--line-height: 1.75rem;
+}
+
 @theme inline {
     /* 모든 글꼴은 Pretendard */
     --font-heading: var(--font-sans);

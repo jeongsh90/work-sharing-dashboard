@@ -1,10 +1,8 @@
-import { useRef } from "react"
 import { LoaderCircle } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
-import { OverlayScrollbar } from "@/components/overlay-scrollbar"
 import {
   BUSY_LABEL,
   busyLevel,
@@ -16,15 +14,13 @@ import {
   type Designer,
   type RequestStatus,
 } from "@/lib/requests"
+import { INNER_GRID } from "@/lib/layout"
 import { PRESENCE_DOT, PRESENCE_LABEL, type Presence } from "@/lib/presence"
-import { useSmoothScroll } from "@/lib/smooth-scroll"
 import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 
-// 카드 폭 = 본문 12칸 그리드의 칸 수(넓은 화면 2칸). 간격은 INNER_GRID(gap-4, md:gap-6)와 같다.
+// 카드 칸 수: 본문 12칸 그리드에서 넓은 화면 2칸(한 줄 6장), 좁아지면 3·4·6칸. 넘치면 다음 줄로 내려간다.
 // 카드 비율은 포커 카드(63.5 × 88.9mm, 5:7).
-// (100% - 간격 × (한 화면 장수 - 1)) / 한 화면 장수
-const CARD_WIDTH =
-  "basis-[calc((100%-1rem)/2)] md:basis-[calc((100%-3rem)/3)] lg:basis-[calc((100%-4.5rem)/4)] xl:basis-[calc((100%-7.5rem)/6)]"
+const CARD_SPAN = "col-span-6 md:col-span-4 lg:col-span-3 xl:col-span-2"
 
 // 카드 아래 "작업 중…" 표시는 이 건수까지만 보여 주고 나머지는 "외 n건"으로 묶는다
 const MAX_WORKING_MARKERS = 1
@@ -64,80 +60,76 @@ export function DesignerCards({
   requests: DesignRequest[]
   presence: Record<string, Presence>
 }) {
-  // 카드 줄 가로 스크롤도 Lenis 로 부드럽게. 세로 휠은 페이지 스크롤로 넘긴다.
-  const rowRef = useRef<HTMLDivElement>(null)
-  useSmoothScroll({ orientation: "horizontal", gestureOrientation: "horizontal" }, rowRef)
-
-  // 바깥(스크롤 영역) > 안쪽(내용) 두 겹. -mx-2 px-2: 그림자가 잘리지 않게 여유를 두되 카드 폭(100% 기준)은 그대로
   return (
-    <div className="relative">
-      <div ref={rowRef} className="-mx-2 overflow-x-auto px-2 pt-1 pb-3">
-        <div className="flex gap-4 md:gap-6">
-          {designers.map((d) => {
-            const now: Presence = presence[d.id] ?? "off"
-            // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
-            const level = busyLevel(requests.filter((r) => isActive(r) && r.designers.includes(d.id)).length)
-            // 태그와 작업 표시는 이번 주(마감일 기준) 작업만. 완료일 데이터가 생기면 완료는 완료일 기준으로 바꾼다.
-            const thisWeek = requests.filter((r) => r.designers.includes(d.id) && isThisWeek(r.dueAt))
-            const tags = WEEK_TAGS.map((t) => ({ ...t, count: thisWeek.filter((r) => t.statuses.includes(r.status)).length }))
-            const working = thisWeek
-              .filter((r) => r.status === "in-progress" || r.status === "revising")
-              .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
-            const hidden = working.length - MAX_WORKING_MARKERS
-            return (
-              <div
-                key={d.id}
-                className={`relative flex aspect-[5/7] min-w-0 shrink-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md ${CARD_WIDTH}`}
-              >
-                {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
-                <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
-                  <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
-                  {PRESENCE_LABEL[now]}
-                </Badge>
-                <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
-                  {BUSY_LABEL[level]}
-                </Badge>
-                <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                  <div className="relative">
-                    <Avatar className="size-14">
-                      <AvatarFallback className="text-base font-semibold">{initials(d.name)}</AvatarFallback>
-                    </Avatar>
-                    <span
-                      className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${PRESENCE_DOT[now]}`}
-                      aria-hidden
-                    />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold">{d.name}</p>
-                    <p className="text-xs text-muted-foreground">{designerTitle(d)}</p>
-                  </div>
-                  <div className="grid w-full grid-cols-2 gap-1" aria-label="이번 주 작업">
-                    {tags.map((t) => (
-                      <Badge key={t.label} variant="secondary" className={`w-full ${STATUS_BG[t.color]} ${STATUS_TEXT[t.color]} tabular-nums`}>
-                        {t.label} {t.count}건
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                {/* 작업 표시 영역: "외 n건" 줄까지 포함해 모든 카드에서 높이를 같게 둔다 */}
-                <div className="flex h-14 flex-col justify-center gap-1 border-t pt-3">
-                  {working.length > 0 ? (
-                    <>
-                      {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
-                        <WorkingMarker key={r.id} request={r} />
-                      ))}
-                      <p className="h-4 text-center text-xs text-muted-foreground">{hidden > 0 && `외 ${hidden}건`}</p>
-                    </>
-                  ) : (
-                    <p className="text-center text-xs text-muted-foreground">진행 중인 프로젝트가 없습니다.</p>
-                  )}
-                </div>
+    <div className={INNER_GRID}>
+      {designers.map((d) => {
+        const now: Presence = presence[d.id] ?? "off"
+        // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
+        const level = busyLevel(requests.filter((r) => isActive(r) && r.designers.includes(d.id)).length)
+        // 태그와 작업 표시는 이번 주(마감일 기준) 작업만. 완료일 데이터가 생기면 완료는 완료일 기준으로 바꾼다.
+        const thisWeek = requests.filter((r) => r.designers.includes(d.id) && isThisWeek(r.dueAt))
+        const tags = WEEK_TAGS.map((t) => ({ ...t, count: thisWeek.filter((r) => t.statuses.includes(r.status)).length }))
+        const working = thisWeek
+          .filter((r) => r.status === "in-progress" || r.status === "revising")
+          .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
+        const hidden = working.length - MAX_WORKING_MARKERS
+        return (
+          <div
+            key={d.id}
+            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md ${CARD_SPAN}`}
+          >
+            {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
+            <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
+              <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
+              {PRESENCE_LABEL[now]}
+            </Badge>
+            <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
+              {BUSY_LABEL[level]}
+            </Badge>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              <div className="relative">
+                <Avatar className="size-14">
+                  <AvatarFallback className="text-base font-semibold">{initials(d.name)}</AvatarFallback>
+                </Avatar>
+                <span
+                  className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${PRESENCE_DOT[now]}`}
+                  aria-hidden
+                />
               </div>
-            )
-          })}
-        </div>
-      </div>
-      <OverlayScrollbar target={() => rowRef.current} orientation="horizontal" className="absolute right-0 bottom-0.5 left-0 h-1.5" />
+              <div className="text-center">
+                <p className="text-card-name font-semibold">{d.name}</p>
+                <p className="text-xs text-muted-foreground">{designerTitle(d)}</p>
+              </div>
+              {/* 카드 안쪽 폭이 200px 이상이면 2행 2열, 좁으면 한 열(글자가 넘치지 않게) */}
+              <div className="grid w-full grid-cols-1 gap-1 @[200px]:grid-cols-2" aria-label="이번 주 작업">
+                {tags.map((t) => (
+                  <Badge
+                    key={t.label}
+                    variant="secondary"
+                    className={`w-full justify-between gap-1 px-1.5 ${STATUS_BG[t.color]} ${STATUS_TEXT[t.color]} tabular-nums`}
+                  >
+                    <span>{t.label}</span>
+                    <span>{t.count}건</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            {/* 작업 표시 영역: "외 n건" 줄까지 포함해 모든 카드에서 높이를 같게 둔다 */}
+            <div className="flex h-14 flex-col justify-center gap-1 border-t pt-3">
+              {working.length > 0 ? (
+                <>
+                  {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
+                    <WorkingMarker key={r.id} request={r} />
+                  ))}
+                  <p className="h-4 text-center text-xs text-muted-foreground">{hidden > 0 && `외 ${hidden}건`}</p>
+                </>
+              ) : (
+                <p className="text-center text-xs text-muted-foreground">진행 중인 프로젝트가 없습니다.</p>
+              )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
