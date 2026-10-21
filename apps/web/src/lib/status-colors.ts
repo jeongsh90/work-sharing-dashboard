@@ -25,3 +25,16 @@ export const STATUS_BG: Record<RequestStatus, string> = {
   done: 'bg-emerald-500/10',
   canceled: 'bg-muted',
 }
+
+// 테두리 빛(border beam, index.css) 색. 상태 배지와 같은 계열의 진한 색(라이트·다크 모두 잘 보이게 500 단계).
+export const STATUS_BEAM: Record<RequestStatus, string> = {
+  requested: '#64748b',
+  'needs-info': '#f59e0b',
+  waiting: '#0ea5e9',
+  'in-progress': '#3b82f6',
+  review: '#8b5cf6',
+  revising: '#f97316',
+  approved: '#14b8a6',
+  done: '#10b981',
+  canceled: '#94a3b8',
+}

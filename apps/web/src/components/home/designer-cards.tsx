@@ -16,7 +16,7 @@ import {
 } from "@/lib/requests"
 import { INNER_GRID } from "@/lib/layout"
 import { PRESENCE_DOT, PRESENCE_LABEL, type Presence } from "@/lib/presence"
-import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
+import { STATUS_BEAM, STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 
 // 카드 칸 수: 본문 12칸 그리드에서 넓은 화면 2칸(한 줄 6장), 좁아지면 3·4·6칸. 넘치면 다음 줄로 내려간다.
 // 카드 비율은 포커 카드(63.5 × 88.9mm, 5:7).
@@ -79,6 +79,21 @@ export function DesignerCards({
             // 진행 중인 작업(작업 중·수정 중)이 없는 작업자 카드는 흐리게(50%)
             className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md transition-opacity ${working.length === 0 ? "opacity-50" : ""} ${CARD_SPAN}`}
           >
+            {/* 작업 중인 카드는 테두리를 따라 빛이 돈다. 색은 카드 아래에 보이는 작업의 상태 색(작업 중 파랑, 수정 중 주황 등) */}
+            {working.length > 0 && (
+              <>
+                <span
+                  className="border-beam-glow"
+                  style={{ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties}
+                  aria-hidden
+                />
+                <span
+                  className="border-beam"
+                  style={{ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties}
+                  aria-hidden
+                />
+              </>
+            )}
             {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
             <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
               <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
