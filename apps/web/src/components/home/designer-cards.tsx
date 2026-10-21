@@ -44,9 +44,9 @@ function WorkingMarker({ request }: { request: DesignRequest }) {
       </MarkerIcon>
       {/* shimmer: 글자 위로 빛이 지나가는 효과(shadcn 유틸). 글자색을 바탕색으로 쓰고, 움직임 줄이기 설정이면 꺼진다.
           프로젝트명은 기본 회색, 상태 글자만 상태 색으로 구분한다 */}
-      <MarkerContent className="flex min-w-0 flex-1 text-xs">
-        <span className="shimmer truncate font-medium">{request.title}</span>
-        <span className={`shimmer ml-1 shrink-0 ${color}`}>{doing}</span>
+      <MarkerContent className="flex min-w-0 flex-1 justify-between gap-2 text-xs">
+        <span className="shimmer min-w-0 flex-1 truncate font-medium">{request.title}</span>
+        <span className={`shimmer shrink-0 ${color}`}>{doing}</span>
       </MarkerContent>
     </Marker>
   )
