@@ -87,8 +87,8 @@ export function DesignerCards({
             <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
               {BUSY_LABEL[level]}
             </Badge>
-            {/* 위: 프로필(사진·이름) 묶음, 아래: 이번 주 작업 태그. 사이는 남는 공간으로 벌린다 */}
-            <div className="flex flex-1 flex-col items-center justify-between gap-3">
+            {/* 프로필(사진·이름) 묶음과 이번 주 작업 태그를 위쪽부터 차례로 쌓는다 */}
+            <div className="flex flex-1 flex-col items-center gap-3">
               <div className="flex flex-col items-center gap-3">
                 <div className="relative">
                   <Avatar className="size-14">
