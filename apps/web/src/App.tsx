@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 
+import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
-import { HeaderActions } from '@/components/header-actions'
 import { HomePage } from '@/components/home/home-page'
 import { LoginForm } from '@/components/login-form'
-import { Separator } from '@/components/ui/separator'
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { loadSession, logout, verifySession, type Session } from '@/lib/auth'
 import { MENU_GROUPS } from '@/lib/menu'
 import { markAllRead } from '@/lib/notifications'
+import { useSmoothScroll } from '@/lib/smooth-scroll'
 
 function environmentName() {
   const { hostname } = window.location
@@ -26,6 +26,9 @@ const FADE_IN = 'animate-in fade-in [--tw-animation-duration:300ms] motion-reduc
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession)
   const [activeId, setActiveId] = useState('home')
+
+  // 페이지 전체 스크롤을 Lenis 로 부드럽게
+  useSmoothScroll()
 
   useEffect(() => {
     verifySession().then(setSession)
@@ -59,14 +62,11 @@ export default function App() {
         }}
       />
       <SidebarInset className="min-w-0">
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-center" />
-          <h1 key={activeId} className={`text-sm font-medium ${FADE_IN}`}>
-            {MENU_TITLES.get(activeId)}
-          </h1>
-          <HeaderActions onOpenNotifications={() => setActiveId('notifications')} />
-        </header>
+        <AppHeader
+          title={MENU_TITLES.get(activeId) ?? ''}
+          titleClassName={FADE_IN}
+          onOpenNotifications={() => setActiveId('notifications')}
+        />
         <div key={activeId} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
           {activeId === 'home' ? (
             <HomePage onNavigate={setActiveId} />
