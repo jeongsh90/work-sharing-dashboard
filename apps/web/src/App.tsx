@@ -138,6 +138,8 @@ export default function App() {
           title={PAGE_TITLES[page] ?? ''}
           titleClassName={FADE_IN}
           onOpenNotifications={() => navigate('notifications')}
+          // 요청자는 어느 화면에서든 헤더 오른쪽 버튼으로 바로 디자인 요청을 쓴다.
+          onNewRequest={session.role === 'requester' ? () => navigate('request') : undefined}
         />
         <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
           {content}

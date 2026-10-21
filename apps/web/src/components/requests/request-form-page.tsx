@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Plus, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -13,7 +14,6 @@ import { api, ApiError, uploadAll } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import {
-  URGENCY_LABEL,
   WORK_TYPES,
   type FileInfo,
   type RequestDetailDto,
@@ -141,7 +141,7 @@ function ItemFields({
           )
         })}
       </ol>
-      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => onChange([...rows, EMPTY_ITEM])}>
+      <Button type="button" variant="outline" size="sm" className="self-center" onClick={() => onChange([...rows, EMPTY_ITEM])}>
         <Plus data-icon="inline-start" />
         내용 추가
       </Button>
@@ -179,7 +179,9 @@ export function RequestForm({
   })
   // 예전에 고른 시각이 목록에 없으면 목록에 더해 보여 준다.
   const dueTimes = DUE_TIMES.includes(dueTime) ? DUE_TIMES : [...DUE_TIMES, dueTime].sort()
-  const [urgency, setUrgency] = useState<Urgency>(initial?.urgency ?? "normal")
+  // 긴급 처리 요청 체크. 체크하면 긴급도 '급함'. 예전에 '매우 급함'으로 들어온 요청은 체크를 유지하면 그대로 둔다.
+  const [urgent, setUrgent] = useState(!!initial && initial.urgency !== "normal")
+  const urgency: Urgency = !urgent ? "normal" : initial?.urgency === "critical" ? "critical" : "urgent"
   // 묶음이 없던 예전 요청은 요청 내용을 첫 묶음에 넣어 보여 준다.
   const [items, setItems] = useState<ItemRow[]>(() =>
     initial?.items.length
@@ -295,38 +297,21 @@ export function RequestForm({
             />
             {errors.period && <FieldError>{errors.period}</FieldError>}
           </Field>
-          <div className="grid grid-cols-2 gap-6">
-            <Field>
-              <FieldLabel htmlFor="req-due-time">마감 시각</FieldLabel>
-              <Select value={dueTime} onValueChange={setDueTime}>
-                <SelectTrigger id="req-due-time" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {dueTimes.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="req-urgency">긴급도</FieldLabel>
-              <Select value={urgency} onValueChange={(v) => setUrgency(v as Urgency)}>
-                <SelectTrigger id="req-urgency" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(URGENCY_LABEL) as Urgency[]).map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {URGENCY_LABEL[u]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
+          <Field>
+            <FieldLabel htmlFor="req-due-time">마감 시각</FieldLabel>
+            <Select value={dueTime} onValueChange={setDueTime}>
+              <SelectTrigger id="req-due-time" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {dueTimes.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
         <Field data-invalid={invalid("items")}>
           <FieldLabel>사이즈 · 요청 내용</FieldLabel>
@@ -360,16 +345,23 @@ export function RequestForm({
           <FieldDescription>참고 이미지나 기존 시안이 있으면 같이 올려 주세요.</FieldDescription>
         </Field>
         {errors.form && <FieldError>{errors.form}</FieldError>}
-        <Field orientation="horizontal" className="justify-end">
-          {onCancel && (
-            <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
-              취소
+        {/* 보내기 버튼 위에 긴급 처리 요청 체크 */}
+        <div className="flex flex-col items-end gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <Checkbox checked={urgent} onCheckedChange={(v) => setUrgent(v === true)} />
+            긴급처리요청
+          </label>
+          <div className="flex items-center gap-2">
+            {onCancel && (
+              <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={onCancel} disabled={pending}>
+                취소
+              </Button>
+            )}
+            <Button type="submit" className="h-14 px-10 text-base" disabled={pending}>
+              {pending ? "보내는 중…" : initial ? "수정 내용 저장" : "요청 보내기"}
             </Button>
-          )}
-          <Button type="submit" disabled={pending}>
-            {pending ? "보내는 중…" : initial ? "수정 내용 저장" : "요청 보내기"}
-          </Button>
-        </Field>
+          </div>
+        </div>
       </FieldGroup>
     </form>
   )

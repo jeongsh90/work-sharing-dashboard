@@ -9,10 +9,12 @@ export function AppHeader({
   title,
   titleClassName,
   onOpenNotifications,
+  onNewRequest,
 }: {
   title: string
   titleClassName?: string
   onOpenNotifications: () => void
+  onNewRequest?: () => void
 }) {
   const { state, isMobile } = useSidebar()
   const left = isMobile ? "0px" : state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)"
@@ -29,7 +31,7 @@ export function AppHeader({
         <h1 key={title} className={`text-sm font-medium ${titleClassName ?? ""}`}>
           {title}
         </h1>
-        <HeaderActions onOpenNotifications={onOpenNotifications} />
+        <HeaderActions onOpenNotifications={onOpenNotifications} onNewRequest={onNewRequest} />
       </header>
       <div className="h-16 shrink-0" aria-hidden />
     </>

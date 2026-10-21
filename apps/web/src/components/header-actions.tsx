@@ -1,4 +1,4 @@
-import { Bell, Contrast } from "lucide-react"
+import { Bell, Contrast, FilePlus2 } from "lucide-react"
 
 import { markAllRead, useNotifications, type NotificationType } from "@/lib/notifications"
 import { useTheme } from "@/lib/theme"
@@ -63,9 +63,22 @@ function ThemeToggle() {
   )
 }
 
-export function HeaderActions({ onOpenNotifications }: { onOpenNotifications: () => void }) {
+// onNewRequest 를 주면(요청자) 맨 앞에 디자인 요청 버튼을 둔다. 좁은 화면에서는 아이콘만 보인다.
+export function HeaderActions({
+  onOpenNotifications,
+  onNewRequest,
+}: {
+  onOpenNotifications: () => void
+  onNewRequest?: () => void
+}) {
   return (
     <div className="ml-auto flex items-center gap-1">
+      {onNewRequest && (
+        <Button size="sm" className="mr-1" aria-label="디자인 요청" onClick={onNewRequest}>
+          <FilePlus2 data-icon="inline-start" />
+          <span className="hidden sm:inline">디자인 요청</span>
+        </Button>
+      )}
       <NotificationButton onOpen={onOpenNotifications} />
       <ThemeToggle />
     </div>
