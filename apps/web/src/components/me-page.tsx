@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DesktopNotifyToggle } from "@/components/desktop-notify-toggle"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -90,6 +91,16 @@ export function MePage({ session, onSessionChange }: { session: Session; onSessi
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>PC 알림</CardTitle>
+            <CardDescription>이 브라우저에서만 적용됩니다.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DesktopNotifyToggle />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

@@ -1,5 +1,6 @@
 import { Bell } from "lucide-react"
 
+import { DesktopNotifyToggle } from "@/components/desktop-notify-toggle"
 import { Section } from "@/components/home/home-page"
 import { PAGE_GRID } from "@/lib/layout"
 import { useNotifications } from "@/lib/notifications"
@@ -12,6 +13,7 @@ export function NotificationsPage() {
   return (
     <div className={PAGE_GRID}>
       <Section title="알림" className="col-span-12 lg:col-span-8 xl:col-span-6">
+        <DesktopNotifyToggle compact />
         {items.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-10 text-sm text-muted-foreground">
             <Bell className="size-5" aria-hidden />
