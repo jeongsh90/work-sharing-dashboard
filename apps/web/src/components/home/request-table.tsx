@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { MoreHorizontal, Search } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { OverlayScrollbar } from "@/components/overlay-scrollbar"
 import {
   Pagination,
   PaginationContent,
@@ -65,6 +66,7 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
   const [filter, setFilter] = useState("all")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
+  const tableRef = useRef<HTMLDivElement>(null)
   const designerName = useMemo(() => new Map(designers.map((d) => [d.id, d.name])), [designers])
 
   const matchesQuery = (r: DesignRequest) => {
@@ -125,7 +127,7 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card">
+      <div ref={tableRef} className="relative rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -209,6 +211,12 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
             ))}
           </TableBody>
         </Table>
+        {/* 좁은 화면에서 표가 가로로 넘칠 때 쓰는 겹침 스크롤바 */}
+        <OverlayScrollbar
+          target={() => tableRef.current?.querySelector<HTMLElement>("[data-slot=table-container]")}
+          orientation="horizontal"
+          className="absolute right-2 bottom-1 left-2 h-1.5"
+        />
       </div>
 
       {/* 한 쪽뿐이어도 페이지 줄을 두어 탭을 바꿔도 높이가 같다 */}

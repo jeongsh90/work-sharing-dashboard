@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
 import { HomePage } from '@/components/home/home-page'
+import { OverlayScrollbar } from '@/components/overlay-scrollbar'
 import { LoginForm } from '@/components/login-form'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { loadSession, logout, verifySession, type Session } from '@/lib/auth'
@@ -62,6 +63,8 @@ export default function App() {
         }}
       />
       <SidebarInset className="min-w-0">
+        {/* 페이지 세로 스크롤바: 헤더 아래 오른쪽 */}
+        <OverlayScrollbar target={() => window} className="fixed top-16 right-0.5 bottom-1 w-1.5" />
         <AppHeader
           title={MENU_TITLES.get(activeId) ?? ''}
           titleClassName={FADE_IN}

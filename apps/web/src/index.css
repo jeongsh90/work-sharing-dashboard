@@ -125,6 +125,13 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /* 기본 스크롤바는 숨기고 겹침 스크롤바(components/overlay-scrollbar.tsx)를 쓴다. 스크롤 기능은 그대로다. */
+  * {
+    scrollbar-width: none;
+    }
+  *::-webkit-scrollbar {
+    display: none;
+    }
   /* 스크롤바·입력칸 같은 브라우저 기본 요소도 테마 색을 따르게 한다. */
   :root {
     color-scheme: light;
