@@ -23,8 +23,8 @@ import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 const CARD_WIDTH =
   "basis-[calc((100%-1rem)/2)] md:basis-[calc((100%-3rem)/3)] lg:basis-[calc((100%-4.5rem)/4)] xl:basis-[calc((100%-7.5rem)/6)]"
 
-// 카드 아래 "작업 중…" 표시는 카드 높이에 맞춰 이 건수까지만 보여 준다
-const MAX_WORKING_MARKERS = 2
+// 카드 아래 "작업 중…" 표시는 이 건수까지만 보여 주고 나머지는 "외 n건"으로 묶는다
+const MAX_WORKING_MARKERS = 1
 
 // 카드 가운데 태그: 이번 주 작업을 상태 묶음별로 센다. 색은 대표 상태의 배지 색.
 const WEEK_TAGS: { label: string; statuses: RequestStatus[]; color: RequestStatus }[] = [
@@ -109,14 +109,19 @@ export function DesignerCards({
                 ))}
               </div>
             </div>
-            {working.length > 0 && (
-              <div className="flex flex-col gap-2 border-t pt-3">
-                {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
-                  <WorkingMarker key={r.id} request={r} />
-                ))}
-                {hidden > 0 && <p className="pl-6 text-xs text-muted-foreground">외 {hidden}건</p>}
-              </div>
-            )}
+            {/* 작업 표시 영역: "외 n건" 줄까지 포함해 모든 카드에서 높이를 같게 둔다 */}
+            <div className="flex h-14 flex-col justify-center gap-1 border-t pt-3">
+              {working.length > 0 ? (
+                <>
+                  {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
+                    <WorkingMarker key={r.id} request={r} />
+                  ))}
+                  <p className="h-4 pl-6 text-xs text-muted-foreground">{hidden > 0 && `외 ${hidden}건`}</p>
+                </>
+              ) : (
+                <p className="text-center text-xs text-muted-foreground">진행 중인 프로젝트가 없습니다.</p>
+              )}
+            </div>
           </div>
         )
       })}
