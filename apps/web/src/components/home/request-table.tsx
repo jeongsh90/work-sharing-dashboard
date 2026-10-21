@@ -22,15 +22,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatusBadge, UrgencyBadge } from "@/components/home/status-badge"
 import {
-  formatDue,
+  formatDateTime,
   initials,
   isActive,
+  isUnassigned,
   type DesignRequest,
   type Designer,
   type RequestStatus,
 } from "@/lib/requests"
 
 const PAGE_SIZE = 8
+const COLUMN_COUNT = 8
 
 const FILTERS: { id: string; label: string; statuses: RequestStatus[] | null }[] = [
   { id: "all", label: "전체", statuses: null },
@@ -40,10 +42,23 @@ const FILTERS: { id: string; label: string; statuses: RequestStatus[] | null }[]
   { id: "done", label: "완료", statuses: ["done", "canceled"] },
 ]
 
-// 진행 중인 요청을 마감이 빠른 순으로 먼저, 끝난 요청은 최근 마감 순으로 뒤에
+// 미배정(담당 없음) 요청을 맨 위에, 그다음 진행 중인 요청을 마감이 빠른 순으로, 끝난 요청은 최근 마감 순으로 뒤에
 function byPriority(a: DesignRequest, b: DesignRequest) {
-  if (isActive(a) !== isActive(b)) return isActive(a) ? -1 : 1
-  return isActive(a) ? a.dueAt.getTime() - b.dueAt.getTime() : b.dueAt.getTime() - a.dueAt.getTime()
+  const rank = (r: DesignRequest) => (isUnassigned(r) && isActive(r) ? 0 : isActive(r) ? 1 : 2)
+  if (rank(a) !== rank(b)) return rank(a) - rank(b)
+  return rank(a) < 2 ? a.dueAt.getTime() - b.dueAt.getTime() : b.dueAt.getTime() - a.dueAt.getTime()
+}
+
+// 빈 줄. 데이터 줄과 같은 두 줄 구성이라 높이가 같다. 탭을 바꿔도 표 높이가 그대로라 화면이 움직이지 않는다.
+function FillerRow({ message }: { message?: string }) {
+  return (
+    <TableRow aria-hidden={!message} className="hover:bg-transparent">
+      <TableCell colSpan={COLUMN_COUNT} className="pl-4 text-center text-muted-foreground">
+        <div>{message ?? " "}</div>
+        <div className="text-xs">{" "}</div>
+      </TableCell>
+    </TableRow>
+  )
 }
 
 export function RequestTable({ requests, designers }: { requests: DesignRequest[]; designers: Designer[] }) {
@@ -117,6 +132,7 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
               <TableHead className="pl-4">요청</TableHead>
               <TableHead>요청자</TableHead>
               <TableHead>담당</TableHead>
+              <TableHead>시작 일시</TableHead>
               <TableHead>마감 일시</TableHead>
               <TableHead>긴급도</TableHead>
               <TableHead>상태</TableHead>
@@ -139,24 +155,31 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
                     <div className="text-xs text-muted-foreground">{r.department}</div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="flex -space-x-2">
-                        {r.designers.map((id) => (
-                          <Avatar key={id} className="size-6 ring-2 ring-card">
-                            <AvatarFallback className="text-[10px]">{initials(designerName.get(id) ?? "?")}</AvatarFallback>
-                          </Avatar>
-                        ))}
+                    {isUnassigned(r) ? (
+                      <span className="text-muted-foreground">미배정</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="flex -space-x-2">
+                          {r.designers.map((id) => (
+                            <Avatar key={id} className="size-6 ring-2 ring-card">
+                              <AvatarFallback className="text-[10px]">{initials(designerName.get(id) ?? "?")}</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </div>
+                        <span>
+                          {designerName.get(r.designers[0])}
+                          {r.designers.length > 1 && (
+                            <span className="text-muted-foreground"> 외 {r.designers.length - 1}명</span>
+                          )}
+                        </span>
                       </div>
-                      <span>
-                        {designerName.get(r.designers[0])}
-                        {r.designers.length > 1 && (
-                          <span className="text-muted-foreground"> 외 {r.designers.length - 1}명</span>
-                        )}
-                      </span>
-                    </div>
+                    )}
+                  </TableCell>
+                  <TableCell className={r.startedAt ? undefined : "text-muted-foreground"}>
+                    {r.startedAt ? formatDateTime(r.startedAt) : "-"}
                   </TableCell>
                   <TableCell className={overdue ? "font-medium text-destructive" : undefined}>
-                    {formatDue(r.dueAt)}
+                    {formatDateTime(r.dueAt)}
                     {overdue && <span className="ml-1 text-xs">마감 지남</span>}
                   </TableCell>
                   <TableCell>
@@ -180,36 +203,32 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
                 </TableRow>
               )
             })}
-            {visible.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  {query ? "검색 결과가 없습니다." : "해당하는 작업이 없습니다."}
-                </TableCell>
-              </TableRow>
-            )}
+            {visible.length === 0 && <FillerRow message={query ? "검색 결과가 없습니다." : "해당하는 작업이 없습니다."} />}
+            {Array.from({ length: PAGE_SIZE - Math.max(visible.length, 1) }, (_, i) => (
+              <FillerRow key={`filler-${i}`} />
+            ))}
           </TableBody>
         </Table>
       </div>
 
-      {pageCount > 1 && (
-        <Pagination>
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious href="#" text="이전" aria-label="이전 페이지" onClick={go(current - 1)} />
+      {/* 한 쪽뿐이어도 페이지 줄을 두어 탭을 바꿔도 높이가 같다 */}
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious href="#" text="이전" aria-label="이전 페이지" onClick={go(current - 1)} />
+          </PaginationItem>
+          {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+            <PaginationItem key={n}>
+              <PaginationLink href="#" isActive={n === current} onClick={go(n)}>
+                {n}
+              </PaginationLink>
             </PaginationItem>
-            {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
-              <PaginationItem key={n}>
-                <PaginationLink href="#" isActive={n === current} onClick={go(n)}>
-                  {n}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationItem>
-              <PaginationNext href="#" text="다음" aria-label="다음 페이지" onClick={go(current + 1)} />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      )}
+          ))}
+          <PaginationItem>
+            <PaginationNext href="#" text="다음" aria-label="다음 페이지" onClick={go(current + 1)} />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </div>
   )
 }

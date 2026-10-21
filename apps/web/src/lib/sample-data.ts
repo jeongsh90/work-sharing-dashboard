@@ -43,6 +43,17 @@ const ROWS: Row[] = [
   ['네이버 브랜드스토어 배너', '띠 배너', 'MD 김○○', 'MD 1팀', ['e'], -5, 11, 'normal', 'done'],
 ]
 
+// 작업을 시작한 적이 있는 상태
+const STARTED: RequestStatus[] = ['in-progress', 'review', 'revising', 'done']
+
+// 예시 시작 시각: 마감 이틀 전 오전 10시. 아직 오지 않은 시각이면 오늘 오전 9시
+function startedBefore(due: Date) {
+  const start = new Date(due)
+  start.setDate(start.getDate() - 2)
+  start.setHours(10, 0, 0, 0)
+  return start > new Date() ? at(0, 9) : start
+}
+
 export const SAMPLE_REQUESTS: DesignRequest[] = ROWS.map(
   ([title, workType, requester, department, designers, days, hour, urgency, status, revision = 0], i) => ({
     id: `REQ-${String(i + 1).padStart(4, '0')}`,
@@ -50,7 +61,9 @@ export const SAMPLE_REQUESTS: DesignRequest[] = ROWS.map(
     workType,
     requester,
     department,
-    designers: [...new Set(designers.map((d) => ASSIGNEE[d]))],
+    // 요청됨 = 담당 지정 전(미배정)
+    designers: status === 'requested' ? [] : [...new Set(designers.map((d) => ASSIGNEE[d]))],
+    startedAt: STARTED.includes(status) ? startedBefore(at(days, hour)) : null,
     dueAt: at(days, hour),
     urgency,
     status,

@@ -19,6 +19,7 @@ export type DesignRequest = {
   requester: string
   department: string
   designers: string[] // 담당 디자이너 id, 첫 번째가 주 담당
+  startedAt: Date | null // 실제 시작 시각('작업 중'으로 바꾼 때). 시작 전이면 null
   dueAt: Date
   urgency: Urgency
   status: RequestStatus
@@ -86,7 +87,12 @@ export function busyLevel(activeCount: number): BusyLevel {
   return 'busy'
 }
 
-export function formatDue(date: Date) {
+// 담당자가 아직 없는 요청(요청됨 상태). 작업 현황 표 맨 위에 둔다.
+export function isUnassigned(request: DesignRequest) {
+  return request.designers.length === 0
+}
+
+export function formatDateTime(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
