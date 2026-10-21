@@ -1,13 +1,13 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
 import { api } from './api'
-import { showDesktop, userIsLooking } from './desktop-notify'
+import { showDesktop } from './desktop-notify'
 import { navigate, openRequest } from './router'
 import { invalidate } from './store'
 
 // 알림 목록. 서버(notifications 표)에 쌓인 내 알림을 주기적으로 받아 온다.
 // 새 알림이 오면 열려 있는 화면 데이터도 새로 받고(다른 사람이 상태를 바꿨다는 뜻이므로),
-// 화면을 보고 있지 않으면 PC 알림(desktop-notify.ts)으로도 띄운다.
+// 켜 두었으면 PC 알림(desktop-notify.ts)으로도 띄운다.
 
 // 알림 종류. 종류마다 툴팁 배경색이 다르다(header-actions.tsx 의 NOTIFICATION_TOOLTIP_COLORS).
 // 종류와 색은 아직 정하지 않아 기본 한 가지만 둔다.
@@ -41,7 +41,6 @@ function open(n: AppNotification) {
 
 // PC 알림은 최근 3건까지 따로 띄우고, 더 많으면 한 건으로 묶는다.
 function notifyDesktop(fresh: AppNotification[]) {
-  if (userIsLooking()) return
   if (fresh.length > 3) {
     showDesktop(`새 알림 ${fresh.length}건`, fresh[0].message, () => navigate('notifications'), 'wsd-summary')
     return
