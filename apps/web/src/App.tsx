@@ -15,6 +15,7 @@ import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { UNAUTHORIZED_EVENT } from '@/lib/api'
+import { useAskOnFirstClick } from '@/lib/desktop-notify'
 import { isManager, loadSession, logout, verifySession, writeStored, type Session } from '@/lib/auth'
 import { menuFor, PAGE_TITLES } from '@/lib/menu'
 import { markAllRead, useNotificationSync } from '@/lib/notifications'
@@ -49,6 +50,8 @@ export default function App() {
   // 페이지 전체 스크롤을 Lenis 로 부드럽게
   useSmoothScroll()
   useNotificationSync(session?.id ?? null)
+  // PC 알림 권한을 아직 묻지 않았으면 로그인 후 첫 클릭에 묻는다.
+  useAskOnFirstClick(!!session)
 
   useEffect(() => {
     verifySession().then(setSession)

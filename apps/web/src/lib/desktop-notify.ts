@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
 // PC(운영체제) 알림. 브라우저 Notification API 로 Windows 알림 센터에 띄운다.
 // - 브라우저는 사용자가 버튼을 눌렀을 때만 권한을 물을 수 있어 "PC 알림 켜기" 버튼으로 켠다.
@@ -78,6 +78,19 @@ export function showDesktop(title: string, body: string, onClick: () => void, ta
   } catch {
     // 일부 환경(모바일 브라우저 등)은 페이지에서 바로 알림을 만들 수 없다.
   }
+}
+
+// 아직 권한을 묻지 않았으면 로그인 후 화면을 처음 누를 때 브라우저가 허용 여부를 묻게 한다.
+// (브라우저는 클릭 같은 사용자 동작 안에서만 권한을 물을 수 있다.) 직접 끈 사람에게는 묻지 않는다.
+export function useAskOnFirstClick(active: boolean) {
+  useEffect(() => {
+    if (!active || !desktopSupported || Notification.permission !== 'default' || !wanted) return
+    const ask = () => {
+      if (Notification.permission === 'default' && wanted) enableDesktop()
+    }
+    document.addEventListener('click', ask, { once: true, capture: true })
+    return () => document.removeEventListener('click', ask, { capture: true })
+  }, [active])
 }
 
 // 내 정보의 "테스트 알림" 버튼: Windows 에서 알림이 보이는지 바로 확인한다.
