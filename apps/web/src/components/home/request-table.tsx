@@ -51,13 +51,12 @@ function byPriority(a: DesignRequest, b: DesignRequest) {
   return rank(a) < 2 ? a.dueAt.getTime() - b.dueAt.getTime() : b.dueAt.getTime() - a.dueAt.getTime()
 }
 
-// 빈 줄. 데이터 줄과 같은 두 줄 구성이라 높이가 같다. 탭을 바꿔도 표 높이가 그대로라 화면이 움직이지 않는다.
-function FillerRow({ message }: { message?: string }) {
+// 보여 줄 요청이 없을 때만 안내 한 줄. 빈 줄로 표 높이를 채우지 않는다(내용이 있는 줄만 보인다).
+function EmptyRow({ message }: { message: string }) {
   return (
-    <TableRow aria-hidden={!message} className="hover:bg-transparent">
-      <TableCell colSpan={COLUMN_COUNT} className="pl-4 text-center text-muted-foreground">
-        <div>{message ?? " "}</div>
-        <div className="text-xs">{" "}</div>
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
+        {message}
       </TableCell>
     </TableRow>
   )
@@ -208,10 +207,7 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
                 </TableRow>
               )
             })}
-            {visible.length === 0 && <FillerRow message={query ? "검색 결과가 없습니다." : (emptyMessage ?? "해당하는 작업이 없습니다.")} />}
-            {Array.from({ length: PAGE_SIZE - Math.max(visible.length, 1) }, (_, i) => (
-              <FillerRow key={`filler-${i}`} />
-            ))}
+            {visible.length === 0 && <EmptyRow message={query ? "검색 결과가 없습니다." : (emptyMessage ?? "해당하는 작업이 없습니다.")} />}
           </TableBody>
         </Table>
         {/* 좁은 화면에서 표가 가로로 넘칠 때 쓰는 겹침 스크롤바 */}
@@ -222,7 +218,7 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
         />
       </div>
 
-      {/* 한 쪽뿐이어도 페이지 줄을 두어 탭을 바꿔도 높이가 같다 */}
+      {/* 페이지 이동 */}
       <Pagination>
         <PaginationContent>
           <PaginationItem>

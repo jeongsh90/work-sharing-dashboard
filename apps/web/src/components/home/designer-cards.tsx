@@ -114,14 +114,16 @@ export function DesignerCards({
                 ))}
               </div>
             </div>
-            {/* 작업 표시 영역: "외 n건" 줄까지 포함해 모든 카드에서 높이를 같게 둔다 */}
-            <div className="flex h-14 flex-col justify-center gap-1 border-t pt-3">
+            {/* 작업 표시 영역: 높이를 모든 카드에서 같게 둔다. "외 n건"은 아래에 겹쳐(absolute) 띄워 작업 표시가 가운데에 오게 한다 */}
+            <div className="relative flex h-14 flex-col justify-center border-t pt-3">
               {working.length > 0 ? (
                 <>
                   {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
                     <WorkingMarker key={r.id} request={r} />
                   ))}
-                  <p className="h-4 text-center text-xs text-muted-foreground">{hidden > 0 && `외 ${hidden}건`}</p>
+                  {hidden > 0 && (
+                    <p className="absolute inset-x-0 top-full text-center text-xs text-muted-foreground">외 {hidden}건</p>
+                  )}
                 </>
               ) : (
                 <p className="text-center text-xs text-muted-foreground">진행 중인 프로젝트가 없습니다.</p>
