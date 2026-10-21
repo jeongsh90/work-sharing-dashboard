@@ -346,7 +346,7 @@ export function RequestForm({
         </Field>
         {errors.form && <FieldError>{errors.form}</FieldError>}
         {/* 보내기 버튼 위에 긴급 처리 요청 체크 */}
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-center gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
             <Checkbox checked={urgent} onCheckedChange={(v) => setUrgent(v === true)} />
             긴급처리요청
