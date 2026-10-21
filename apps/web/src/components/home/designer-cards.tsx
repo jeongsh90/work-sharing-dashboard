@@ -3,8 +3,19 @@ import { LoaderCircle } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
-import { BUSY_LABEL, busyLevel, designerTitle, initials, isActive, type BusyLevel, type DesignRequest, type Designer } from "@/lib/requests"
-import { STATUS_TEXT } from "@/lib/status-colors"
+import {
+  BUSY_LABEL,
+  busyLevel,
+  designerTitle,
+  initials,
+  isActive,
+  isThisWeek,
+  type BusyLevel,
+  type DesignRequest,
+  type Designer,
+  type RequestStatus,
+} from "@/lib/requests"
+import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 
 // 카드 폭 = 본문 12칸 그리드의 칸 수(넓은 화면 2칸). 간격은 INNER_GRID(gap-4, md:gap-6)와 같다.
 // 카드 비율은 포커 카드(63.5 × 88.9mm, 5:7).
@@ -14,6 +25,14 @@ const CARD_WIDTH =
 
 // 카드 아래 "작업 중…" 표시는 카드 높이에 맞춰 이 건수까지만 보여 준다
 const MAX_WORKING_MARKERS = 2
+
+// 카드 가운데 태그: 이번 주 작업을 상태 묶음별로 센다. 색은 대표 상태의 배지 색.
+const WEEK_TAGS: { label: string; statuses: RequestStatus[]; color: RequestStatus }[] = [
+  { label: "작업 중", statuses: ["in-progress", "revising"], color: "in-progress" },
+  { label: "작업 대기", statuses: ["requested", "needs-info", "waiting"], color: "waiting" },
+  { label: "검토 대기", statuses: ["review"], color: "review" },
+  { label: "완료", statuses: ["done"], color: "done" },
+]
 
 const BUSY_DOT: Record<BusyLevel, string> = {
   free: "bg-emerald-500",
@@ -42,17 +61,23 @@ export function DesignerCards({ designers, requests }: { designers: Designer[]; 
   return (
     <div className="flex snap-x gap-4 overflow-x-auto pb-3 [scrollbar-width:thin] md:gap-6">
       {designers.map((d) => {
-        const mine = requests.filter((r) => isActive(r) && r.designers.includes(d.id))
-        const working = mine
+        // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
+        const level = busyLevel(requests.filter((r) => isActive(r) && r.designers.includes(d.id)).length)
+        // 태그와 작업 표시는 이번 주(마감일 기준) 작업만. 완료일 데이터가 생기면 완료는 완료일 기준으로 바꾼다.
+        const thisWeek = requests.filter((r) => r.designers.includes(d.id) && isThisWeek(r.dueAt))
+        const tags = WEEK_TAGS.map((t) => ({ ...t, count: thisWeek.filter((r) => t.statuses.includes(r.status)).length }))
+        const working = thisWeek
           .filter((r) => r.status === "in-progress" || r.status === "revising")
           .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
-        const level = busyLevel(mine.length)
         const hidden = working.length - MAX_WORKING_MARKERS
         return (
           <div
             key={d.id}
-            className={`flex aspect-[5/7] min-w-0 shrink-0 snap-start flex-col rounded-xl border bg-card px-4 py-5 text-card-foreground ${CARD_WIDTH}`}
+            className={`relative flex aspect-[5/7] min-w-0 shrink-0 snap-start flex-col rounded-xl border bg-card px-4 py-5 text-card-foreground ${CARD_WIDTH}`}
           >
+            <Badge variant="outline" className="absolute top-3 left-3">
+              {BUSY_LABEL[level]}
+            </Badge>
             <div className="flex flex-1 flex-col items-center justify-center gap-3">
               <div className="relative">
                 <Avatar className="size-14">
@@ -67,13 +92,13 @@ export function DesignerCards({ designers, requests }: { designers: Designer[]; 
                 <p className="text-sm font-semibold">{d.name}</p>
                 <p className="text-xs text-muted-foreground">{designerTitle(d)}</p>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">
-                  진행 <b className="text-foreground tabular-nums">{mine.length}</b> · 작업 중{" "}
-                  <b className="text-foreground tabular-nums">{working.length}</b>
-                </span>
+              <div className="flex flex-wrap justify-center gap-1" aria-label="이번 주 작업">
+                {tags.map((t) => (
+                  <Badge key={t.label} variant="secondary" className={`${STATUS_BG[t.color]} ${STATUS_TEXT[t.color]} tabular-nums`}>
+                    {t.label} {t.count}건
+                  </Badge>
+                ))}
               </div>
-              <Badge variant="outline">{BUSY_LABEL[level]}</Badge>
             </div>
             {working.length > 0 && (
               <div className="flex flex-col gap-2 border-t pt-3">
