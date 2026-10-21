@@ -85,8 +85,8 @@ export function LoginForm({
             </FieldGroup>
           </form>
           <div className="relative hidden flex-col justify-end gap-1 bg-muted p-8 md:flex">
-            <p className="text-sm text-muted-foreground">DESIGN REQUEST &amp; SCHEDULE</p>
-            <p className="text-xl font-bold">디자인 요청·일정 관리 시스템</p>
+            <p className="text-sm text-muted-foreground">DESIGN REQUEST &amp; WORK</p>
+            <p className="text-xl font-bold">디자인 요청·작업 관리 시스템</p>
           </div>
         </CardContent>
       </Card>

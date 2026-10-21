@@ -46,7 +46,7 @@ export function AppSidebar({
                 <FilePlus2 className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">디자인 요청·일정</span>
+                <span className="truncate font-semibold">디자인 요청·작업</span>
                 <span className="truncate text-xs">관리 시스템</span>
               </div>
             </SidebarMenuButton>
