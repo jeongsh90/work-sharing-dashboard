@@ -1,33 +1,152 @@
 import { useState } from "react"
-import { X } from "lucide-react"
+import { Plus, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { FilePicker } from "@/components/requests/file-picker"
 import { FileChip } from "@/components/requests/file-list"
 import { api, ApiError, uploadAll } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import {
-  toLocalInput,
   URGENCY_LABEL,
   WORK_TYPES,
   type FileInfo,
   type RequestDetailDto,
+  type RequestItem,
   type Urgency,
 } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
 import { invalidate } from "@/lib/store"
 
-// 기본 마감: 사흘 뒤 오후 6시
-function defaultDue() {
-  const d = new Date()
-  d.setDate(d.getDate() + 3)
-  d.setHours(18, 0, 0, 0)
-  return toLocalInput(d)
+// 작업 기간: 날짜는 범위 선택(시작일 ~ 마감일), 마감 시각은 따로 고른다.
+const pad = (n: number) => String(n).padStart(2, "0")
+
+// 마감 시각 목록: 09:00 ~ 21:00, 30분 단위
+const DUE_TIMES = Array.from({ length: 25 }, (_, i) => `${pad(9 + Math.floor(i / 2))}:${i % 2 ? "30" : "00"}`)
+
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+
+// 기본 기간: 오늘 ~ 사흘 뒤
+function defaultRange(): DateRange {
+  const today = startOfDay(new Date())
+  const due = new Date(today)
+  due.setDate(due.getDate() + 3)
+  return { from: today, to: due }
+}
+
+function withTime(day: Date, time: string) {
+  const [h, m] = time.split(":").map(Number)
+  const d = startOfDay(day)
+  d.setHours(h, m, 0, 0)
+  return d
+}
+
+// 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 요청 내용. 숫자 칸은 입력 중 빈 값도 받으려고 글자로 둔다.
+type ItemRow = { label: string; width: string; height: string; body: string }
+
+const EMPTY_ITEM: ItemRow = { label: "", width: "", height: "", body: "" }
+
+const toRow = (item: RequestItem): ItemRow => ({
+  label: item.label,
+  width: item.width === null ? "" : String(item.width),
+  height: item.height === null ? "" : String(item.height),
+  body: item.body,
+})
+
+const isBlank = (row: ItemRow) => !row.label.trim() && !row.width && !row.height && !row.body.trim()
+
+// 이 묶음에서 빠진 값. 너비·높이는 비워 두면 자유라 검사하지 않는다.
+function missing(row: ItemRow) {
+  return { label: !row.label.trim(), body: !row.body.trim() }
+}
+
+function ItemFields({
+  rows,
+  onChange,
+  showErrors,
+}: {
+  rows: ItemRow[]
+  onChange: (rows: ItemRow[]) => void
+  showErrors: boolean
+}) {
+  const update = (i: number, key: keyof ItemRow, value: string) =>
+    onChange(
+      rows.map((r, j) =>
+        j === i ? { ...r, [key]: key === "width" || key === "height" ? value.replace(/[^0-9]/g, "") : value } : r,
+      ),
+    )
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ol className="flex flex-col gap-3">
+        {rows.map((row, i) => {
+          const miss = showErrors ? missing(row) : { label: false, body: false }
+          return (
+            <li key={i} className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={row.label}
+                  onChange={(e) => update(i, "label", e.target.value)}
+                  placeholder="제목 (예: 자사몰 PC 메인)"
+                  aria-label={`내용 ${i + 1} 제목`}
+                  aria-invalid={miss.label || undefined}
+                  maxLength={60}
+                  className="min-w-0 flex-1"
+                />
+                <Input
+                  value={row.width}
+                  onChange={(e) => update(i, "width", e.target.value)}
+                  inputMode="numeric"
+                  placeholder="너비"
+                  aria-label={`내용 ${i + 1} 너비`}
+                  className="w-20 shrink-0 tabular-nums sm:w-24"
+                />
+                <span className="text-sm text-muted-foreground" aria-hidden>
+                  ×
+                </span>
+                <Input
+                  value={row.height}
+                  onChange={(e) => update(i, "height", e.target.value)}
+                  inputMode="numeric"
+                  placeholder="높이"
+                  aria-label={`내용 ${i + 1} 높이`}
+                  className="w-20 shrink-0 tabular-nums sm:w-24"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`내용 ${i + 1} 삭제`}
+                  disabled={rows.length === 1 && isBlank(row)}
+                  onClick={() => onChange(rows.length === 1 ? [EMPTY_ITEM] : rows.filter((_, j) => j !== i))}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+              <Textarea
+                value={row.body}
+                onChange={(e) => update(i, "body", e.target.value)}
+                placeholder={"들어갈 문구, 참고할 링크 등 이 사이즈에 필요한 내용을 적어 주세요.\n예: 문구: 겨울엔 뜨끈한 국밥 한 그릇"}
+                aria-label={`내용 ${i + 1} 요청 내용`}
+                aria-invalid={miss.body || undefined}
+                maxLength={5000}
+                className="min-h-28"
+              />
+            </li>
+          )
+        })}
+      </ol>
+      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => onChange([...rows, EMPTY_ITEM])}>
+        <Plus data-icon="inline-start" />
+        내용 추가
+      </Button>
+    </div>
+  )
 }
 
 // 디자인 요청서. 새 요청과 요청 수정(보완)에 같이 쓴다.
@@ -45,22 +164,54 @@ export function RequestForm({
   const [title, setTitle] = useState(initial?.title ?? "")
   const [workType, setWorkType] = useState(initial?.workType ?? "")
   const [department, setDepartment] = useState(initial?.department ?? session.department)
-  const [dueAt, setDueAt] = useState(initial ? toLocalInput(new Date(initial.dueAt)) : defaultDue())
+  const [range, setRange] = useState<DateRange | undefined>(() =>
+    initial
+      ? {
+          from: startOfDay(new Date(initial.requestedStartAt ?? initial.dueAt)),
+          to: startOfDay(new Date(initial.dueAt)),
+        }
+      : defaultRange(),
+  )
+  const [dueTime, setDueTime] = useState(() => {
+    if (!initial) return "18:00"
+    const d = new Date(initial.dueAt)
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })
+  // 예전에 고른 시각이 목록에 없으면 목록에 더해 보여 준다.
+  const dueTimes = DUE_TIMES.includes(dueTime) ? DUE_TIMES : [...DUE_TIMES, dueTime].sort()
   const [urgency, setUrgency] = useState<Urgency>(initial?.urgency ?? "normal")
-  const [description, setDescription] = useState(initial?.description ?? "")
+  // 묶음이 없던 예전 요청은 요청 내용을 첫 묶음에 넣어 보여 준다.
+  const [items, setItems] = useState<ItemRow[]>(() =>
+    initial?.items.length
+      ? initial.items.map(toRow)
+      : initial?.description
+        ? [{ ...EMPTY_ITEM, body: initial.description }]
+        : [EMPTY_ITEM],
+  )
   const [kept, setKept] = useState<FileInfo[]>(initial?.references ?? [])
   const [files, setFiles] = useState<File[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pending, setPending] = useState(false)
+  // 새 요청은 오늘 이전 날짜를 고를 수 없다. 기준 날짜는 화면을 열 때 한 번 잡는다.
+  const [today] = useState(() => startOfDay(new Date()))
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     const next: Record<string, string> = {}
     if (!title.trim()) next.title = "제목을 입력해 주세요."
     if (!workType) next.workType = "작업 종류를 골라 주세요."
-    if (!dueAt) next.dueAt = "마감 일시를 입력해 주세요."
-    else if (!initial && new Date(dueAt) < new Date()) next.dueAt = "마감 일시가 이미 지났습니다."
-    if (!description.trim()) next.description = "요청 내용을 입력해 주세요."
+    // 하루만 고르면 시작일과 마감일이 같다.
+    const startDay = range?.from
+    const dueDay = range?.to ?? range?.from
+    const dueAt = dueDay ? withTime(dueDay, dueTime) : null
+    if (!startDay || !dueAt) next.period = "작업 기간을 골라 주세요."
+    else if (!initial && dueAt < new Date()) next.period = "마감 일시가 이미 지났습니다. 마감일이나 시각을 바꿔 주세요."
+    // 완전히 빈 묶음은 빼고 보낸다. 쓰기 시작한 묶음은 제목·요청 내용을 채워야 한다(너비·높이는 비우면 자유).
+    const filled = items.filter((r) => !isBlank(r))
+    if (filled.length === 0) next.items = "요청 내용을 한 개 이상 입력해 주세요."
+    else if (filled.some((r) => Object.values(missing(r)).some(Boolean))) {
+      next.items = "각 내용의 제목과 요청 내용을 입력해 주세요."
+    }
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
@@ -72,8 +223,14 @@ export function RequestForm({
         workType,
         department,
         urgency,
-        description,
-        dueAt: new Date(dueAt).getTime(),
+        items: filled.map((r) => ({
+          label: r.label.trim(),
+          width: r.width ? Number(r.width) : null,
+          height: r.height ? Number(r.height) : null,
+          body: r.body.trim(),
+        })),
+        requestedStartAt: startDay!.getTime(),
+        dueAt: dueAt!.getTime(),
         fileIds: uploaded.map((f) => f.id),
         keepFileIds: kept.map((f) => f.id),
       }
@@ -127,45 +284,57 @@ export function RequestForm({
             <FieldLabel htmlFor="req-dept">요청 부서</FieldLabel>
             <Input id="req-dept" value={department} maxLength={40} onChange={(e) => setDepartment(e.target.value)} />
           </Field>
-          <Field data-invalid={invalid("dueAt")}>
-            <FieldLabel htmlFor="req-due">마감 일시</FieldLabel>
-            <Input
-              id="req-due"
-              type="datetime-local"
-              value={dueAt}
-              onChange={(e) => setDueAt(e.target.value)}
-              aria-invalid={invalid("dueAt")}
+          <Field data-invalid={invalid("period")}>
+            <FieldLabel htmlFor="req-period">작업 기간 (시작일 ~ 마감일)</FieldLabel>
+            <DateRangePicker
+              id="req-period"
+              value={range}
+              onChange={setRange}
+              disabled={initial ? undefined : { before: today }}
+              invalid={!!errors.period}
             />
-            {errors.dueAt && <FieldError>{errors.dueAt}</FieldError>}
+            {errors.period && <FieldError>{errors.period}</FieldError>}
           </Field>
-          <Field>
-            <FieldLabel htmlFor="req-urgency">긴급도</FieldLabel>
-            <Select value={urgency} onValueChange={(v) => setUrgency(v as Urgency)}>
-              <SelectTrigger id="req-urgency" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(URGENCY_LABEL) as Urgency[]).map((u) => (
-                  <SelectItem key={u} value={u}>
-                    {URGENCY_LABEL[u]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <div className="grid grid-cols-2 gap-6">
+            <Field>
+              <FieldLabel htmlFor="req-due-time">마감 시각</FieldLabel>
+              <Select value={dueTime} onValueChange={setDueTime}>
+                <SelectTrigger id="req-due-time" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {dueTimes.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="req-urgency">긴급도</FieldLabel>
+              <Select value={urgency} onValueChange={(v) => setUrgency(v as Urgency)}>
+                <SelectTrigger id="req-urgency" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(URGENCY_LABEL) as Urgency[]).map((u) => (
+                    <SelectItem key={u} value={u}>
+                      {URGENCY_LABEL[u]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
         </div>
-        <Field data-invalid={invalid("description")}>
-          <FieldLabel htmlFor="req-desc">요청 내용</FieldLabel>
-          <Textarea
-            id="req-desc"
-            value={description}
-            maxLength={5000}
-            onChange={(e) => setDescription(e.target.value)}
-            className="min-h-40"
-            placeholder={"사용처와 규격, 들어갈 문구, 참고할 링크 등을 적어 주세요.\n예: 자사몰 PC 메인 1920×600 / 문구: 겨울엔 뜨끈한 국밥 한 그릇"}
-            aria-invalid={invalid("description")}
-          />
-          {errors.description && <FieldError>{errors.description}</FieldError>}
+        <Field data-invalid={invalid("items")}>
+          <FieldLabel>사이즈 · 요청 내용</FieldLabel>
+          <FieldDescription>
+            사이즈별로 요청 내용을 적어 주세요. 자유 사이즈면 너비·높이는 비워 두세요.
+          </FieldDescription>
+          <ItemFields rows={items} onChange={setItems} showErrors={!!errors.items} />
+          {errors.items && <FieldError>{errors.items}</FieldError>}
         </Field>
         <Field>
           <FieldLabel>참고 자료</FieldLabel>

@@ -82,7 +82,24 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
     <Section title="요청 내용" className="col-span-12 lg:col-span-7">
       <Card>
         <CardContent className="flex flex-col gap-5">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{detail.description}</p>
+          {/* 사이즈 + 요청 내용 묶음. 묶음이 없던 예전 요청은 요청 내용만 보여 준다. */}
+          {detail.items.length > 0 ? (
+            <ol className="flex flex-col gap-3">
+              {detail.items.map((item, i) => (
+                <li key={i} className="flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="min-w-0 truncate font-medium">{item.label}</span>
+                    <span className="shrink-0 font-medium tabular-nums">
+                      {item.width ?? "자유"} × {item.height ?? "자유"}
+                    </span>
+                  </div>
+                  <p className="leading-relaxed whitespace-pre-wrap break-words text-muted-foreground">{item.body}</p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{detail.description}</p>
+          )}
           <div className="flex flex-col gap-2">
             <h3 className="text-xs font-medium text-muted-foreground">참고 자료</h3>
             <FileGallery files={detail.references} empty="첨부한 참고 자료가 없습니다." />
@@ -183,8 +200,12 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
               detail.designers.map(userName).join(", ")
             )}
           </Meta>
-          <Meta label="마감 일시">
+          {/* 작업 기간: 요청자가 고른 시작일 ~ 마감 일시. 시작일이 없거나 마감일과 같으면 마감 일시만 */}
+          <Meta label="작업 기간">
             <span className={overdue ? "font-medium text-destructive" : undefined}>
+              {detail.requestedStartAt !== null &&
+                new Date(detail.requestedStartAt).toDateString() !== new Date(detail.dueAt).toDateString() &&
+                `${new Date(detail.requestedStartAt).getMonth() + 1}월 ${new Date(detail.requestedStartAt).getDate()}일 ~ `}
               {formatDateTime(new Date(detail.dueAt))}
               {overdue && " · 마감 지남"}
             </span>

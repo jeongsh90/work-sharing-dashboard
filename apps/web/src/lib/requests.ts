@@ -44,6 +44,7 @@ export type RequestSummaryDto = {
   urgency: Urgency
   status: RequestStatus
   revision: number
+  requestedStartAt: number | null // 요청자가 고른 작업 시작일
   dueAt: number
   createdAt: number
   startedAt: number | null
@@ -242,8 +243,12 @@ export type RequestAction =
   | 'comment'
   | 'resolve'
 
+// 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 그 사이즈의 요청 내용. 높이가 null 이면 자유(제한 없음)
+export type RequestItem = { label: string; width: number | null; height: number | null; body: string }
+
 export type RequestDetailDto = RequestSummaryDto & {
   description: string
+  items: RequestItem[]
   references: FileInfo[]
   finals: FileInfo[]
   submissions: SubmissionDto[]

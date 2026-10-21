@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS requests (
   urgency       TEXT NOT NULL DEFAULT 'normal',
   status        TEXT NOT NULL DEFAULT 'requested',
   revision      INTEGER NOT NULL DEFAULT 0,
+  requested_start_at INTEGER,
   due_at        INTEGER NOT NULL,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL,
@@ -62,6 +63,19 @@ CREATE TABLE IF NOT EXISTS assignees (
   user_id     TEXT NOT NULL REFERENCES users(id),
   ord         INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (request_id, user_id)
+);
+
+-- 요청 내용 묶음: 사이즈(제목·너비·높이) + 그 사이즈의 요청 내용. 한 요청에 여러 개.
+-- 예) 자사몰 PC 메인 1920 × 600 / 문구: 겨울엔 뜨끈한 국밥 한 그릇
+-- 높이가 자유(세로 길이 제한 없음)면 height 가 비어 있다.
+CREATE TABLE IF NOT EXISTS request_items (
+  request_id  INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  ord         INTEGER NOT NULL,
+  label       TEXT NOT NULL,
+  width       INTEGER,
+  height      INTEGER,
+  body        TEXT NOT NULL,
+  PRIMARY KEY (request_id, ord)
 );
 
 -- 컨펌 요청(시안 제출) 한 번 = 한 줄. round 는 1차, 2차…
@@ -144,6 +158,15 @@ CREATE INDEX IF NOT EXISTS idx_comments_request ON comments(request_id);
 CREATE INDEX IF NOT EXISTS idx_events_request ON events(request_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
 `)
+
+// 이미 만들어진 DB 에 나중에 생긴 칸을 더한다.
+function addColumn(table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+}
+
+// 요청자가 원하는 작업 시작일(작업 기간의 시작). 마감은 due_at
+addColumn('requests', 'requested_start_at', 'INTEGER')
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {

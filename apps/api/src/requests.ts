@@ -42,6 +42,7 @@ type RequestRow = {
   urgency: string
   status: Status
   revision: number
+  requested_start_at: number | null
   due_at: number
   created_at: number
   updated_at: number
@@ -176,6 +177,53 @@ function timestamp(value: unknown, label: string) {
   return n
 }
 
+// 요청 내용 묶음: 사이즈(제목·너비·높이) + 요청 내용. 모두 빈 묶음은 건너뛰고, 한 개 이상 있어야 한다.
+// 너비·높이는 비워 두면 자유(정해지지 않음)
+type Item = { label: string; width: number | null; height: number | null; body: string }
+
+function items(value: unknown) {
+  const rows = Array.isArray(value) ? value : []
+  const result: Item[] = []
+  const empty = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && !v.trim())
+  for (const raw of rows.slice(0, 30)) {
+    const r = (raw ?? {}) as Record<string, unknown>
+    if (empty(r.label) && empty(r.width) && empty(r.height) && empty(r.body)) continue
+    const n = result.length + 1
+    const label = text(r.label, `${n}번 내용의 제목`, { required: true, max: 60 })
+    const body = text(r.body, `${n}번 요청 내용`, { required: true, max: 5000 })
+    const width = empty(r.width) ? null : Number(r.width)
+    const height = empty(r.height) ? null : Number(r.height)
+    const ok = (v: number) => Number.isInteger(v) && v > 0 && v <= 100_000
+    if (width !== null && !ok(width)) throw new HttpError(400, `${n}번 내용의 너비를 숫자로 입력해 주세요.`)
+    if (height !== null && !ok(height)) throw new HttpError(400, `${n}번 내용의 높이를 숫자로 입력해 주세요.`)
+    result.push({ label, width, height, body })
+  }
+  if (result.length === 0) throw new HttpError(400, '요청 내용을 한 개 이상 입력해 주세요.')
+  return result
+}
+
+function saveItems(requestId: number, list: Item[]) {
+  run('DELETE FROM request_items WHERE request_id = :requestId', { requestId })
+  list.forEach((item, ord) =>
+    run(
+      'INSERT INTO request_items (request_id, ord, label, width, height, body) VALUES (:requestId, :ord, :label, :width, :height, :body)',
+      { requestId, ord, ...item },
+    ),
+  )
+}
+
+// requests.description 에는 묶음을 글로 이어 붙여 둔다(검색·예전 화면용).
+const describe = (list: Item[]) =>
+  list.map((i) => `[${i.label} ${i.width ?? '자유'}×${i.height ?? '자유'}]\n${i.body}`).join('\n\n')
+
+// 작업 기간: 시작일(선택)과 마감 일시. 시작일이 마감보다 늦으면 안 된다.
+function period(body: Record<string, unknown>) {
+  const dueAt = timestamp(body.dueAt, '마감 일시')
+  const startAt = body.requestedStartAt === undefined || body.requestedStartAt === null ? null : timestamp(body.requestedStartAt, '시작일')
+  if (startAt !== null && startAt > dueAt) throw new HttpError(400, '시작일이 마감 일시보다 늦습니다.')
+  return { startAt, dueAt }
+}
+
 function urgency(value: unknown) {
   return URGENCIES.includes(value as never) ? (value as string) : 'normal'
 }
@@ -221,6 +269,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     urgency: row.urgency,
     status: row.status,
     revision: row.revision,
+    requestedStartAt: row.requested_start_at,
     dueAt: row.due_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -317,6 +366,10 @@ export function requestDetail(user: PublicUser, id: number) {
   return {
     ...summary(row),
     description: row.description,
+    items: all<{ label: string; width: number | null; height: number | null; body: string }>(
+      'SELECT label, width, height, body FROM request_items WHERE request_id = :id ORDER BY ord',
+      { id },
+    ),
     references: files.filter((f) => f.kind === 'reference').map(fileInfo),
     finals: files.filter((f) => f.kind === 'final').map(fileInfo),
     submissions,
@@ -350,17 +403,19 @@ export function archive() {
 export function createRequest(user: PublicUser, body: Record<string, unknown>) {
   const title = text(body.title, '제목', { required: true, max: 100 })
   const workType = text(body.workType, '작업 종류', { required: true, max: 40 })
-  const description = text(body.description, '요청 내용', { required: true, max: 5000 })
+  const itemList = items(body.items)
+  const description = describe(itemList)
   const department = text(body.department, '부서', { max: 40 }) || user.department
-  const dueAt = timestamp(body.dueAt, '마감 일시')
+  const { startAt, dueAt } = period(body)
   const now = Date.now()
   return transaction(() => {
     const result = run(
-      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, due_at, created_at, updated_at)
-       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :dueAt, :now, :now)`,
-      { title, workType, description, department, requester: user.id, urgency: urgency(body.urgency), dueAt, now },
+      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, created_at, updated_at)
+       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :now, :now)`,
+      { title, workType, description, department, requester: user.id, urgency: urgency(body.urgency), startAt, dueAt, now },
     )
     const id = Number(result.lastInsertRowid)
+    saveItems(id, itemList)
     claimFiles(user, body.fileIds, { requestId: id, kind: 'reference' })
     logEvent(id, user.id, 'create', null, 'requested')
     notify(managersAndDesigners(), user.id, id, `새 디자인 요청: ${title}`)
@@ -371,18 +426,22 @@ export function createRequest(user: PublicUser, body: Record<string, unknown>) {
 export function updateRequest(user: PublicUser, id: number, body: Record<string, unknown>) {
   const req = loadRequest(id)
   requireAction(user, req, 'edit')
+  const itemList = items(body.items)
+  const { startAt, dueAt } = period(body)
   transaction(() => {
+    saveItems(id, itemList)
     run(
       `UPDATE requests SET title = :title, work_type = :workType, description = :description, department = :department,
-       urgency = :urgency, due_at = :dueAt, updated_at = :now WHERE id = :id`,
+       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, updated_at = :now WHERE id = :id`,
       {
         id,
         title: text(body.title, '제목', { required: true, max: 100 }),
         workType: text(body.workType, '작업 종류', { required: true, max: 40 }),
-        description: text(body.description, '요청 내용', { required: true, max: 5000 }),
+        description: describe(itemList),
         department: text(body.department, '부서', { max: 40 }),
         urgency: urgency(body.urgency),
-        dueAt: timestamp(body.dueAt, '마감 일시'),
+        startAt,
+        dueAt,
         now: Date.now(),
       },
     )
