@@ -3,7 +3,8 @@ import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { StatCards } from "@/components/home/stat-cards"
 import { PAGE_GRID } from "@/lib/layout"
-import { SAMPLE_DESIGNERS, SAMPLE_REQUESTS } from "@/lib/sample-data"
+import { SAMPLE_REQUESTS } from "@/lib/sample-data"
+import { TEAM } from "@/lib/team"
 
 function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -20,7 +21,7 @@ function Section({ title, aside, children }: { title: string; aside?: React.Reac
 export function HomePage() {
   // 서버 API 가 생기면 예시 데이터 대신 API 응답을 넘긴다.
   const requests = SAMPLE_REQUESTS
-  const designers = SAMPLE_DESIGNERS
+  const designers = TEAM
 
   return (
     <div className={PAGE_GRID}>

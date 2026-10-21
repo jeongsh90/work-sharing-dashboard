@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { BUSY_LABEL, busyLevel, initials, isActive, type BusyLevel, type DesignRequest, type Designer } from "@/lib/requests"
+import { BUSY_LABEL, busyLevel, designerTitle, initials, isActive, type BusyLevel, type DesignRequest, type Designer } from "@/lib/requests"
 
 // 카드 폭 = 본문 12칸 그리드의 칸 수(넓은 화면 2칸). 간격은 INNER_GRID(gap-4, md:gap-6)와 같다.
 // 카드 비율은 포커 카드(63.5 × 88.9mm, 5:7).
@@ -37,7 +37,7 @@ export function DesignerCards({ designers, requests }: { designers: Designer[]; 
             </div>
             <div className="text-center">
               <p className="text-sm font-semibold">{d.name}</p>
-              <p className="text-xs text-muted-foreground">{d.title}</p>
+              <p className="text-xs text-muted-foreground">{designerTitle(d)}</p>
             </div>
             <div className="flex items-center gap-2 text-xs">
               <span className="text-muted-foreground">

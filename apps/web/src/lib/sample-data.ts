@@ -1,17 +1,11 @@
-import type { DesignRequest, Designer, RequestStatus, Urgency } from './requests'
+import type { DesignRequest, RequestStatus, Urgency } from './requests'
 
 // 서버에 요청 데이터가 생기기 전까지 화면을 확인하려고 쓰는 예시 데이터.
-// 실제 직원·요청이 아니다. 서버 API 가 생기면 이 파일을 지우고 API 응답으로 바꾼다.
+// 실제 요청이 아니다. 담당자만 실제 팀원(lib/team.ts)에 나눠 붙였다.
+// 서버 API 가 생기면 이 파일을 지우고 API 응답으로 바꾼다.
 
-export const SAMPLE_DESIGNERS: Designer[] = [
-  { id: 'lead', name: '디자인팀장', title: '디자인팀장' },
-  { id: 'a', name: '디자이너 A', title: '상세페이지' },
-  { id: 'b', name: '디자이너 B', title: '배너·기획전' },
-  { id: 'c', name: '디자이너 C', title: 'SNS 콘텐츠' },
-  { id: 'd', name: '디자이너 D', title: '인쇄물' },
-  { id: 'e', name: '디자이너 E', title: '배너·상세페이지' },
-  { id: 'f', name: '디자이너 F', title: '영상·움짤' },
-]
+// 예시 행의 담당 기호 → 팀원 id
+const ASSIGNEE: Record<string, string> = { lead: 'jsh', a: 'whs', b: 'ldh', c: 'ayj', d: 'whs', e: 'ldh', f: 'ayj' }
 
 // 오늘을 기준으로 며칠 뒤 몇 시
 function at(days: number, hour: number) {
@@ -55,7 +49,7 @@ export const SAMPLE_REQUESTS: DesignRequest[] = ROWS.map(
     workType,
     requester,
     department,
-    designers,
+    designers: [...new Set(designers.map((d) => ASSIGNEE[d]))],
     dueAt: at(days, hour),
     urgency,
     status,

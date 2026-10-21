@@ -28,7 +28,13 @@ export type DesignRequest = {
 export type Designer = {
   id: string
   name: string
-  title: string
+  rank: string // 직급
+  position: string // 직책
+}
+
+// 카드 이름 아래 줄: "과장 · 팀장"처럼 직급과 직책
+export function designerTitle(d: Designer) {
+  return [d.rank, d.position].filter(Boolean).join(' · ') || '직급·직책 미입력'
 }
 
 export const STATUS_LABEL: Record<RequestStatus, string> = {
