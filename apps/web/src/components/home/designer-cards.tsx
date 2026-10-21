@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import { BUSY_LABEL, busyLevel, designerTitle, initials, isActive, type BusyLevel, type DesignRequest, type Designer } from "@/lib/requests"
+import { STATUS_TEXT } from "@/lib/status-colors"
 
 // 카드 폭 = 본문 12칸 그리드의 칸 수(넓은 화면 2칸). 간격은 INNER_GRID(gap-4, md:gap-6)와 같다.
 // 카드 비율은 포커 카드(63.5 × 88.9mm, 5:7).
@@ -22,13 +23,14 @@ const BUSY_DOT: Record<BusyLevel, string> = {
 
 function WorkingMarker({ request }: { request: DesignRequest }) {
   const doing = request.status === "revising" ? `${request.revision}차 수정 중…` : "작업 중…"
+  const color = STATUS_TEXT[request.status] // 상태 배지와 같은 색(작업 중 파랑, 수정 중 주황)
   return (
     <Marker>
-      <MarkerIcon>
+      <MarkerIcon className={color}>
         <LoaderCircle className="animate-spin motion-reduce:animate-none" />
       </MarkerIcon>
-      {/* shimmer: 글자 위로 빛이 지나가는 효과(shadcn 유틸). 움직임 줄이기 설정이면 꺼진다 */}
-      <MarkerContent className="shimmer flex min-w-0 flex-1 text-xs">
+      {/* shimmer: 글자 위로 빛이 지나가는 효과(shadcn 유틸). 글자색을 바탕색으로 쓰고, 움직임 줄이기 설정이면 꺼진다 */}
+      <MarkerContent className={`shimmer flex min-w-0 flex-1 text-xs ${color}`}>
         <span className="truncate font-medium">{request.title}</span>
         <span className="ml-1 shrink-0">{doing}</span>
       </MarkerContent>
