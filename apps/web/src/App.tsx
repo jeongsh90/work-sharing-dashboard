@@ -69,7 +69,7 @@ export default function App() {
         </header>
         <div key={activeId} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
           {activeId === 'home' ? (
-            <HomePage />
+            <HomePage onNavigate={setActiveId} />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
               <p>준비 중인 화면입니다.</p>
