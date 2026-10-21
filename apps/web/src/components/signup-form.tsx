@@ -90,7 +90,7 @@ export function SignupForm({ className, ...props }: React.ComponentProps<"div">)
                     autoComplete="username"
                     value={form.id}
                     onChange={set("id")}
-                    placeholder={`49634613@${COMPANY_EMAIL_DOMAIN}`}
+                    placeholder={`휴대폰번호@${COMPANY_EMAIL_DOMAIN}`}
                     aria-invalid={invalid("id")}
                   />
                   {errors.id && <FieldError>{errors.id}</FieldError>}

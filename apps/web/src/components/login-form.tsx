@@ -56,7 +56,7 @@ export function LoginForm({
                   type="text"
                   inputMode="email"
                   autoComplete="username"
-                  placeholder={`49634613@${COMPANY_EMAIL_DOMAIN}`}
+                  placeholder={`휴대폰번호@${COMPANY_EMAIL_DOMAIN}`}
                   aria-invalid={error ? true : undefined}
                   required
                 />
