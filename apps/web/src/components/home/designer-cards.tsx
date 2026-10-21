@@ -27,8 +27,9 @@ function WorkingMarker({ request }: { request: DesignRequest }) {
       <MarkerIcon>
         <LoaderCircle className="animate-spin motion-reduce:animate-none" />
       </MarkerIcon>
-      <MarkerContent className="flex min-w-0 flex-1 text-xs">
-        <span className="truncate font-medium text-foreground">{request.title}</span>
+      {/* shimmer: 글자 위로 빛이 지나가는 효과(shadcn 유틸). 움직임 줄이기 설정이면 꺼진다 */}
+      <MarkerContent className="shimmer flex min-w-0 flex-1 text-xs">
+        <span className="truncate font-medium">{request.title}</span>
         <span className="ml-1 shrink-0">{doing}</span>
       </MarkerContent>
     </Marker>
