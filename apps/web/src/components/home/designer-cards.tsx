@@ -86,19 +86,22 @@ export function DesignerCards({
             <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
               {BUSY_LABEL[level]}
             </Badge>
-            <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              <div className="relative">
-                <Avatar className="size-14">
-                  <AvatarFallback className="text-base font-semibold">{initials(d.name)}</AvatarFallback>
-                </Avatar>
-                <span
-                  className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${PRESENCE_DOT[now]}`}
-                  aria-hidden
-                />
-              </div>
-              <div className="text-center">
-                <p className="text-card-name font-semibold">{d.name}</p>
-                <p className="text-xs text-muted-foreground">{designerTitle(d)}</p>
+            {/* 위: 프로필(사진·이름) 묶음, 아래: 이번 주 작업 태그. 사이는 남는 공간으로 벌린다 */}
+            <div className="flex flex-1 flex-col items-center justify-between gap-3">
+              <div className="flex flex-col items-center gap-3">
+                <div className="relative">
+                  <Avatar className="size-14">
+                    <AvatarFallback className="text-base font-semibold">{initials(d.name)}</AvatarFallback>
+                  </Avatar>
+                  <span
+                    className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${PRESENCE_DOT[now]}`}
+                    aria-hidden
+                  />
+                </div>
+                <div className="text-center">
+                  <p className="text-card-name font-semibold">{d.name}</p>
+                  <p className="text-xs text-muted-foreground">{designerTitle(d)}</p>
+                </div>
               </div>
               {/* 카드 안쪽 폭이 200px 이상이면 2행 2열, 좁으면 한 열(글자가 넘치지 않게) */}
               <div className="grid w-full grid-cols-1 gap-1 @[200px]:grid-cols-2" aria-label="이번 주 작업">
