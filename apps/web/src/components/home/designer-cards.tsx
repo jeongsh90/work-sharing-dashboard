@@ -48,10 +48,11 @@ function WorkingMarker({ request }: { request: DesignRequest }) {
       <MarkerIcon className={color}>
         <LoaderCircle className="animate-spin motion-reduce:animate-none" />
       </MarkerIcon>
-      {/* shimmer: 글자 위로 빛이 지나가는 효과(shadcn 유틸). 글자색을 바탕색으로 쓰고, 움직임 줄이기 설정이면 꺼진다 */}
-      <MarkerContent className={`shimmer flex min-w-0 flex-1 text-xs ${color}`}>
-        <span className="truncate font-medium">{request.title}</span>
-        <span className="ml-1 shrink-0">{doing}</span>
+      {/* shimmer: 글자 위로 빛이 지나가는 효과(shadcn 유틸). 글자색을 바탕색으로 쓰고, 움직임 줄이기 설정이면 꺼진다.
+          프로젝트명은 기본 회색, 상태 글자만 상태 색으로 구분한다 */}
+      <MarkerContent className="flex min-w-0 flex-1 text-xs">
+        <span className="shimmer truncate font-medium">{request.title}</span>
+        <span className={`shimmer ml-1 shrink-0 ${color}`}>{doing}</span>
       </MarkerContent>
     </Marker>
   )
