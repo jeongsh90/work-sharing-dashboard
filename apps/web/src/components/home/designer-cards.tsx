@@ -22,7 +22,7 @@ const BUSY_DOT: Record<BusyLevel, string> = {
 }
 
 function WorkingMarker({ request }: { request: DesignRequest }) {
-  const doing = request.status === "revising" ? `${request.revision}차 수정 중…` : "작업 중…"
+  const doing = request.status === "revising" ? "수정 중…" : "작업 중…"
   const color = STATUS_TEXT[request.status] // 상태 배지와 같은 색(작업 중 파랑, 수정 중 주황)
   return (
     <Marker>
