@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { Bell, Contrast } from "lucide-react"
 
 import { markAllRead, useNotifications, type NotificationType } from "@/lib/notifications"
@@ -14,7 +13,6 @@ const NOTIFICATION_TOOLTIP_COLORS: Record<NotificationType, string> = {
 
 function NotificationButton({ onOpen }: { onOpen: () => void }) {
   const { items, unread } = useNotifications()
-  const [hover, setHover] = useState(false)
   // 확인하지 않은 알림이 있으면 툴팁을 계속 띄운다. 종 아이콘이나 툴팁을 누르거나 알림함을 열면 닫힌다.
   const pending = items.find((n) => !n.read)
 
@@ -24,8 +22,9 @@ function NotificationButton({ onOpen }: { onOpen: () => void }) {
     onOpen()
   }
 
+  // 툴팁은 확인하지 않은 알림이 있을 때만 띄운다. 마우스를 올렸을 때 "알림" 툴팁은 띄우지 않는다.
   return (
-    <Tooltip open={!!pending || hover} onOpenChange={setHover}>
+    <Tooltip open={!!pending}>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label={label} onClick={open}>
           <Bell />
@@ -43,9 +42,7 @@ function NotificationButton({ onOpen }: { onOpen: () => void }) {
           {pending.message}
           {unread > 1 && ` 외 ${unread - 1}건`}
         </TooltipContent>
-      ) : (
-        <TooltipContent side="bottom">{label}</TooltipContent>
-      )}
+      ) : null}
     </Tooltip>
   )
 }
