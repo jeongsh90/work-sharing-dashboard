@@ -160,7 +160,7 @@
    .border-beam-glow 는 같은 빛을 흐리게 한 번 더 깔아 번지는 느낌을 준다. 움직임 줄이기 설정이면 멈춘 테두리로 보인다. */
 /* 빛이 한 바퀴 도는 시간. 작을수록 빠르다(예: 2s 빠르게, 5s 느리게). */
 :root {
-  --beam-duration: 3s;
+  --beam-duration: 6s;
 }
 
 @property --beam-angle {
