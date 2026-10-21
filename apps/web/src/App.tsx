@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
+import { HeaderActions } from '@/components/header-actions'
 import { LoginForm } from '@/components/login-form'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
@@ -17,7 +18,8 @@ function environmentName() {
 const MENU_TITLES = new Map(MENU_GROUPS.flatMap((g) => g.items).map((item) => [item.id, item.title]))
 
 // 페이지가 바뀔 때 새로 그려지는 영역에 붙이는 페이드 효과.
-const FADE_IN = 'animate-in fade-in duration-300 motion-reduce:animate-none'
+// duration-300 은 transition 시간까지 바꿔 테마 전환 때 글자색이 늦게 바뀌므로 애니메이션 시간만 지정한다.
+const FADE_IN = 'animate-in fade-in [--tw-animation-duration:300ms] motion-reduce:animate-none'
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession)
@@ -56,6 +58,7 @@ export default function App() {
           <h1 key={activeId} className={`text-sm font-medium ${FADE_IN}`}>
             {MENU_TITLES.get(activeId)}
           </h1>
+          <HeaderActions onOpenNotifications={() => setActiveId('notifications')} />
         </header>
         <div key={activeId} data-page className={`flex flex-1 items-center justify-center ${FADE_IN}`}>
           <p className="text-sm text-muted-foreground">{environmentName()}</p>
