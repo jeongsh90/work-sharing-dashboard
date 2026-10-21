@@ -124,6 +124,13 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /* 스크롤바·입력칸 같은 브라우저 기본 요소도 테마 색을 따르게 한다. */
+  :root {
+    color-scheme: light;
+    }
+  .dark {
+    color-scheme: dark;
+    }
   body {
     @apply bg-background text-foreground;
     }
