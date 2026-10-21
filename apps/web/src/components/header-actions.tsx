@@ -63,7 +63,7 @@ function ThemeToggle() {
   )
 }
 
-// onNewRequest 를 주면(요청자) 맨 앞에 디자인 요청 버튼을 둔다. 좁은 화면에서는 아이콘만 보인다.
+// onNewRequest 를 주면(요청자) 맨 오른쪽에 디자인 요청 버튼을 둔다. 좁은 화면에서는 아이콘만 보인다.
 export function HeaderActions({
   onOpenNotifications,
   onNewRequest,
@@ -73,14 +73,14 @@ export function HeaderActions({
 }) {
   return (
     <div className="ml-auto flex items-center gap-1">
+      <NotificationButton onOpen={onOpenNotifications} />
+      <ThemeToggle />
       {onNewRequest && (
-        <Button size="sm" className="mr-1" aria-label="디자인 요청" onClick={onNewRequest}>
+        <Button size="sm" className="ml-1" aria-label="디자인 요청" onClick={onNewRequest}>
           <FilePlus2 data-icon="inline-start" />
           <span className="hidden sm:inline">디자인 요청</span>
         </Button>
       )}
-      <NotificationButton onOpen={onOpenNotifications} />
-      <ThemeToggle />
     </div>
   )
 }
