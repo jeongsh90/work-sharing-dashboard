@@ -76,7 +76,8 @@ export function DesignerCards({
         return (
           <div
             key={d.id}
-            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md ${CARD_SPAN}`}
+            // 진행 중인 작업(작업 중·수정 중)이 없는 작업자 카드는 흐리게(50%)
+            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md transition-opacity ${working.length === 0 ? "opacity-50" : ""} ${CARD_SPAN}`}
           >
             {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
             <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
