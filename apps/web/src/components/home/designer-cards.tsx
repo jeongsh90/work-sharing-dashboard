@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { BUSY_LABEL, busyLevel, initials, isActive, type BusyLevel, type DesignRequest, type Designer } from "@/lib/requests"
 
 // 카드 폭 = 본문 12칸 그리드의 칸 수(넓은 화면 2칸). 간격은 INNER_GRID(gap-4, md:gap-6)와 같다.
-// 카드 비율은 세로로 세운 명함(50 × 90mm, 5:9).
+// 카드 비율은 포커 카드(63.5 × 88.9mm, 5:7).
 // (100% - 간격 × (한 화면 장수 - 1)) / 한 화면 장수
 const CARD_WIDTH =
   "basis-[calc((100%-1rem)/2)] md:basis-[calc((100%-3rem)/3)] lg:basis-[calc((100%-4.5rem)/4)] xl:basis-[calc((100%-7.5rem)/6)]"
@@ -24,7 +24,7 @@ export function DesignerCards({ designers, requests }: { designers: Designer[]; 
         return (
           <div
             key={d.id}
-            className={`flex aspect-[5/9] shrink-0 snap-start flex-col items-center justify-center gap-3 rounded-xl border bg-card px-4 py-5 text-card-foreground ${CARD_WIDTH}`}
+            className={`flex aspect-[5/7] shrink-0 snap-start flex-col items-center justify-center gap-3 rounded-xl border bg-card px-4 py-5 text-card-foreground ${CARD_WIDTH}`}
           >
             <div className="relative">
               <Avatar className="size-14">
