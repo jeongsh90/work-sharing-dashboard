@@ -61,8 +61,9 @@ export function DesignerCards({
   requests: DesignRequest[]
   presence: Record<string, Presence>
 }) {
+  // -mx-2 px-2: 그림자가 잘리지 않게 여유를 두되 카드 폭(100% 기준)은 그대로
   return (
-    <div className="flex snap-x gap-4 overflow-x-auto pb-3 [scrollbar-width:thin] md:gap-6">
+    <div className="-mx-2 flex snap-x gap-4 overflow-x-auto px-2 pt-1 pb-3 [scrollbar-width:thin] md:gap-6">
       {designers.map((d) => {
         const now: Presence = presence[d.id] ?? "off"
         // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
@@ -77,7 +78,7 @@ export function DesignerCards({
         return (
           <div
             key={d.id}
-            className={`relative flex aspect-[5/7] min-w-0 shrink-0 snap-start flex-col rounded-xl border bg-card px-4 py-5 text-card-foreground ${CARD_WIDTH}`}
+            className={`relative flex aspect-[5/7] min-w-0 shrink-0 snap-start flex-col rounded-xl border bg-card px-4 py-5 text-card-foreground shadow-md ${CARD_WIDTH}`}
           >
             {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
             <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
