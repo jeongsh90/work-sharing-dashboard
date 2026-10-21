@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { MoreHorizontal, Search } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -28,9 +28,10 @@ import {
   isActive,
   isUnassigned,
   type DesignRequest,
-  type Designer,
   type RequestStatus,
 } from "@/lib/requests"
+import { openRequest } from "@/lib/router"
+import { useUserNames } from "@/lib/store"
 
 const PAGE_SIZE = 8
 const COLUMN_COUNT = 8
@@ -38,7 +39,7 @@ const COLUMN_COUNT = 8
 const FILTERS: { id: string; label: string; statuses: RequestStatus[] | null }[] = [
   { id: "all", label: "전체", statuses: null },
   { id: "waiting", label: "작업 대기", statuses: ["requested", "needs-info", "waiting"] },
-  { id: "working", label: "작업 중", statuses: ["in-progress", "revising"] },
+  { id: "working", label: "작업 중", statuses: ["in-progress", "revising", "approved"] },
   { id: "review", label: "시안 확인", statuses: ["review"] },
   { id: "done", label: "완료", statuses: ["done", "canceled"] },
 ]
@@ -62,18 +63,18 @@ function FillerRow({ message }: { message?: string }) {
   )
 }
 
-export function RequestTable({ requests, designers }: { requests: DesignRequest[]; designers: Designer[] }) {
+export function RequestTable({ requests, emptyMessage }: { requests: DesignRequest[]; emptyMessage?: string }) {
   const [filter, setFilter] = useState("all")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const tableRef = useRef<HTMLDivElement>(null)
-  const designerName = useMemo(() => new Map(designers.map((d) => [d.id, d.name])), [designers])
+  const userName = useUserNames()
 
   const matchesQuery = (r: DesignRequest) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
-    const names = r.designers.map((id) => designerName.get(id) ?? "")
-    return [r.title, r.workType, r.requester, r.department, ...names].some((v) => v.toLowerCase().includes(q))
+    const names = r.designers.map((id) => userName(id) ?? "")
+    return [r.code, r.title, r.workType, r.requester, r.department, ...names].some((v) => v.toLowerCase().includes(q))
   }
 
   const searched = requests.filter(matchesQuery)
@@ -147,10 +148,12 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
             {visible.map((r) => {
               const overdue = isActive(r) && r.dueAt < now
               return (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} className="cursor-pointer" onClick={() => openRequest(r.id)}>
                   <TableCell className="pl-4">
                     <div className="font-medium">{r.title}</div>
-                    <div className="text-xs text-muted-foreground">{r.workType}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {r.code} · {r.workType}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div>{r.requester}</div>
@@ -164,12 +167,12 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
                         <div className="flex -space-x-2">
                           {r.designers.map((id) => (
                             <Avatar key={id} className="size-6 ring-2 ring-card">
-                              <AvatarFallback className="text-[10px]">{initials(designerName.get(id) ?? "?")}</AvatarFallback>
+                              <AvatarFallback className="text-[10px]">{initials(userName(id) ?? "?")}</AvatarFallback>
                             </Avatar>
                           ))}
                         </div>
                         <span>
-                          {designerName.get(r.designers[0])}
+                          {userName(r.designers[0])}
                           {r.designers.length > 1 && (
                             <span className="text-muted-foreground"> 외 {r.designers.length - 1}명</span>
                           )}
@@ -190,7 +193,7 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
                   <TableCell>
                     <StatusBadge request={r} />
                   </TableCell>
-                  <TableCell className="pr-4 text-right">
+                  <TableCell className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon-sm" aria-label={`${r.title} 관리`}>
@@ -198,14 +201,14 @@ export function RequestTable({ requests, designers }: { requests: DesignRequest[
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem disabled>요청 상세 (준비 중)</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openRequest(r.id)}>요청 상세</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
               )
             })}
-            {visible.length === 0 && <FillerRow message={query ? "검색 결과가 없습니다." : "해당하는 작업이 없습니다."} />}
+            {visible.length === 0 && <FillerRow message={query ? "검색 결과가 없습니다." : (emptyMessage ?? "해당하는 작업이 없습니다.")} />}
             {Array.from({ length: PAGE_SIZE - Math.max(visible.length, 1) }, (_, i) => (
               <FillerRow key={`filler-${i}`} />
             ))}

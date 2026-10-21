@@ -1,6 +1,7 @@
 import { Bell, ChevronsUpDown, LogOut, UserRound } from "lucide-react"
 
-import type { Session } from "@/lib/auth"
+import { ROLE_LABEL, type Session } from "@/lib/auth"
+import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -8,6 +9,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -26,7 +29,9 @@ function UserSummary({ session }: { session: Session }) {
       </Avatar>
       <div className="grid flex-1 text-left text-sm leading-tight">
         <span className="truncate font-medium">{session.name}</span>
-        <span className="truncate text-xs">{session.id}</span>
+        <span className="truncate text-xs">
+          {ROLE_LABEL[session.role]} · {session.id}
+        </span>
       </div>
     </>
   )
@@ -35,10 +40,12 @@ function UserSummary({ session }: { session: Session }) {
 export function NavUser({
   session,
   onNavigate,
+  onSessionChange,
   onLogout,
 }: {
   session: Session
   onNavigate: (id: string) => void
+  onSessionChange: (session: Session) => void
   onLogout: () => void
 }) {
   const { isMobile } = useSidebar()
@@ -68,6 +75,24 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {/* 작업자는 여기서 바로 현재 상태를 바꾼다(홈 디자인팀 카드에 보임) */}
+            {session.role === "designer" && (
+              <>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">현재 상태</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={session.presence}
+                  onValueChange={async (v) => onSessionChange(await savePresence(v as Presence))}
+                >
+                  {(Object.keys(PRESENCE_LABEL) as Presence[]).map((p) => (
+                    <DropdownMenuRadioItem key={p} value={p}>
+                      <span className={`size-2 rounded-full ${PRESENCE_DOT[p]}`} aria-hidden />
+                      {PRESENCE_LABEL[p]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={() => onNavigate("me")}>
                 <UserRound />

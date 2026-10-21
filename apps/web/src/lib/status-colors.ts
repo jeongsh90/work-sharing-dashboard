@@ -9,6 +9,7 @@ export const STATUS_TEXT: Record<RequestStatus, string> = {
   'in-progress': 'text-blue-700 dark:text-blue-300',
   review: 'text-violet-700 dark:text-violet-300',
   revising: 'text-orange-800 dark:text-orange-300',
+  approved: 'text-teal-700 dark:text-teal-300',
   done: 'text-emerald-700 dark:text-emerald-300',
   canceled: 'text-muted-foreground',
 }
@@ -20,6 +21,7 @@ export const STATUS_BG: Record<RequestStatus, string> = {
   'in-progress': 'bg-blue-500/10',
   review: 'bg-violet-500/10',
   revising: 'bg-orange-500/15',
+  approved: 'bg-teal-500/10',
   done: 'bg-emerald-500/10',
   canceled: 'bg-muted',
 }

@@ -1,5 +1,9 @@
+import { api } from './api'
+import { updateStoredUser, type Session } from './auth'
+import { invalidate } from './store'
+
 // 작업자의 현재 상태(자리 상태). 요청의 진행 상태와는 다르다.
-// 작업자가 직접 바꾸는 기능과 서버가 생기면 그 값을 쓴다.
+// 작업자가 내 정보나 사용자 메뉴에서 바꾸고, 서버(users.presence)에 저장한다.
 export type Presence = 'working' | 'away' | 'meeting' | 'outside' | 'vacation' | 'off'
 
 export const PRESENCE_LABEL: Record<Presence, string> = {
@@ -19,4 +23,11 @@ export const PRESENCE_DOT: Record<Presence, string> = {
   outside: 'bg-sky-500',
   vacation: 'bg-rose-400',
   off: 'bg-slate-400',
+}
+
+export async function savePresence(presence: Presence) {
+  const { user } = await api<{ user: Session }>('/me', { method: 'PATCH', body: { presence } })
+  updateStoredUser(user)
+  invalidate()
+  return user
 }

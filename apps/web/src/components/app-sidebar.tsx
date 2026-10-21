@@ -1,7 +1,7 @@
 import { FilePlus2 } from "lucide-react"
 
 import type { Session } from "@/lib/auth"
-import { MENU_GROUPS } from "@/lib/menu"
+import { menuFor } from "@/lib/menu"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -20,12 +20,14 @@ export function AppSidebar({
   session,
   activeId,
   onNavigate,
+  onSessionChange,
   onLogout,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   session: Session
   activeId: string
   onNavigate: (id: string) => void
+  onSessionChange: (session: Session) => void
   onLogout: () => void
 }) {
   return (
@@ -46,7 +48,7 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {MENU_GROUPS.map((group) => (
+        {menuFor(session.role).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -69,7 +71,7 @@ export function AppSidebar({
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser session={session} onNavigate={onNavigate} onLogout={onLogout} />
+        <NavUser session={session} onNavigate={onNavigate} onSessionChange={onSessionChange} onLogout={onLogout} />
       </SidebarFooter>
     </Sidebar>
   )

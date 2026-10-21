@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge"
 import { statusText, URGENCY_LABEL, type DesignRequest, type Urgency } from "@/lib/requests"
 import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 
-export function StatusBadge({ request }: { request: DesignRequest }) {
+export function StatusBadge({ request }: { request: Pick<DesignRequest, "status" | "revision"> }) {
   return (
     <Badge variant="secondary" className={`${STATUS_BG[request.status]} ${STATUS_TEXT[request.status]}`}>
       {statusText(request)}

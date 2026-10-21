@@ -5,32 +5,36 @@ import {
   FolderArchive,
   House,
   Inbox,
-  Settings,
+  ListChecks,
   UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react"
 
-export type MenuItem = { id: string; title: string; icon: LucideIcon }
+import type { Role } from "./auth"
 
-// 메뉴 구조도 v0.2(Figma) 기준. 지금 계정은 슈퍼관리자뿐이라 모든 메뉴를 보여 준다.
+export type MenuItem = { id: string; title: string; icon: LucideIcon; roles?: Role[] }
+
+const MANAGERS: Role[] = ["superadmin", "admin"]
+const TEAM: Role[] = [...MANAGERS, "designer"]
+
+// 메뉴 구조도 v0.2(Figma) 기준. roles 가 없으면 모든 역할에 보인다.
+// 홈은 관리자·작업자·요청자 모두 같은 화면이다.
 export const MENU_GROUPS: { label: string; items: MenuItem[] }[] = [
   {
     label: "업무",
     items: [
       { id: "home", title: "홈", icon: House },
       { id: "request", title: "디자인 요청", icon: FilePlus2 },
-      { id: "inbox", title: "받은 요청함", icon: Inbox },
+      { id: "inbox", title: "받은 요청함", icon: Inbox, roles: TEAM },
+      { id: "my-requests", title: "내 요청", icon: ListChecks },
       { id: "schedule", title: "디자인팀 일정", icon: CalendarDays },
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
     ],
   },
   {
     label: "관리",
-    items: [
-      { id: "team", title: "팀 관리", icon: Users },
-      { id: "admin", title: "관리자", icon: Settings },
-    ],
+    items: [{ id: "team", title: "팀 관리", icon: Users, roles: MANAGERS }],
   },
   {
     label: "개인",
@@ -40,3 +44,15 @@ export const MENU_GROUPS: { label: string; items: MenuItem[] }[] = [
     ],
   },
 ]
+
+export function menuFor(role: Role) {
+  return MENU_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || i.roles.includes(role)) })).filter(
+    (g) => g.items.length > 0,
+  )
+}
+
+// 메뉴에 없는 화면의 제목
+export const PAGE_TITLES: Record<string, string> = {
+  ...Object.fromEntries(MENU_GROUPS.flatMap((g) => g.items).map((i) => [i.id, i.title])),
+  "request-detail": "요청 상세",
+}

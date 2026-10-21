@@ -1,21 +1,33 @@
 // 로그인은 서버(apps/api)가 검사한다. 화면에는 계정 정보를 두지 않는다.
+import { api, ApiError, SESSION_KEY } from './api'
 
 export const COMPANY_EMAIL_DOMAIN = 'owenfood.com'
 
-// 비어 있으면 같은 주소의 /api 를 쓴다(로컬 개발은 vite 프록시, Tailscale 은 같은 서버).
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+// superadmin(슈퍼관리자) · admin(관리자) · designer(작업자) · requester(요청자)
+export type Role = 'superadmin' | 'admin' | 'designer' | 'requester'
 
-export type Role = 'superadmin'
+export const ROLE_LABEL: Record<Role, string> = {
+  superadmin: '슈퍼관리자',
+  admin: '관리자',
+  designer: '작업자',
+  requester: '요청자',
+}
 
 export type Session = {
   id: string
   name: string
   role: Role
+  rank: string
+  position: string
+  department: string
+  presence: string
+}
+
+export function isManager(session: { role: Role }) {
+  return session.role === 'superadmin' || session.role === 'admin'
 }
 
 type Stored = { token: string; user: Session }
-
-const SESSION_KEY = 'wsd-session'
 
 function readStored(): Stored | null {
   try {
@@ -26,7 +38,7 @@ function readStored(): Stored | null {
   }
 }
 
-function writeStored(value: Stored | null) {
+export function writeStored(value: Stored | null) {
   try {
     if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify(value))
     else sessionStorage.removeItem(SESSION_KEY)
@@ -35,16 +47,10 @@ function writeStored(value: Stored | null) {
   }
 }
 
-async function request(path: string, init: RequestInit = {}) {
-  const token = readStored()?.token
-  return fetch(`${API_BASE}/api${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  })
+// 내 정보가 바뀌면(상태·비밀번호) 저장된 값도 바꾼다.
+export function updateStoredUser(user: Session, token?: string) {
+  const stored = readStored()
+  if (stored) writeStored({ token: token ?? stored.token, user })
 }
 
 export type LoginResult = { ok: true; session: Session } | { ok: false; error: string }
@@ -55,13 +61,11 @@ export async function login(rawId: string, password: string): Promise<LoginResul
     return { ok: false, error: '아이디(회사 이메일)와 비밀번호를 입력해 주세요.' }
   }
   try {
-    const res = await request('/login', { method: 'POST', body: JSON.stringify({ id, password }) })
-    const body = await res.json()
-    if (!res.ok) return { ok: false, error: body.error ?? '로그인하지 못했습니다.' }
-    writeStored({ token: body.token, user: body.user })
+    const body = await api<Stored>('/login', { body: { id, password } })
+    writeStored(body)
     return { ok: true, session: body.user }
-  } catch {
-    return { ok: false, error: '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.' }
+  } catch (error) {
+    return { ok: false, error: error instanceof ApiError ? error.message : '로그인하지 못했습니다.' }
   }
 }
 
@@ -73,18 +77,21 @@ export function loadSession(): Session | null {
 export async function verifySession(): Promise<Session | null> {
   if (!readStored()) return null
   try {
-    const res = await request('/me')
-    if (res.ok) return (await res.json()).user
-    if (res.status === 401) writeStored(null)
-    return null
-  } catch {
+    const { user } = await api<{ user: Session }>('/me')
+    updateStoredUser(user)
+    return user
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      writeStored(null)
+      return null
+    }
     return readStored()?.user ?? null
   }
 }
 
 export async function logout() {
   try {
-    await request('/logout', { method: 'POST' })
+    await api('/logout', { body: {} })
   } catch {
     // 서버에 닿지 않아도 화면에서는 로그아웃한다.
   }

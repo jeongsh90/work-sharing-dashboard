@@ -2,14 +2,24 @@ import { useEffect, useState } from 'react'
 
 import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
+import { FilesPage } from '@/components/files-page'
 import { HomePage } from '@/components/home/home-page'
+import { MePage } from '@/components/me-page'
+import { NotificationsPage } from '@/components/notifications-page'
 import { OverlayScrollbar } from '@/components/overlay-scrollbar'
 import { LoginForm } from '@/components/login-form'
+import { RequestDetailPage } from '@/components/requests/request-detail-page'
+import { RequestFormPage } from '@/components/requests/request-form-page'
+import { RequestListPage } from '@/components/requests/request-list-page'
+import { TeamPage } from '@/components/team-page'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import { loadSession, logout, verifySession, type Session } from '@/lib/auth'
-import { MENU_GROUPS } from '@/lib/menu'
-import { markAllRead } from '@/lib/notifications'
+import { UNAUTHORIZED_EVENT } from '@/lib/api'
+import { isManager, loadSession, logout, verifySession, writeStored, type Session } from '@/lib/auth'
+import { menuFor, PAGE_TITLES } from '@/lib/menu'
+import { markAllRead, useNotificationSync } from '@/lib/notifications'
+import { navigate, useRoute } from '@/lib/router'
 import { useSmoothScroll } from '@/lib/smooth-scroll'
+import { clearCache } from '@/lib/store'
 
 function environmentName() {
   const { hostname } = window.location
@@ -18,27 +28,42 @@ function environmentName() {
   return '로컬'
 }
 
-const MENU_TITLES = new Map(MENU_GROUPS.flatMap((g) => g.items).map((item) => [item.id, item.title]))
-
 // 페이지가 바뀔 때 새로 그려지는 영역에 붙이는 페이드 효과.
 // duration-300 은 transition 시간까지 바꿔 테마 전환 때 글자색이 늦게 바뀌므로 애니메이션 시간만 지정한다.
 const FADE_IN = 'animate-in fade-in [--tw-animation-duration:300ms] motion-reduce:animate-none'
 
+function Placeholder() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
+      <p>준비 중인 화면입니다.</p>
+      <p className="text-xs">{environmentName()}</p>
+    </div>
+  )
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession)
-  const [activeId, setActiveId] = useState('home')
+  const route = useRoute()
 
   // 페이지 전체 스크롤을 Lenis 로 부드럽게
   useSmoothScroll()
+  useNotificationSync(session?.id ?? null)
 
   useEffect(() => {
     verifySession().then(setSession)
+    // 서버가 로그인이 풀렸다고 하면 로그인 화면으로
+    const onUnauthorized = () => {
+      writeStored(null)
+      setSession(null)
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
 
   // 알림함을 열면 알림을 확인한 것으로 본다.
   useEffect(() => {
-    if (activeId === 'notifications') markAllRead()
-  }, [activeId])
+    if (route.page === 'notifications') markAllRead()
+  }, [route.page])
 
   if (!session) {
     return (
@@ -50,35 +75,66 @@ export default function App() {
     )
   }
 
+  // 역할에 없는 메뉴 주소로 들어오면 홈을 보여 준다.
+  const allowed = new Set(menuFor(session.role).flatMap((g) => g.items.map((i) => i.id)))
+  const page = route.page === 'request-detail' || allowed.has(route.page) ? route.page : 'home'
+  const pageKey = page === 'request-detail' ? `request-${route.id}` : page
+
+  const content = (() => {
+    switch (page) {
+      case 'home':
+        return <HomePage />
+      case 'request':
+        return <RequestFormPage session={session} />
+      case 'inbox':
+        return <RequestListPage session={session} mode="inbox" />
+      case 'my-requests':
+        return <RequestListPage session={session} mode="mine" />
+      case 'request-detail':
+        return (
+          <RequestDetailPage
+            id={route.id!}
+            session={session}
+            onBack={() => (window.history.length > 1 ? window.history.back() : navigate(isManager(session) ? 'inbox' : 'home'))}
+          />
+        )
+      case 'files':
+        return <FilesPage />
+      case 'notifications':
+        return <NotificationsPage />
+      case 'me':
+        return <MePage session={session} onSessionChange={setSession} />
+      case 'team':
+        return <TeamPage session={session} />
+      default:
+        return <Placeholder />
+    }
+  })()
+
   return (
     <SidebarProvider className={FADE_IN}>
       <AppSidebar
         session={session}
-        activeId={activeId}
-        onNavigate={setActiveId}
+        activeId={page === 'request-detail' ? '' : page}
+        onNavigate={(id) => navigate(id)}
+        onSessionChange={setSession}
         onLogout={async () => {
           await logout()
+          clearCache()
           setSession(null)
-          setActiveId('home')
+          navigate('home')
         }}
       />
       <SidebarInset className="min-w-0">
         {/* 페이지 세로 스크롤바: 헤더 아래 오른쪽 */}
         <OverlayScrollbar target={() => window} className="fixed top-16 right-0.5 bottom-1 w-1.5" />
         <AppHeader
-          title={MENU_TITLES.get(activeId) ?? ''}
+          title={PAGE_TITLES[page] ?? ''}
           titleClassName={FADE_IN}
-          onOpenNotifications={() => setActiveId('notifications')}
+          onOpenNotifications={() => navigate('notifications')}
         />
-        <div key={activeId} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
-          {activeId === 'home' ? (
-            <HomePage onNavigate={setActiveId} />
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
-              <p>준비 중인 화면입니다.</p>
-              <p className="text-xs">{environmentName()}</p>
-            </div>
-          )}
+        <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
+          {content}
         </div>
       </SidebarInset>
     </SidebarProvider>
