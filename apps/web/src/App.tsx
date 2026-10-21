@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { loadSession, logout, verifySession, type Session } from '@/lib/auth'
 import { MENU_GROUPS } from '@/lib/menu'
+import { markAllRead } from '@/lib/notifications'
 
 function environmentName() {
   const { hostname } = window.location
@@ -28,6 +29,11 @@ export default function App() {
   useEffect(() => {
     verifySession().then(setSession)
   }, [])
+
+  // 알림함을 열면 알림을 확인한 것으로 본다.
+  useEffect(() => {
+    if (activeId === 'notifications') markAllRead()
+  }, [activeId])
 
   if (!session) {
     return (

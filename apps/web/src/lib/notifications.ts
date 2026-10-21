@@ -1,8 +1,14 @@
 import { useSyncExternalStore } from 'react'
 
 // 화면 안 알림 목록. 서버 알림 기능이 생기면 받은 알림을 pushNotification 으로 넣는다.
+
+// 알림 종류. 종류마다 툴팁 배경색이 다르다(header-actions.tsx 의 NOTIFICATION_TOOLTIP_COLORS).
+// 종류와 색은 아직 정하지 않아 기본 한 가지만 둔다.
+export type NotificationType = 'default'
+
 export type AppNotification = {
   id: number
+  type: NotificationType
   message: string
   createdAt: number
   read: boolean
@@ -16,8 +22,8 @@ function emit() {
   listeners.forEach((l) => l())
 }
 
-export function pushNotification(message: string) {
-  items = [{ id: nextId++, message, createdAt: Date.now(), read: false }, ...items]
+export function pushNotification(message: string, type: NotificationType = 'default') {
+  items = [{ id: nextId++, type, message, createdAt: Date.now(), read: false }, ...items]
   emit()
 }
 

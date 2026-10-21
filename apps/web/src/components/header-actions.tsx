@@ -1,54 +1,51 @@
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { Bell, Contrast } from "lucide-react"
 
-import { markAllRead, useNotifications } from "@/lib/notifications"
+import { markAllRead, useNotifications, type NotificationType } from "@/lib/notifications"
 import { useTheme } from "@/lib/theme"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-// 새 알림이 왔을 때 아이콘 아래 툴팁을 보여 주는 시간
-const ARRIVAL_TOOLTIP_MS = 4000
+// 알림 종류별 툴팁 배경색. 화살표(svg)도 같은 색으로 칠한다. 빈 값은 기본 툴팁 색.
+// 예: urgent: "bg-red-600 text-white [&_svg]:bg-red-600 [&_svg]:fill-red-600"
+const NOTIFICATION_TOOLTIP_COLORS: Record<NotificationType, string> = {
+  default: "",
+}
 
 function NotificationButton({ onOpen }: { onOpen: () => void }) {
   const { items, unread } = useNotifications()
-  const latest = items[0]
   const [hover, setHover] = useState(false)
-  const [arrived, setArrived] = useState(false)
-  const lastSeenId = useRef(latest?.id)
-
-  useEffect(() => {
-    if (!latest || latest.id === lastSeenId.current) return
-    lastSeenId.current = latest.id
-    setArrived(true)
-    const timer = setTimeout(() => setArrived(false), ARRIVAL_TOOLTIP_MS)
-    return () => clearTimeout(timer)
-  }, [latest])
+  // 확인하지 않은 알림이 있으면 툴팁을 계속 띄운다. 종 아이콘이나 툴팁을 누르거나 알림함을 열면 닫힌다.
+  const pending = items.find((n) => !n.read)
 
   const label = unread > 0 ? `알림 ${unread}건` : "알림"
+  const open = () => {
+    markAllRead()
+    onOpen()
+  }
 
   return (
-    <Tooltip open={arrived || hover} onOpenChange={setHover}>
+    <Tooltip open={!!pending || hover} onOpenChange={setHover}>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          aria-label={label}
-          onClick={() => {
-            setArrived(false)
-            markAllRead()
-            onOpen()
-          }}
-        >
+        <Button variant="ghost" size="icon" className="relative" aria-label={label} onClick={open}>
           <Bell />
           {unread > 0 && (
             <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-destructive ring-2 ring-background" />
           )}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {arrived && latest ? latest.message : label}
-      </TooltipContent>
+      {pending ? (
+        <TooltipContent
+          side="bottom"
+          className={`cursor-pointer ${NOTIFICATION_TOOLTIP_COLORS[pending.type]}`}
+          onClick={open}
+        >
+          {pending.message}
+          {unread > 1 && ` 외 ${unread - 1}건`}
+        </TooltipContent>
+      ) : (
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      )}
     </Tooltip>
   )
 }
