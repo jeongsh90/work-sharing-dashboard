@@ -104,10 +104,11 @@ export function statusText(request: Pick<DesignRequest, 'status' | 'revision'>) 
   return request.status === 'revising' ? `${request.revision}차 수정 중` : STATUS_LABEL[request.status]
 }
 
+// 화면에서는 두 가지로만 구분한다: 보통(표시 없음) / 긴급요청. critical 은 예전 데이터용
 export const URGENCY_LABEL: Record<Urgency, string> = {
   normal: '보통',
-  urgent: '급함',
-  critical: '매우 급함',
+  urgent: '긴급요청',
+  critical: '긴급요청',
 }
 
 // 끝나지 않은(진행 중인) 상태

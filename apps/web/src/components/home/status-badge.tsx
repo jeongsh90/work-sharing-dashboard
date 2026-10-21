@@ -10,16 +10,11 @@ export function StatusBadge({ request }: { request: Pick<DesignRequest, "status"
   )
 }
 
-const URGENCY_CLASS: Record<Urgency, string> = {
-  normal: "",
-  urgent: "border-amber-500/40 text-amber-700 dark:text-amber-300",
-  critical: "border-destructive/40 text-destructive",
-}
-
+// 긴급도는 두 가지만 보인다: 보통이면 비워 두고, 급함(예전의 매우 급함 포함)이면 "긴급요청"
 export function UrgencyBadge({ urgency }: { urgency: Urgency }) {
-  if (urgency === "normal") return <span className="text-muted-foreground">{URGENCY_LABEL.normal}</span>
+  if (urgency === "normal") return null
   return (
-    <Badge variant="outline" className={URGENCY_CLASS[urgency]}>
+    <Badge variant="outline" className="border-destructive/40 text-destructive">
       {URGENCY_LABEL[urgency]}
     </Badge>
   )
