@@ -76,22 +76,15 @@ export function DesignerCards({
         return (
           <div
             key={d.id}
-            // 진행 중인 작업(작업 중·수정 중)이 없는 작업자 카드는 흐리게(50%)
-            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md transition-opacity ${working.length === 0 ? "opacity-50" : ""} ${CARD_SPAN}`}
+            // 진행 중인 작업(작업 중·수정 중)이 없는 작업자 카드는 흐리게(50%).
+            // 작업 중인 카드는 상태 색(--beam-color)으로 테두리 빛이 돌고 그림자가 커졌다 작아졌다 한다(index.css).
+            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground transition-opacity ${working.length > 0 ? "card-glow" : "opacity-50 shadow-md"} ${CARD_SPAN}`}
+            style={working.length > 0 ? ({ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties) : undefined}
           >
-            {/* 작업 중인 카드는 테두리를 따라 빛이 돈다. 색은 카드 아래에 보이는 작업의 상태 색(작업 중 파랑, 수정 중 주황 등) */}
             {working.length > 0 && (
               <>
-                <span
-                  className="border-beam-glow"
-                  style={{ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties}
-                  aria-hidden
-                />
-                <span
-                  className="border-beam"
-                  style={{ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties}
-                  aria-hidden
-                />
+                <span className="border-beam-glow" aria-hidden />
+                <span className="border-beam" aria-hidden />
               </>
             )}
             {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
