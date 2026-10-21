@@ -158,6 +158,11 @@
 /* 테두리 빛(border beam): 카드 테두리를 따라 빛줄기 두 개가 돈다. 관제시스템 카드와 같은 효과.
    빛 색은 --beam-color 로 정한다(작업 상태 색). 테두리 고리 모양만 보이게 가운데를 마스크로 뚫는다.
    .border-beam-glow 는 같은 빛을 흐리게 한 번 더 깔아 번지는 느낌을 준다. 움직임 줄이기 설정이면 멈춘 테두리로 보인다. */
+/* 빛이 한 바퀴 도는 시간. 작을수록 빠르다(예: 2s 빠르게, 5s 느리게). */
+:root {
+  --beam-duration: 3s;
+}
+
 @property --beam-angle {
   syntax: '<angle>';
   initial-value: 0deg;
@@ -189,7 +194,7 @@
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  animation: beam-spin 3s linear infinite;
+  animation: beam-spin var(--beam-duration) linear infinite;
 }
 
 .border-beam-glow {
