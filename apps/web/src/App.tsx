@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { HeaderActions } from '@/components/header-actions'
+import { HomePage } from '@/components/home/home-page'
 import { LoginForm } from '@/components/login-form'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
@@ -57,7 +58,7 @@ export default function App() {
           setActiveId('home')
         }}
       />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-center" />
@@ -66,8 +67,15 @@ export default function App() {
           </h1>
           <HeaderActions onOpenNotifications={() => setActiveId('notifications')} />
         </header>
-        <div key={activeId} data-page className={`flex flex-1 items-center justify-center ${FADE_IN}`}>
-          <p className="text-sm text-muted-foreground">{environmentName()}</p>
+        <div key={activeId} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
+          {activeId === 'home' ? (
+            <HomePage />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
+              <p>준비 중인 화면입니다.</p>
+              <p className="text-xs">{environmentName()}</p>
+            </div>
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>
