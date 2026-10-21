@@ -114,8 +114,8 @@ export function DesignerCards({
                 ))}
               </div>
             </div>
-            {/* 작업 표시 영역: 높이를 모든 카드에서 같게 둔다. "외 n건"은 아래에 겹쳐(absolute) 띄워 작업 표시가 가운데에 오게 한다 */}
-            <div className="relative flex h-14 flex-col justify-center border-t pt-3">
+            {/* 작업 표시 영역: 높이는 내용만큼. "외 n건"은 아래에 겹쳐(absolute) 띄워 높이에 넣지 않는다 */}
+            <div className="relative flex flex-col justify-center border-t pt-3">
               {working.length > 0 ? (
                 <>
                   {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
