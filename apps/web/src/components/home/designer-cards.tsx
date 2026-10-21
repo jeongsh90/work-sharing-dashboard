@@ -116,7 +116,7 @@ export function DesignerCards({
                   {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
                     <WorkingMarker key={r.id} request={r} />
                   ))}
-                  <p className="h-4 pl-6 text-xs text-muted-foreground">{hidden > 0 && `외 ${hidden}건`}</p>
+                  <p className="h-4 text-center text-xs text-muted-foreground">{hidden > 0 && `외 ${hidden}건`}</p>
                 </>
               ) : (
                 <p className="text-center text-xs text-muted-foreground">진행 중인 프로젝트가 없습니다.</p>
