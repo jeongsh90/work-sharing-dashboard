@@ -2,11 +2,12 @@ import { Badge } from "@/components/ui/badge"
 import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { StatCards } from "@/components/home/stat-cards"
+import { PAGE_GRID } from "@/lib/layout"
 import { SAMPLE_DESIGNERS, SAMPLE_REQUESTS } from "@/lib/sample-data"
 
 function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="col-span-12 flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
         <h2 className="text-base font-semibold">{title}</h2>
         {aside}
@@ -22,8 +23,8 @@ export function HomePage() {
   const designers = SAMPLE_DESIGNERS
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-8 p-4 md:p-6">
-      <div className="flex items-center gap-2">
+    <div className={PAGE_GRID}>
+      <div className="col-span-12 -mb-4 flex items-center gap-2">
         <Badge variant="outline" className="text-muted-foreground">
           예시 데이터
         </Badge>

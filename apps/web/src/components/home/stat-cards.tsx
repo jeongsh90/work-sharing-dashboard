@@ -1,4 +1,5 @@
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { INNER_GRID } from "@/lib/layout"
 import { isActive, isThisWeek, type DesignRequest } from "@/lib/requests"
 
 export function StatCards({ requests }: { requests: DesignRequest[] }) {
@@ -15,9 +16,9 @@ export function StatCards({ requests }: { requests: DesignRequest[] }) {
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className={INNER_GRID}>
       {stats.map((s) => (
-        <Card key={s.label} className="gap-2">
+        <Card key={s.label} className="col-span-6 gap-2 xl:col-span-3">
           <CardHeader>
             <CardDescription>{s.label}</CardDescription>
             <CardTitle className="text-3xl font-bold tabular-nums">
