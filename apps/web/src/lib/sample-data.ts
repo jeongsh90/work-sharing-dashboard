@@ -1,3 +1,4 @@
+import type { Presence } from './presence'
 import type { DesignRequest, RequestStatus, Urgency } from './requests'
 
 // 서버에 요청 데이터가 생기기 전까지 화면을 확인하려고 쓰는 예시 데이터.
@@ -56,3 +57,6 @@ export const SAMPLE_REQUESTS: DesignRequest[] = ROWS.map(
     revision,
   }),
 )
+
+// 작업자 현재 상태 예시. 작업자가 직접 상태를 바꾸는 기능이 생기면 지운다.
+export const SAMPLE_PRESENCE: Record<string, Presence> = { jsh: 'working', whs: 'meeting', ldh: 'working', ayj: 'away' }

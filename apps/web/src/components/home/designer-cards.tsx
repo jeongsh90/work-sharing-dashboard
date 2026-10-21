@@ -10,11 +10,11 @@ import {
   initials,
   isActive,
   isThisWeek,
-  type BusyLevel,
   type DesignRequest,
   type Designer,
   type RequestStatus,
 } from "@/lib/requests"
+import { PRESENCE_DOT, PRESENCE_LABEL, type Presence } from "@/lib/presence"
 import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 
 // 카드 폭 = 본문 12칸 그리드의 칸 수(넓은 화면 2칸). 간격은 INNER_GRID(gap-4, md:gap-6)와 같다.
@@ -34,12 +34,6 @@ const WEEK_TAGS: { label: string; statuses: RequestStatus[]; color: RequestStatu
   { label: "완료", statuses: ["done"], color: "done" },
 ]
 
-const BUSY_DOT: Record<BusyLevel, string> = {
-  free: "bg-emerald-500",
-  normal: "bg-amber-400",
-  busy: "bg-red-500",
-}
-
 function WorkingMarker({ request }: { request: DesignRequest }) {
   const doing = request.status === "revising" ? "수정 중…" : "작업 중…"
   const color = STATUS_TEXT[request.status] // 상태 배지와 같은 색(작업 중 파랑, 수정 중 주황)
@@ -58,10 +52,19 @@ function WorkingMarker({ request }: { request: DesignRequest }) {
   )
 }
 
-export function DesignerCards({ designers, requests }: { designers: Designer[]; requests: DesignRequest[] }) {
+export function DesignerCards({
+  designers,
+  requests,
+  presence,
+}: {
+  designers: Designer[]
+  requests: DesignRequest[]
+  presence: Record<string, Presence>
+}) {
   return (
     <div className="flex snap-x gap-4 overflow-x-auto pb-3 [scrollbar-width:thin] md:gap-6">
       {designers.map((d) => {
+        const now: Presence = presence[d.id] ?? "off"
         // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
         const level = busyLevel(requests.filter((r) => isActive(r) && r.designers.includes(d.id)).length)
         // 태그와 작업 표시는 이번 주(마감일 기준) 작업만. 완료일 데이터가 생기면 완료는 완료일 기준으로 바꾼다.
@@ -76,7 +79,12 @@ export function DesignerCards({ designers, requests }: { designers: Designer[]; 
             key={d.id}
             className={`relative flex aspect-[5/7] min-w-0 shrink-0 snap-start flex-col rounded-xl border bg-card px-4 py-5 text-card-foreground ${CARD_WIDTH}`}
           >
-            <Badge variant="outline" className="absolute top-3 left-3">
+            {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
+            <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
+              <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
+              {PRESENCE_LABEL[now]}
+            </Badge>
+            <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
               {BUSY_LABEL[level]}
             </Badge>
             <div className="flex flex-1 flex-col items-center justify-center gap-3">
@@ -85,7 +93,7 @@ export function DesignerCards({ designers, requests }: { designers: Designer[]; 
                   <AvatarFallback className="text-base font-semibold">{initials(d.name)}</AvatarFallback>
                 </Avatar>
                 <span
-                  className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${BUSY_DOT[level]}`}
+                  className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${PRESENCE_DOT[now]}`}
                   aria-hidden
                 />
               </div>

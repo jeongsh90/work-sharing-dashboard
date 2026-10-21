@@ -3,7 +3,7 @@ import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { StatCards } from "@/components/home/stat-cards"
 import { PAGE_GRID } from "@/lib/layout"
-import { SAMPLE_REQUESTS } from "@/lib/sample-data"
+import { SAMPLE_PRESENCE, SAMPLE_REQUESTS } from "@/lib/sample-data"
 import { TEAM } from "@/lib/team"
 
 function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
@@ -35,7 +35,7 @@ export function HomePage() {
         <StatCards requests={requests} />
       </Section>
       <Section title="디자인팀" aside={<span className="text-sm text-muted-foreground">{designers.length}명</span>}>
-        <DesignerCards designers={designers} requests={requests} />
+        <DesignerCards designers={designers} requests={requests} presence={SAMPLE_PRESENCE} />
       </Section>
       <Section title="작업 현황">
         <RequestTable requests={requests} designers={designers} />
