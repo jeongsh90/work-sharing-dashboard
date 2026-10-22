@@ -3,7 +3,7 @@ import { Bell, ChevronsUpDown, LogOut, UserRound } from "lucide-react"
 import { ROLE_LABEL, type Session } from "@/lib/auth"
 import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
 import { isDesignWorker } from "@/lib/store"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,9 +25,7 @@ import {
 function UserSummary({ session }: { session: Session }) {
   return (
     <>
-      <Avatar className="h-8 w-8 rounded-lg">
-        <AvatarFallback className="rounded-lg">{session.name.slice(0, 1)}</AvatarFallback>
-      </Avatar>
+      <UserAvatar name={session.name} avatarId={session.avatarId} className="h-8 w-8 rounded-lg" fallbackClassName="rounded-lg" />
       <div className="grid flex-1 text-left text-sm leading-tight">
         <span className="truncate font-medium">{session.name}</span>
         <span className="truncate text-xs">

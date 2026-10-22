@@ -80,6 +80,7 @@ export type UserInfo = Designer & {
   active: boolean
   canLogin: boolean
   approved: boolean // 회원가입 후 슈퍼관리자 승인 여부
+  avatarId: string | null // 프로필 사진 파일 id
   createdAt: number
 }
 

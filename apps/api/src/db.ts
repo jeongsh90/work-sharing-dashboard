@@ -185,6 +185,8 @@ addColumn('requests', 'requested_start_at', 'INTEGER')
 addColumn('users', 'approved', 'INTEGER NOT NULL DEFAULT 1')
 // 요청과 관계없는 알림(가입 승인 요청 등)이 열 화면. 예: 'team'
 addColumn('notifications', 'link', 'TEXT')
+// 프로필 사진(files.id). 사진 파일은 kind = 'avatar' 로 표시하고 로그인한 사람 누구나 볼 수 있다.
+addColumn('users', 'avatar_id', 'TEXT')
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {

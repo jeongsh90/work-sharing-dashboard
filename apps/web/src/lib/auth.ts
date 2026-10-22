@@ -21,6 +21,7 @@ export type Session = {
   position: string
   department: string
   presence: string
+  avatarId?: string | null // 프로필 사진 파일 id
 }
 
 export function isManager(session: { role: Role }) {

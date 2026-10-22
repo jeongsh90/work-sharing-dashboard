@@ -24,6 +24,7 @@ export type PublicUser = {
   canLogin: boolean
   approved: boolean // 회원가입 후 슈퍼관리자 승인 여부
   createdAt: number
+  avatarId: string | null // 프로필 사진 파일 id
 }
 
 type UserRow = {
@@ -38,6 +39,7 @@ type UserRow = {
   hash: string | null
   active: number
   approved: number
+  avatar_id: string | null
   created_at: number
 }
 
@@ -54,6 +56,7 @@ function toPublic(u: UserRow): PublicUser {
     canLogin: !!u.hash,
     approved: u.approved === 1,
     createdAt: u.created_at,
+    avatarId: u.avatar_id,
   }
 }
 
@@ -115,6 +118,25 @@ export function approveUser(id: string, role: Role) {
 // 가입 거절: 승인 전 계정은 남긴 기록이 없으므로 지운다.
 export function deletePendingUser(id: string) {
   run('DELETE FROM users WHERE id = :id AND approved = 0', { id })
+}
+
+// 프로필 사진 바꾸기. fileId 는 이 사람이 방금 올린(아직 어디에도 붙지 않은) 이미지여야 한다.
+// 이전 사진 파일 정보는 지우고, 실제 파일을 지울 수 있게 그 id 를 돌려준다.
+export function setAvatar(userId: string, fileId: string | null) {
+  if (fileId !== null) {
+    const file = get<{ uploader_id: string; request_id: number | null; kind: string | null; mime: string }>(
+      'SELECT uploader_id, request_id, kind, mime FROM files WHERE id = :id',
+      { id: fileId },
+    )
+    if (!file || file.uploader_id !== userId || file.request_id !== null || file.kind !== null || !file.mime.startsWith('image/')) {
+      return { error: '사진 파일을 찾을 수 없습니다. 다시 올려 주세요.' }
+    }
+    run("UPDATE files SET kind = 'avatar' WHERE id = :id", { id: fileId })
+  }
+  const old = get<{ avatar_id: string | null }>('SELECT avatar_id FROM users WHERE id = :id', { id: userId })?.avatar_id ?? null
+  run('UPDATE users SET avatar_id = :fileId WHERE id = :id', { id: userId, fileId })
+  if (old && old !== fileId) run('DELETE FROM files WHERE id = :id', { id: old })
+  return { removed: old && old !== fileId ? old : null }
 }
 
 export function superadminIds() {

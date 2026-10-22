@@ -49,6 +49,7 @@ import {
   PRESENCES,
   ROLES,
   sessionUser,
+  setAvatar,
   setPassword,
   superadminIds,
   updateUser,
@@ -185,8 +186,10 @@ async function handleUpload(req: IncomingMessage, res: ServerResponse, user: Pub
 
 async function handleFile(req: IncomingMessage, res: ServerResponse, user: PublicUser, id: string, download: boolean) {
   const file = findFile(id)
-  // 어디에도 붙지 않은 파일은 올린 사람만 볼 수 있다.
-  if (!file || (file.request_id === null && file.uploader_id !== user.id)) throw new HttpError(404, '파일을 찾을 수 없습니다.')
+  // 어디에도 붙지 않은 파일은 올린 사람만 볼 수 있다. 프로필 사진은 로그인한 누구나 볼 수 있다.
+  if (!file || (file.request_id === null && file.kind !== 'avatar' && file.uploader_id !== user.id)) {
+    throw new HttpError(404, '파일을 찾을 수 없습니다.')
+  }
   const disposition = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`
   res.writeHead(200, {
     'Content-Type': file.mime,
@@ -280,6 +283,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (method === 'GET') return sendJson(res, 200, { user })
     if (method === 'PATCH') {
       const body = await readJson(req)
+      if (body.avatarId !== undefined) {
+        const result = setAvatar(user.id, typeof body.avatarId === 'string' ? body.avatarId : null)
+        if ('error' in result) throw new HttpError(400, result.error as string)
+        if (result.removed) await unlink(join(UPLOAD_DIR, result.removed)).catch(() => {})
+      }
       if (body.presence !== undefined) {
         if (!PRESENCES.includes(body.presence as never)) throw new HttpError(400, '상태 값이 올바르지 않습니다.')
         updateUser(user.id, { presence: body.presence as string })

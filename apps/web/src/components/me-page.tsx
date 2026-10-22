@@ -2,15 +2,73 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { DesktopNotifyToggle } from "@/components/desktop-notify-toggle"
+import { UserAvatar } from "@/components/user-avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, ApiError } from "@/lib/api"
+import { removeAvatar, uploadAvatar } from "@/lib/avatar"
 import { ROLE_LABEL, updateStoredUser, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
 import { isDesignWorker } from "@/lib/store"
+
+// 프로필 사진: 올리면 가운데를 정사각형으로 잘라 줄여서 저장한다(lib/avatar.ts).
+function AvatarCard({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (work: () => Promise<Session>) => {
+    setPending(true)
+    setError(null)
+    try {
+      onSessionChange(await work())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "사진을 저장하지 못했습니다.")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>프로필 사진</CardTitle>
+        <CardDescription>디자인팀 카드, 담당자 표시, 사용자 메뉴에 보입니다. 정사각형으로 잘려 저장됩니다.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center gap-4">
+        <UserAvatar name={session.name} avatarId={session.avatarId} className="size-20" fallbackClassName="text-2xl font-semibold" />
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button asChild size="sm" disabled={pending}>
+              <label className="cursor-pointer">
+                {pending ? "올리는 중…" : session.avatarId ? "사진 바꾸기" : "사진 올리기"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={pending}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ""
+                    if (file) run(() => uploadAvatar(file))
+                  }}
+                />
+              </label>
+            </Button>
+            {session.avatarId && (
+              <Button variant="outline" size="sm" disabled={pending} onClick={() => run(removeAvatar)}>
+                사진 삭제
+              </Button>
+            )}
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export function MePage({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
   const [current, setCurrent] = useState("")
@@ -65,6 +123,8 @@ export function MePage({ session, onSessionChange }: { session: Session; onSessi
             </dl>
           </CardContent>
         </Card>
+
+        <AvatarCard session={session} onSessionChange={onSessionChange} />
 
         {isDesignWorker(session) && (
           <Card>

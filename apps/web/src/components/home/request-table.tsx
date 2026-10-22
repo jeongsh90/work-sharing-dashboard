@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -35,7 +35,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatusBadge, UrgencyBadge } from "@/components/home/status-badge"
 import {
   formatDateTime,
-  initials,
   isActive,
   isUnassigned,
   type DesignRequest,
@@ -44,7 +43,7 @@ import {
 import { api, ApiError } from "@/lib/api"
 import { loadSession } from "@/lib/auth"
 import { openRequest } from "@/lib/router"
-import { invalidate, useUserNames } from "@/lib/store"
+import { invalidate, useUserNames, useUsers } from "@/lib/store"
 
 const PAGE_SIZE = 8
 const COLUMN_COUNT = 8
@@ -81,6 +80,8 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
   const [page, setPage] = useState(1)
   const tableRef = useRef<HTMLDivElement>(null)
   const userName = useUserNames()
+  const { users } = useUsers()
+  const avatarOf = new Map(users?.map((u) => [u.id, u.avatarId]))
   // 요청 삭제는 슈퍼관리자만(서버도 다시 확인한다)
   const canDelete = loadSession()?.role === "superadmin"
   const [deleting, setDeleting] = useState<DesignRequest | null>(null)
@@ -198,9 +199,13 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
                       <div className="flex items-center gap-2">
                         <div className="flex -space-x-2">
                           {r.designers.map((id) => (
-                            <Avatar key={id} className="size-6 ring-2 ring-card">
-                              <AvatarFallback className="text-[10px]">{initials(userName(id) ?? "?")}</AvatarFallback>
-                            </Avatar>
+                            <UserAvatar
+                              key={id}
+                              name={userName(id) || "?"}
+                              avatarId={avatarOf.get(id)}
+                              className="size-6 ring-2 ring-card"
+                              fallbackClassName="text-[10px]"
+                            />
                           ))}
                         </div>
                         <span>

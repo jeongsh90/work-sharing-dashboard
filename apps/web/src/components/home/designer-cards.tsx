@@ -1,13 +1,12 @@
 import { LoaderCircle } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { UserAvatar } from "@/components/user-avatar"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import {
   BUSY_LABEL,
   busyLevel,
   designerTitle,
-  initials,
   isActive,
   isThisWeek,
   type DesignRequest,
@@ -56,7 +55,7 @@ export function DesignerCards({
   requests,
   presence,
 }: {
-  designers: Designer[]
+  designers: (Designer & { avatarId?: string | null })[]
   requests: DesignRequest[]
   presence: Record<string, Presence>
 }) {
@@ -106,9 +105,7 @@ export function DesignerCards({
             <div className="flex flex-1 flex-col items-center gap-3">
               <div className="flex flex-col items-center gap-3">
                 <div className="relative">
-                  <Avatar className="size-14">
-                    <AvatarFallback className="text-base font-semibold">{initials(d.name)}</AvatarFallback>
-                  </Avatar>
+                  <UserAvatar name={d.name} avatarId={d.avatarId} className="size-14" fallbackClassName="text-base font-semibold" />
                   <span
                     className={`absolute right-0.5 bottom-0.5 size-3 rounded-full ring-2 ring-card ${PRESENCE_DOT[now]}`}
                     aria-hidden
