@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,8 @@ import { api, ApiError } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { timeAgo } from "@/lib/requests"
+import { markSeen } from "@/lib/seen"
+import { ROADMAP, type RoadmapItem } from "@/lib/version"
 import { invalidate, useApi, useUserNames } from "@/lib/store"
 
 // 건의게시판. 누구나 쓰고, 관리자가 처리 상태와 답변을 남긴다(apps/api/src/suggestions.ts).
@@ -215,12 +217,50 @@ function SuggestionItem({ item, session }: { item: Suggestion; session: Session 
   )
 }
 
+const ROADMAP_STYLE: Record<RoadmapItem["status"], string> = {
+  예정: "bg-muted text-muted-foreground",
+  "검토 중": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "진행 중": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+}
+
+// 건의게시판 오른쪽: 업데이트 예정 기능(lib/version.ts 의 ROADMAP)
+function Roadmap() {
+  return (
+    <Card className="lg:sticky lg:top-20">
+      <CardHeader>
+        <CardTitle>업데이트 예정 기능</CardTitle>
+        <CardDescription>건의와 운영 의견을 모아 순서대로 반영합니다.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="flex flex-col divide-y">
+          {ROADMAP.map((r) => (
+            <li key={r.title} className="flex items-start gap-2 py-2.5 text-sm first:pt-0 last:pb-0">
+              <Badge variant="secondary" className={`shrink-0 ${ROADMAP_STYLE[r.status]}`}>
+                {r.status}
+              </Badge>
+              <span className="min-w-0 break-words">{r.title}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function FeedbackPage({ session }: { session: Session }) {
   const { data, error } = useApi<Suggestion[]>("/suggestions", 60_000)
+  // 들어와서 목록을 받으면 지금 가장 최근 글까지 읽은 것으로 본다(메뉴의 N 표시가 사라진다).
+  const latest = data?.reduce((max, s) => Math.max(max, s.id), 0) ?? 0
+  useEffect(() => {
+    if (latest > 0) markSeen(session.id, "feedback", String(latest))
+  }, [latest, session.id])
 
   return (
     <div className={PAGE_GRID}>
-      <div className="col-span-12 flex flex-col gap-6 lg:col-span-8 xl:col-span-6">
+      <aside className="col-span-12 lg:order-last lg:col-span-5 xl:col-span-4">
+        <Roadmap />
+      </aside>
+      <div className="col-span-12 flex flex-col gap-6 lg:col-span-7 xl:col-span-6">
         <WriteForm />
         <Section title="건의 목록" aside={data && <span className="text-sm text-muted-foreground">{data.length}건</span>}>
           {!data ? (

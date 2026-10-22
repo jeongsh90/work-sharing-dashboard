@@ -2,6 +2,9 @@ import { FilePlus2 } from "lucide-react"
 
 import type { Session } from "@/lib/auth"
 import { menuFor } from "@/lib/menu"
+import { useSeen } from "@/lib/seen"
+import { useApi } from "@/lib/store"
+import { APP_VERSION } from "@/lib/version"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -12,9 +15,21 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+
+// 메뉴 N 표시: 건의게시판에 다른 사람의 새 글이 있거나, 아직 보지 않은 새 버전이 있으면
+function useFreshMenus(userId: string) {
+  const { data } = useApi<{ id: number; authorId: string }[]>("/suggestions", 60_000)
+  const seenFeedback = Number(useSeen(userId, "feedback") ?? 0)
+  const seenVersion = useSeen(userId, "version")
+  const fresh = new Set<string>()
+  if (data?.some((s) => s.authorId !== userId && s.id > seenFeedback)) fresh.add("feedback")
+  if (seenVersion !== APP_VERSION) fresh.add("version")
+  return fresh
+}
 
 export function AppSidebar({
   session,
@@ -30,6 +45,8 @@ export function AppSidebar({
   onSessionChange: (session: Session) => void
   onLogout: () => void
 }) {
+  const fresh = useFreshMenus(session.id)
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -69,6 +86,11 @@ export function AppSidebar({
                       <item.icon />
                       <span>{item.title}</span>
                     </SidebarMenuButton>
+                    {fresh.has(item.id) && (
+                      <SidebarMenuBadge className="bg-destructive px-1.5 text-[11px] text-white peer-hover/menu-button:text-white peer-data-active/menu-button:text-white">
+                        N
+                      </SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

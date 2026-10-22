@@ -15,6 +15,7 @@ import { RequestListPage } from '@/components/requests/request-list-page'
 import { SchedulePage } from '@/components/schedule-page'
 import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
+import { UpdateNotice } from '@/components/update-notice'
 import { VersionPage } from '@/components/version-page'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { UNAUTHORIZED_EVENT } from '@/lib/api'
@@ -121,7 +122,7 @@ export default function App() {
       case 'feedback':
         return <FeedbackPage session={session} />
       case 'version':
-        return <VersionPage />
+        return <VersionPage session={session} />
       case 'schedule':
         return <SchedulePage />
       default:
@@ -143,6 +144,8 @@ export default function App() {
           navigate('home')
         }}
       />
+      {/* 로그인하면 업데이트 공지(다시 보지 않기 전까지) */}
+      <UpdateNotice key={session.id} session={session} />
       <SidebarInset className="min-w-0">
         {/* 페이지 세로 스크롤바: 헤더 아래 오른쪽 */}
         <OverlayScrollbar target={() => window} className="fixed top-16 right-0.5 bottom-1 w-1.5" />

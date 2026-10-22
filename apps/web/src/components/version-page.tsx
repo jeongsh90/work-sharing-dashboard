@@ -1,8 +1,12 @@
+import { useEffect } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Section } from "@/components/home/home-page"
 import { PAGE_GRID } from "@/lib/layout"
+import type { Session } from "@/lib/auth"
 import { formatDateTime } from "@/lib/requests"
+import { markSeen } from "@/lib/seen"
 import { APP_VERSION, BUILD_TIME, CHANGELOG, COMMIT } from "@/lib/version"
 
 function environmentName() {
@@ -12,7 +16,9 @@ function environmentName() {
   return "로컬"
 }
 
-export function VersionPage() {
+export function VersionPage({ session }: { session: Session }) {
+  // 버전 정보를 열면 이번 버전은 본 것으로 본다(메뉴의 N 표시가 사라진다).
+  useEffect(() => markSeen(session.id, "version", APP_VERSION), [session.id])
   const rows = [
     ["버전", `v${APP_VERSION}`],
     ["배포 일시", `${BUILD_TIME.getFullYear()}년 ${formatDateTime(BUILD_TIME)}`],
