@@ -66,8 +66,9 @@ export function disableDesktop() {
 
 const ICON = `${import.meta.env.BASE_URL}favicon.svg`
 
+// 알림을 띄웠으면 true. 꺼져 있거나 만들지 못하면 false
 export function showDesktop(title: string, body: string, onClick: () => void, tag?: string) {
-  if (currentState() !== 'on') return
+  if (currentState() !== 'on') return false
   try {
     const n = new Notification(title, { body, icon: ICON, tag })
     n.onclick = () => {
@@ -75,8 +76,10 @@ export function showDesktop(title: string, body: string, onClick: () => void, ta
       onClick()
       n.close()
     }
+    return true
   } catch {
     // 일부 환경(모바일 브라우저 등)은 페이지에서 바로 알림을 만들 수 없다.
+    return false
   }
 }
 
@@ -95,5 +98,25 @@ export function useAskOnFirstClick(active: boolean) {
 
 // 내 정보의 "테스트 알림" 버튼: Windows 에서 알림이 보이는지 바로 확인한다.
 export function testDesktop() {
-  showDesktop('테스트 알림', '이 알림이 보이면 PC 알림이 잘 동작합니다.', () => {}, 'wsd-test')
+  return showDesktop('테스트 알림', '이 알림이 보이면 PC 알림이 잘 동작합니다.', () => {}, 'wsd-test')
+}
+
+// 지금 권한 상태(await 뒤에 다시 읽으려고 함수로 둔다)
+const permission = (): NotificationPermission => Notification.permission
+
+export type DesktopTestResult = { sent: boolean; problem?: string }
+
+// 헤더의 "PC 알림 테스트" 버튼: 아직 꺼져 있으면 켜기(권한 묻기)부터 하고 테스트 알림을 보낸다.
+export async function runDesktopTest(): Promise<DesktopTestResult> {
+  if (!desktopSupported) return { sent: false, problem: '이 브라우저는 PC 알림을 지원하지 않습니다. Chrome 이나 Edge 로 열어 주세요.' }
+  if (permission() === 'denied') {
+    return { sent: false, problem: '브라우저에서 이 사이트의 알림이 차단되어 있습니다.' }
+  }
+  if (currentState() !== 'on') {
+    await enableDesktop() // 켜지면 "PC 알림이 켜졌습니다" 알림이 뜬다
+    if (permission() === 'denied') return { sent: false, problem: '알림 허용 창에서 차단을 누르셨습니다.' }
+    if (permission() !== 'granted') return { sent: false, problem: '알림 허용 창에서 허용을 눌러 주세요.' }
+    return { sent: true }
+  }
+  return testDesktop() ? { sent: true } : { sent: false, problem: '알림을 만들지 못했습니다. 페이지를 새로 고친 뒤 다시 눌러 주세요.' }
 }
