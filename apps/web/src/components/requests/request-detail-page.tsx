@@ -16,6 +16,7 @@ import { Timeline } from "@/components/requests/timeline"
 import type { Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type RequestDetailDto, type RequestStatus } from "@/lib/requests"
+import { STATUS_BEAM } from "@/lib/status-colors"
 import { useApi, invalidate, useUserNames } from "@/lib/store"
 
 // 진행 단계 표시. 기획 흐름: 요청 → 담당 지정 → 작업 → 컨펌 요청 → 컨펌 → 완료
@@ -28,26 +29,38 @@ const STEPS: { label: string; reached: RequestStatus[] }[] = [
   { label: "작업 완료", reached: ["done"] },
 ]
 
+// 진행 단계: 지름 56px 원(휴대폰은 44px)을 선으로 잇는다. 지난 단계는 체크, 현재 단계는 지금 상태 색 테두리, 남은 단계는 흐린 번호
 function Steps({ status }: { status: RequestStatus }) {
   if (status === "canceled") return null
   const current = STEPS.reduce((last, s, i) => (s.reached.includes(status) ? i : last), 0)
+  const color = STATUS_BEAM[status]
   return (
-    <ol className="flex flex-wrap items-center gap-x-1 gap-y-2 text-xs" aria-label="진행 단계">
+    <ol className="flex w-full max-w-4xl items-start py-4" aria-label="진행 단계">
       {STEPS.map((s, i) => {
         const done = i < current || status === "done"
         const now = i === current && status !== "done"
         return (
-          <li key={s.label} className="flex items-center gap-1">
-            <span
-              className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${
-                now ? "bg-primary font-medium text-primary-foreground" : done ? "bg-muted text-foreground" : "text-muted-foreground"
-              }`}
-              aria-current={now ? "step" : undefined}
-            >
-              {done && <Check className="size-3" aria-hidden />}
-              {s.label}
-            </span>
-            {i < STEPS.length - 1 && <span className="h-px w-3 bg-border" aria-hidden />}
+          <li key={s.label} className="flex min-w-0 flex-1 items-start last:flex-none">
+            <div className="flex w-11 shrink-0 flex-col items-center gap-2 sm:w-14" aria-current={now ? "step" : undefined}>
+              <span
+                className={`flex size-11 items-center justify-center rounded-full border-2 text-sm sm:size-14 sm:text-base font-semibold tabular-nums transition-colors ${
+                  done ? "border-foreground bg-foreground text-background" : now ? "bg-card shadow-sm" : "border-dashed border-border text-muted-foreground"
+                }`}
+                style={now ? { borderColor: color, color, boxShadow: `0 0 0 4px color-mix(in oklab, ${color} 15%, transparent)` } : undefined}
+              >
+                {done ? <Check className="size-5 sm:size-6" aria-hidden /> : i + 1}
+              </span>
+              <span
+                className={`text-center text-xs whitespace-nowrap ${now ? "font-semibold" : done ? "font-medium" : "text-muted-foreground"}`}
+                style={now ? { color } : undefined}
+              >
+                {s.label}
+              </span>
+            </div>
+            {/* 다음 단계로 잇는 선(원 가운데 높이). 지난 구간은 진하게 */}
+            {i < STEPS.length - 1 && (
+              <span className={`mx-1 mt-[21px] h-0.5 min-w-2 flex-1 sm:mt-7 rounded-full ${i < current || status === "done" ? "bg-foreground" : "bg-border"}`} aria-hidden />
+            )}
           </li>
         )
       })}
