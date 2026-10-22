@@ -31,10 +31,10 @@ type DialogSpec = {
   destructive?: boolean
 }
 
-type ActionSpec = { label: string; primary?: boolean; dialog?: DialogSpec }
+type ActionSpec = { label: string; dialog?: DialogSpec }
 
 const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
-  take: { label: "내가 맡기", primary: true },
+  take: { label: "내가 맡기" },
   assign: {
     label: "담당 지정",
     dialog: {
@@ -44,10 +44,9 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
       designers: true,
     },
   },
-  start: { label: "작업 시작", primary: true },
+  start: { label: "작업 시작" },
   submit: {
     label: "컨펌 요청",
-    primary: true,
     dialog: {
       title: "시안 컨펌 요청",
       description: "시안 이미지를 올리면 요청자에게 컨펌 요청 알림이 갑니다.",
@@ -58,7 +57,6 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
   },
   approve: {
     label: "컨펌",
-    primary: true,
     dialog: {
       title: "시안 컨펌",
       description: "이 시안으로 확정합니다. 작업자가 최종 파일을 정리해 작업 완료 처리합니다.",
@@ -78,7 +76,6 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
   },
   complete: {
     label: "작업 완료",
-    primary: true,
     dialog: {
       title: "작업 완료",
       description: "요청자에게 완료 알림이 가고 최종 파일 보관함에 올라갑니다.",
@@ -98,7 +95,6 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
   },
   resubmit: {
     label: "보완 완료",
-    primary: true,
     dialog: {
       title: "보완 완료",
       description: "요청 내용을 고친 뒤 눌러 주세요. 디자인팀에 다시 알림이 갑니다.",
@@ -120,6 +116,24 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
 
 // 진행 버튼 크기: 기본 버튼의 1.5배(높이 48px)
 const BAR_BUTTON = "h-12 px-6 text-base"
+
+// 진행 버튼 색: 누르면 바뀌는 상태의 배지 색(lib/status-colors.ts 와 같은 계열)으로 칠한다.
+// 예) 작업 시작 → 작업 중(파랑), 컨펌 요청 → 시안 확인(보라), 반려 → 수정 중(주황), 작업 완료 → 완료(초록)
+// 외곽선 버튼의 기본 배경(다크 모드 포함)을 덮어쓰도록 dark: 에도 같은 색을 준다.
+const SOLID = "text-white border-transparent dark:border-transparent hover:text-white"
+const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
+  take: `${SOLID} bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-700`,
+  assign: `${SOLID} bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-700`,
+  start: `${SOLID} bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700`,
+  submit: `${SOLID} bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-700`,
+  approve: `${SOLID} bg-teal-600 hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700`,
+  reject: `${SOLID} bg-orange-600 hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-700`,
+  complete: `${SOLID} bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700`,
+  "request-info": `${SOLID} bg-amber-500 hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-600`,
+  resubmit: `${SOLID} bg-slate-600 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-700`,
+  // 취소는 되돌릴 수 없으므로 빨간 테두리만
+  cancel: "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive dark:border-destructive/50",
+}
 
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
 const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "complete", "resubmit", "assign", "request-info", "cancel"]
@@ -177,8 +191,8 @@ export function ActionPanel({
             return (
               <Button
                 key={a}
-                variant={s.primary ? "default" : a === "cancel" ? "ghost" : "outline"}
-                className={`${BAR_BUTTON} ${a === "reject" ? "text-destructive" : a === "cancel" ? "text-muted-foreground" : ""}`}
+                variant="outline"
+                className={`${BAR_BUTTON} ${ACTION_COLOR[a] ?? ""}`}
                 disabled={pending !== null}
                 onClick={() => (s.dialog ? setOpen(a) : direct(a))}
               >
