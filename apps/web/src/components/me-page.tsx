@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api"
 import { ROLE_LABEL, updateStoredUser, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
+import { isDesignWorker } from "@/lib/store"
 
 export function MePage({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
   const [current, setCurrent] = useState("")
@@ -65,7 +66,7 @@ export function MePage({ session, onSessionChange }: { session: Session; onSessi
           </CardContent>
         </Card>
 
-        {session.role === "designer" && (
+        {isDesignWorker(session) && (
           <Card>
             <CardHeader>
               <CardTitle>현재 상태</CardTitle>

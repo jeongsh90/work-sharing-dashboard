@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { FilePicker } from "@/components/requests/file-picker"
 import { api, ApiError, uploadAll } from "@/lib/api"
 import type { RequestAction, RequestDetailDto } from "@/lib/requests"
-import { invalidate, useUsers } from "@/lib/store"
+import { invalidate, isDesignWorker, useUsers } from "@/lib/store"
 
 // 진행 동작 버튼. 어떤 버튼이 보일지는 서버가 준 actions 로 정한다(apps/api/src/requests.ts).
 
@@ -228,8 +228,8 @@ function ActionDialog({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  // 담당 후보: 작업자 전체와 이미 담당인 사람
-  const candidates = users?.filter((u) => u.active && (u.role === "designer" || detail.designers.includes(u.id))) ?? []
+  // 담당 후보: 작업자(디자인팀 관리자 포함) 전체와 이미 담당인 사람
+  const candidates = users?.filter((u) => u.active && u.approved && (isDesignWorker(u) || detail.designers.includes(u.id))) ?? []
 
   const confirm = async () => {
     if (spec.note?.required && !note.trim()) return setError(`${spec.note.label}을(를) 적어 주세요.`)

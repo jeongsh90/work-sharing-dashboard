@@ -88,10 +88,17 @@ export function useUsers() {
   return { users: data, error }
 }
 
+// 디자인 작업을 맡는 사람: 작업자, 그리고 부서가 디자인팀인 관리자(관리 권한을 가진 디자이너)
+export const DESIGN_TEAM = '디자인팀'
+
+export function isDesignWorker(u: Pick<UserInfo, 'role' | 'department'>) {
+  return u.role === 'designer' || ((u.role === 'admin' || u.role === 'superadmin') && u.department === DESIGN_TEAM)
+}
+
 // 홈의 디자인팀 카드와 담당 지정에 쓰는 작업자 목록
 export function useDesigners() {
   const { users } = useUsers()
-  return useMemo(() => users?.filter((u) => u.active && u.approved && u.role === 'designer') ?? null, [users])
+  return useMemo(() => users?.filter((u) => u.active && u.approved && isDesignWorker(u)) ?? null, [users])
 }
 
 export function useUserNames() {

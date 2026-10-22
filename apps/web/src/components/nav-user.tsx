@@ -2,6 +2,7 @@ import { Bell, ChevronsUpDown, LogOut, UserRound } from "lucide-react"
 
 import { ROLE_LABEL, type Session } from "@/lib/auth"
 import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
+import { isDesignWorker } from "@/lib/store"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -76,7 +77,7 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {/* 작업자는 여기서 바로 현재 상태를 바꾼다(홈 디자인팀 카드에 보임) */}
-            {session.role === "designer" && (
+            {isDesignWorker(session) && (
               <>
                 <DropdownMenuLabel className="text-xs text-muted-foreground">현재 상태</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
