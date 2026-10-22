@@ -11,6 +11,7 @@ import {
   LOCK_MS,
   MAX_FAILED_LOGINS,
   MAX_UPLOAD_BYTES,
+  SWITCH_ACCOUNTS,
   PORT,
   UPLOAD_DIR,
   WEB_DIR,
@@ -260,6 +261,19 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   const user = requireUser(req)
   let m: RegExpMatchArray | null
+
+  // ── 계정 전환(SWITCH_ACCOUNTS 묶음끼리만) ──
+  if (path === '/api/switch') {
+    if (!SWITCH_ACCOUNTS.includes(user.id)) throw new HttpError(403, '계정 전환을 쓸 수 없는 계정입니다.')
+    const accounts = listUsers().filter((u) => SWITCH_ACCOUNTS.includes(u.id) && u.active && u.approved && u.canLogin)
+    if (method === 'GET') return sendJson(res, 200, accounts.map((u) => ({ id: u.id, name: u.name, role: u.role })))
+    if (method === 'POST') {
+      const body = await readJson(req)
+      const target = accounts.find((u) => u.id === body.id)
+      if (!target) throw new HttpError(400, '전환할 수 없는 계정입니다.')
+      return sendJson(res, 200, { token: createSession(target.id), user: target })
+    }
+  }
 
   // ── 내 정보 ──
   if (path === '/api/me') {

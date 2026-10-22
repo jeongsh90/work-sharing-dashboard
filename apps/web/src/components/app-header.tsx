@@ -1,4 +1,5 @@
 import { HeaderActions } from "@/components/header-actions"
+import type { Session } from "@/lib/auth"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 
@@ -10,11 +11,15 @@ export function AppHeader({
   titleClassName,
   onOpenNotifications,
   onNewRequest,
+  currentId,
+  onSwitched,
 }: {
   title: string
   titleClassName?: string
   onOpenNotifications: () => void
   onNewRequest?: () => void
+  currentId: string
+  onSwitched: (token: string, user: Session) => void
 }) {
   const { state, isMobile } = useSidebar()
   const left = isMobile ? "0px" : state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)"
@@ -31,7 +36,12 @@ export function AppHeader({
         <h1 key={title} className={`text-sm font-medium ${titleClassName ?? ""}`}>
           {title}
         </h1>
-        <HeaderActions onOpenNotifications={onOpenNotifications} onNewRequest={onNewRequest} />
+        <HeaderActions
+          onOpenNotifications={onOpenNotifications}
+          onNewRequest={onNewRequest}
+          currentId={currentId}
+          onSwitched={onSwitched}
+        />
       </header>
       <div className="h-16 shrink-0" aria-hidden />
     </>

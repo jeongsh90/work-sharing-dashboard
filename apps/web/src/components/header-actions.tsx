@@ -1,6 +1,8 @@
 import { useState } from "react"
 import { Bell, BellRing, Contrast, FilePlus2 } from "lucide-react"
 
+import { AccountSwitcher } from "@/components/account-switcher"
+import type { Session } from "@/lib/auth"
 import { runDesktopTest, type DesktopTestResult } from "@/lib/desktop-notify"
 import { markAllRead, useNotifications, type NotificationType } from "@/lib/notifications"
 import { useTheme } from "@/lib/theme"
@@ -128,12 +130,17 @@ function ThemeToggle() {
 }
 
 // onNewRequest 를 주면(요청자) 맨 오른쪽에 디자인 요청 버튼을 둔다. 좁은 화면에서는 아이콘만 보인다.
+// 맨 오른쪽: 계정 전환(정해 둔 계정 묶음일 때만 보인다)
 export function HeaderActions({
   onOpenNotifications,
   onNewRequest,
+  currentId,
+  onSwitched,
 }: {
   onOpenNotifications: () => void
   onNewRequest?: () => void
+  currentId: string
+  onSwitched: (token: string, user: Session) => void
 }) {
   return (
     <div className="ml-auto flex items-center gap-1">
@@ -146,6 +153,7 @@ export function HeaderActions({
           <span className="hidden sm:inline">디자인 요청</span>
         </Button>
       )}
+      <AccountSwitcher currentId={currentId} onSwitched={onSwitched} />
     </div>
   )
 }

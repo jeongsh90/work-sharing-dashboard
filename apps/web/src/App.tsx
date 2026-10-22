@@ -149,6 +149,14 @@ export default function App() {
           onOpenNotifications={() => navigate('notifications')}
           // 요청자는 어느 화면에서든 헤더 오른쪽 버튼으로 바로 디자인 요청을 쓴다.
           onNewRequest={session.role === 'requester' ? () => navigate('request') : undefined}
+          currentId={session.id}
+          onSwitched={(token, user) => {
+            // 계정을 바꾸면 이 탭의 로그인을 새 계정으로 바꾸고, 받아 둔 데이터를 비운 뒤 홈으로 간다.
+            writeStored({ token, user })
+            clearCache()
+            setSession(user)
+            navigate('home')
+          }}
         />
         <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
           {content}
