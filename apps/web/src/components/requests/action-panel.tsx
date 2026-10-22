@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { useSidebar } from "@/components/ui/sidebar"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -117,6 +118,9 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
   },
 }
 
+// 진행 버튼 크기: 기본 버튼의 1.5배(높이 48px)
+const BAR_BUTTON = "h-12 px-6 text-base"
+
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
 const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "complete", "resubmit", "assign", "request-info", "cancel"]
 
@@ -154,32 +158,42 @@ export function ActionPanel({
   const available = ORDER.filter((a) => detail.actions.includes(a) && ACTIONS[a])
   const spec = open ? ACTIONS[open] : null
 
+  // 화면 하단에 고정한 막대. 왼쪽 끝은 헤더처럼 사이드바 폭(펼침/접힘/모바일)에 맞춘다.
+  const { state, isMobile } = useSidebar()
+  const left = isMobile ? "0px" : state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)"
+
   if (available.length === 0 && !detail.actions.includes("edit")) return null
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        {available.map((a) => {
-          const s = ACTIONS[a]!
-          return (
-            <Button
-              key={a}
-              variant={s.primary ? "default" : a === "cancel" ? "ghost" : "outline"}
-              className={a === "reject" ? "text-destructive" : a === "cancel" ? "text-muted-foreground" : undefined}
-              disabled={pending !== null}
-              onClick={() => (s.dialog ? setOpen(a) : direct(a))}
-            >
-              {pending === a ? "처리 중…" : s.label}
+    <>
+      {/* 화면 하단 고정 막대. 가려지는 내용이 없게 상세 화면이 아래쪽 여백(pb-28)을 둔다 */}
+      <div
+        className="fixed right-0 bottom-0 z-20 flex flex-col items-center gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur transition-[left] duration-200 ease-linear"
+        style={{ left }}
+      >
+        <div className="flex flex-wrap justify-center gap-2">
+          {available.map((a) => {
+            const s = ACTIONS[a]!
+            return (
+              <Button
+                key={a}
+                variant={s.primary ? "default" : a === "cancel" ? "ghost" : "outline"}
+                className={`${BAR_BUTTON} ${a === "reject" ? "text-destructive" : a === "cancel" ? "text-muted-foreground" : ""}`}
+                disabled={pending !== null}
+                onClick={() => (s.dialog ? setOpen(a) : direct(a))}
+              >
+                {pending === a ? "처리 중…" : s.label}
+              </Button>
+            )
+          })}
+          {detail.actions.includes("edit") && (
+            <Button variant="outline" className={BAR_BUTTON} onClick={onEdit}>
+              요청 수정
             </Button>
-          )
-        })}
-        {detail.actions.includes("edit") && (
-          <Button variant="outline" onClick={onEdit}>
-            요청 수정
-          </Button>
-        )}
+          )}
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
       {open && spec?.dialog && (
         <ActionDialog
           key={open}
@@ -192,7 +206,7 @@ export function ActionPanel({
           }}
         />
       )}
-    </div>
+    </>
   )
 }
 

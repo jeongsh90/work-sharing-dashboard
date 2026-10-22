@@ -173,7 +173,8 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
   )
 
   return (
-    <div className={PAGE_GRID}>
+    // 진행 버튼이 화면 하단에 고정되므로(ActionPanel) 맨 아래 내용이 가리지 않게 여백을 둔다
+    <div className={`${PAGE_GRID} ${editing ? "" : "pb-40 md:pb-28"}`}>
       <div className="col-span-12 flex flex-col gap-4">
         <Button variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground" onClick={onBack}>
           <ArrowLeft data-icon="inline-start" />
