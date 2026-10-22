@@ -1,3 +1,4 @@
+import { FEEDBACK_NOTIFY } from './config.ts'
 import { all, get, run } from './db.ts'
 import { HttpError, notifyLink } from './requests.ts'
 import { isManager, listUsers, type PublicUser } from './users.ts'
@@ -65,10 +66,11 @@ export function createSuggestion(user: PublicUser, body: Record<string, unknown>
       { a: user.id, t: title, b: content, now },
     ).lastInsertRowid,
   )
-  const managers = listUsers()
-    .filter((u) => u.active && u.approved && isManager(u) && u.id !== user.id)
+  // 새 글 알림은 정해 둔 계정(config.ts 의 FEEDBACK_NOTIFY)에만 보낸다. 글쓴이 본인은 빼고
+  const receivers = listUsers()
+    .filter((u) => FEEDBACK_NOTIFY.includes(u.id) && u.active && u.approved && u.id !== user.id)
     .map((u) => u.id)
-  notifyLink(managers, `새 건의: ${title} (${user.name})`, 'feedback')
+  notifyLink(receivers, `새 건의: ${title} (${user.name})`, 'feedback')
   return toDto(load(id))
 }
 

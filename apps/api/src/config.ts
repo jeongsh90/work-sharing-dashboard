@@ -28,4 +28,7 @@ export const LOCK_MS = 10 * 60 * 1000
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 // 계정 전환 묶음: 이 계정들끼리는 헤더의 "계정 전환"으로 비밀번호 없이 오갈 수 있다(테스트·운영 확인용).
+// 건의게시판에 새 글이 올라오면 알림을 받을 계정
+export const FEEDBACK_NOTIFY = ['admin', '49634613@owenfood.com']
+
 export const SWITCH_ACCOUNTS = ['admin', 'test1', 'test2', 'test3', '49634613@owenfood.com']
