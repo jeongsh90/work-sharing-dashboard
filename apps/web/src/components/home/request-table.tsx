@@ -1,12 +1,23 @@
 import { useRef, useState } from "react"
-import { MoreHorizontal, Search } from "lucide-react"
+import { MoreHorizontal, Search, Trash2 } from "lucide-react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -30,8 +41,10 @@ import {
   type DesignRequest,
   type RequestStatus,
 } from "@/lib/requests"
+import { api, ApiError } from "@/lib/api"
+import { loadSession } from "@/lib/auth"
 import { openRequest } from "@/lib/router"
-import { useUserNames } from "@/lib/store"
+import { invalidate, useUserNames } from "@/lib/store"
 
 const PAGE_SIZE = 8
 const COLUMN_COUNT = 8
@@ -68,6 +81,26 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
   const [page, setPage] = useState(1)
   const tableRef = useRef<HTMLDivElement>(null)
   const userName = useUserNames()
+  // 요청 삭제는 슈퍼관리자만(서버도 다시 확인한다)
+  const canDelete = loadSession()?.role === "superadmin"
+  const [deleting, setDeleting] = useState<DesignRequest | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+
+  const confirmDelete = async () => {
+    if (!deleting) return
+    setDeletePending(true)
+    setDeleteError(null)
+    try {
+      await api(`/requests/${deleting.id}`, { method: "DELETE" })
+      invalidate()
+      setDeleting(null)
+    } catch (e) {
+      setDeleteError(e instanceof ApiError ? e.message : "삭제하지 못했습니다.")
+    } finally {
+      setDeletePending(false)
+    }
+  }
 
   const matchesQuery = (r: DesignRequest) => {
     const q = query.trim().toLowerCase()
@@ -201,6 +234,21 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={() => openRequest(r.id)}>요청 상세</DropdownMenuItem>
+                        {canDelete && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => {
+                                setDeleteError(null)
+                                setDeleting(r)
+                              }}
+                            >
+                              <Trash2 />
+                              요청 삭제
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -236,6 +284,33 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
           </PaginationItem>
         </PaginationContent>
       </Pagination>
+
+      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && !deletePending && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>요청을 삭제할까요?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleting?.code} {deleting?.title}
+              <br />
+              시안·핀 댓글·진행 기록·첨부 파일까지 모두 지워지고 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePending}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deletePending}
+              onClick={(e) => {
+                e.preventDefault()
+                confirmDelete()
+              }}
+            >
+              {deletePending ? "삭제 중…" : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -458,6 +458,18 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
   })
 }
 
+// 요청 삭제(슈퍼관리자만). 딸린 담당·시안·핀·댓글·기록·알림은 DB 가 함께 지운다(ON DELETE CASCADE).
+// 지운 파일 id 를 돌려주면 서버가 업로드 폴더에서 실제 파일도 지운다.
+export function deleteRequest(user: PublicUser, id: number) {
+  if (user.role !== 'superadmin') throw new HttpError(403, '요청 삭제는 슈퍼관리자만 할 수 있습니다.')
+  loadRequest(id)
+  return transaction(() => {
+    const fileIds = all<{ id: string }>('SELECT id FROM files WHERE request_id = :id', { id }).map((f) => f.id)
+    run('DELETE FROM requests WHERE id = :id', { id })
+    return fileIds
+  })
+}
+
 // ── 진행 동작 ─────────────────────────────────────────
 
 export function performAction(user: PublicUser, id: number, action: Action, body: Record<string, unknown>) {

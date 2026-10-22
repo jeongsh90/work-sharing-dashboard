@@ -21,6 +21,7 @@ import {
   addPinComment,
   archive,
   createRequest,
+  deleteRequest,
   findFile,
   HttpError,
   insertFile,
@@ -83,7 +84,7 @@ function applyCors(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Vary', 'Origin')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
     // Tailscale 에 연결된 PC 에서는 ts.net 주소가 내부망(100.x)으로 풀린다.
     // 공개 사이트(GitHub Pages)에서 오는 요청을 브라우저가 내부망 요청으로 보고 확인을 요구하므로 허용한다.
     if (req.headers['access-control-request-private-network'] === 'true') {
@@ -342,6 +343,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (method === 'PATCH') {
       updateRequest(user, id, await readJson(req))
       return sendJson(res, 200, requestDetail(user, id))
+    }
+    if (method === 'DELETE') {
+      const fileIds = deleteRequest(user, id)
+      await Promise.all(fileIds.map((f) => unlink(join(UPLOAD_DIR, f)).catch(() => {})))
+      return sendJson(res, 200, { ok: true })
     }
   }
   if ((m = path.match(/^\/api\/requests\/(\d+)\/actions\/([a-z-]+)$/)) && method === 'POST') {
