@@ -119,20 +119,19 @@ const BAR_BUTTON = "h-12 px-6 text-base"
 
 // 진행 버튼 색: 누르면 바뀌는 상태의 배지 색(lib/status-colors.ts 와 같은 계열)으로 칠한다.
 // 예) 작업 시작 → 작업 중(파랑), 컨펌 요청 → 시안 확인(보라), 반려 → 수정 중(주황), 작업 완료 → 완료(초록)
-// 외곽선 버튼의 기본 배경(다크 모드 포함)을 덮어쓰도록 dark: 에도 같은 색을 준다.
-const SOLID = "text-white border-transparent dark:border-transparent hover:text-white"
+// 모두 외곽선 형태: 테두리·글자만 상태 색, 마우스를 올리면 같은 색으로 옅게 칠한다.
 const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
-  take: `${SOLID} bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-700`,
-  assign: `${SOLID} bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-700`,
-  start: `${SOLID} bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700`,
-  submit: `${SOLID} bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-700`,
-  approve: `${SOLID} bg-teal-600 hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700`,
-  reject: `${SOLID} bg-orange-600 hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-700`,
-  complete: `${SOLID} bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700`,
-  "request-info": `${SOLID} bg-amber-500 hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-600`,
-  resubmit: `${SOLID} bg-slate-600 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-700`,
-  // 취소는 되돌릴 수 없으므로 빨간 테두리만
-  cancel: "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive dark:border-destructive/50",
+  take: "border-sky-500 text-sky-700 hover:bg-sky-500/10 hover:text-sky-700 dark:border-sky-500/70 dark:text-sky-300 dark:hover:bg-sky-500/15 dark:hover:text-sky-300",
+  assign: "border-sky-500 text-sky-700 hover:bg-sky-500/10 hover:text-sky-700 dark:border-sky-500/70 dark:text-sky-300 dark:hover:bg-sky-500/15 dark:hover:text-sky-300",
+  start: "border-blue-500 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700 dark:border-blue-500/70 dark:text-blue-300 dark:hover:bg-blue-500/15 dark:hover:text-blue-300",
+  submit: "border-violet-500 text-violet-700 hover:bg-violet-500/10 hover:text-violet-700 dark:border-violet-500/70 dark:text-violet-300 dark:hover:bg-violet-500/15 dark:hover:text-violet-300",
+  approve: "border-teal-500 text-teal-700 hover:bg-teal-500/10 hover:text-teal-700 dark:border-teal-500/70 dark:text-teal-300 dark:hover:bg-teal-500/15 dark:hover:text-teal-300",
+  reject: "border-orange-500 text-orange-700 hover:bg-orange-500/10 hover:text-orange-700 dark:border-orange-500/70 dark:text-orange-300 dark:hover:bg-orange-500/15 dark:hover:text-orange-300",
+  complete: "border-emerald-500 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:border-emerald-500/70 dark:text-emerald-300 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300",
+  "request-info": "border-amber-500 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:border-amber-500/70 dark:text-amber-300 dark:hover:bg-amber-500/15 dark:hover:text-amber-300",
+  resubmit: "border-slate-500 text-slate-700 hover:bg-slate-500/10 hover:text-slate-700 dark:border-slate-500/70 dark:text-slate-300 dark:hover:bg-slate-500/15 dark:hover:text-slate-300",
+  // 취소는 되돌릴 수 없으므로 빨간색
+  cancel: "border-destructive/60 text-destructive hover:bg-destructive/10 hover:text-destructive dark:border-destructive/60",
 }
 
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
