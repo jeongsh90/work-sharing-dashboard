@@ -12,6 +12,7 @@ import { LoginForm } from '@/components/login-form'
 import { RequestDetailPage } from '@/components/requests/request-detail-page'
 import { RequestFormPage } from '@/components/requests/request-form-page'
 import { RequestListPage } from '@/components/requests/request-list-page'
+import { SchedulePage } from '@/components/schedule-page'
 import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
 import { VersionPage } from '@/components/version-page'
@@ -121,6 +122,8 @@ export default function App() {
         return <FeedbackPage session={session} />
       case 'version':
         return <VersionPage />
+      case 'schedule':
+        return <SchedulePage />
       default:
         return <Placeholder />
     }

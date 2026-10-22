@@ -23,6 +23,7 @@ export type DesignRequest = {
   department: string
   designers: string[] // 담당 작업자 id, 첫 번째가 주 담당
   createdAt: Date
+  requestedStartAt: Date | null // 요청자가 고른 작업 시작일(작업 기간의 시작)
   startedAt: Date | null // 실제 시작 시각('작업 중'으로 바꾼 때). 시작 전이면 null
   dueAt: Date
   completedAt: Date | null
@@ -64,6 +65,7 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     department: dto.department,
     designers: dto.designers,
     createdAt: new Date(dto.createdAt),
+    requestedStartAt: toDate(dto.requestedStartAt),
     startedAt: toDate(dto.startedAt),
     dueAt: new Date(dto.dueAt),
     completedAt: toDate(dto.completedAt),
