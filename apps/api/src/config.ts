@@ -17,6 +17,8 @@ export const COMPANY_EMAIL_DOMAIN = 'owenfood.com'
 export const ALLOWED_ORIGINS = ['https://jeongsh90.github.io', 'http://localhost:5173']
 
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
+// 로그인 화면에서 "로그인 상태 유지"를 고르면 이 기간 동안 다시 로그인하지 않아도 된다.
+export const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 // 같은 아이디로 연속 실패하면 잠시 막는다.
 export const MAX_FAILED_LOGINS = 5

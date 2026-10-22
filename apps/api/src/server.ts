@@ -155,7 +155,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse) {
   if (!user.approved) {
     return sendJson(res, 403, { error: '가입 승인을 기다리고 있습니다. 슈퍼관리자가 승인하면 로그인할 수 있습니다.' })
   }
-  sendJson(res, 200, { token: createSession(user.id), user })
+  sendJson(res, 200, { token: createSession(user.id, { remember: body.remember === true }), user })
 }
 
 // 파일 올리기: 본문이 파일 그대로(멀티파트 아님). 파일 이름은 X-File-Name 헤더(URL 인코딩)로 받는다.

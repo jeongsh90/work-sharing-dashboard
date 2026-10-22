@@ -1,7 +1,9 @@
 import { useState } from "react"
 
 import { cn } from "cn"
-import { COMPANY_EMAIL_DOMAIN, login, type Session } from "@/lib/auth"
+import { COMPANY_EMAIL_DOMAIN, login, rememberedId, type Session } from "@/lib/auth"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -20,12 +22,19 @@ export function LoginForm({
 }: React.ComponentProps<"div"> & { onLogin: (session: Session) => void }) {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  // 아이디 기억: 저장해 둔 아이디가 있으면 미리 채우고 체크해 둔다.
+  const [savedId] = useState(rememberedId)
+  const [rememberId, setRememberId] = useState(() => savedId !== "")
+  const [keepLoggedIn, setKeepLoggedIn] = useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     setPending(true)
-    const result = await login(String(form.get("id") ?? ""), String(form.get("password") ?? ""))
+    const result = await login(String(form.get("id") ?? ""), String(form.get("password") ?? ""), {
+      rememberId,
+      keepLoggedIn,
+    })
     setPending(false)
     if (result.ok) {
       onLogin(result.session)
@@ -57,6 +66,7 @@ export function LoginForm({
                   inputMode="email"
                   autoComplete="username"
                   placeholder={`휴대폰번호@${COMPANY_EMAIL_DOMAIN}`}
+                  defaultValue={savedId}
                   aria-invalid={error ? true : undefined}
                   required
                 />
@@ -73,6 +83,17 @@ export function LoginForm({
                 />
                 {error && <FieldError>{error}</FieldError>}
               </Field>
+              {/* 비밀번호는 저장하지 않는다. 로그인 상태 유지는 서버가 30일짜리 로그인을 내준다. */}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <Label className="flex cursor-pointer items-center gap-2 font-normal">
+                  <Checkbox checked={rememberId} onCheckedChange={(v) => setRememberId(v === true)} />
+                  아이디 기억
+                </Label>
+                <Label className="flex cursor-pointer items-center gap-2 font-normal">
+                  <Checkbox checked={keepLoggedIn} onCheckedChange={(v) => setKeepLoggedIn(v === true)} />
+                  로그인 상태 유지
+                </Label>
+              </div>
               <Field>
                 <Button type="submit" disabled={pending}>
                   {pending ? "로그인 중…" : "로그인"}

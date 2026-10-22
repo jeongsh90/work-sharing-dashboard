@@ -1,5 +1,5 @@
 // 로그인은 서버(apps/api)가 검사한다. 화면에는 계정 정보를 두지 않는다.
-import { api, ApiError, SESSION_KEY } from './api'
+import { api, ApiError, readSessionRaw, SESSION_KEY } from './api'
 
 export const COMPANY_EMAIL_DOMAIN = 'owenfood.com'
 
@@ -31,19 +31,51 @@ type Stored = { token: string; user: Session }
 
 function readStored(): Stored | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = readSessionRaw()
     return raw ? (JSON.parse(raw) as Stored) : null
   } catch {
     return null
   }
 }
 
-export function writeStored(value: Stored | null) {
+// persist: 로그인 상태 유지(브라우저를 껐다 켜도 남는다). 정하지 않으면 지금 저장된 곳을 그대로 쓴다.
+export function writeStored(value: Stored | null, persist?: boolean) {
   try {
-    if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify(value))
-    else sessionStorage.removeItem(SESSION_KEY)
+    if (!value) {
+      sessionStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(SESSION_KEY)
+      return
+    }
+    const keep = persist ?? (sessionStorage.getItem(SESSION_KEY) === null && localStorage.getItem(SESSION_KEY) !== null)
+    if (keep) {
+      sessionStorage.removeItem(SESSION_KEY)
+      localStorage.setItem(SESSION_KEY, JSON.stringify(value))
+    } else {
+      localStorage.removeItem(SESSION_KEY)
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(value))
+    }
   } catch {
     // 저장소를 쓸 수 없으면 이번 화면에서만 로그인 상태를 유지한다.
+  }
+}
+
+// 로그인 화면의 "아이디 기억": 아이디만 브라우저에 남긴다(비밀번호는 저장하지 않는다).
+const REMEMBER_ID_KEY = 'wsd-remember-id'
+
+export function rememberedId(): string {
+  try {
+    return localStorage.getItem(REMEMBER_ID_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function saveRememberedId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(REMEMBER_ID_KEY, id)
+    else localStorage.removeItem(REMEMBER_ID_KEY)
+  } catch {
+    // 저장할 수 없으면 기억하지 않는다.
   }
 }
 
@@ -55,14 +87,19 @@ export function updateStoredUser(user: Session, token?: string) {
 
 export type LoginResult = { ok: true; session: Session } | { ok: false; error: string }
 
-export async function login(rawId: string, password: string): Promise<LoginResult> {
+export async function login(
+  rawId: string,
+  password: string,
+  { rememberId = false, keepLoggedIn = false } = {},
+): Promise<LoginResult> {
   const id = rawId.trim()
   if (!id || !password) {
     return { ok: false, error: '아이디(회사 이메일)와 비밀번호를 입력해 주세요.' }
   }
   try {
-    const body = await api<Stored>('/login', { body: { id, password } })
-    writeStored(body)
+    const body = await api<Stored>('/login', { body: { id, password, remember: keepLoggedIn } })
+    writeStored(body, keepLoggedIn)
+    saveRememberedId(rememberId ? id : null)
     return { ok: true, session: body.user }
   } catch (error) {
     return { ok: false, error: error instanceof ApiError ? error.message : '로그인하지 못했습니다.' }

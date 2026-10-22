@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 
-import { SESSION_TTL_MS } from './config.ts'
+import { REMEMBER_TTL_MS, SESSION_TTL_MS } from './config.ts'
 import { all, get, run } from './db.ts'
 
 const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>
@@ -136,13 +136,14 @@ export function updateUser(id: string, fields: Partial<UserFields & { presence: 
 // 세션: 토큰 원문은 화면에만 주고, DB 에는 해시만 둔다.
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
 
-export function createSession(userId: string) {
+// remember: 로그인 상태 유지(30일). 아니면 12시간
+export function createSession(userId: string, { remember = false } = {}) {
   const token = randomBytes(32).toString('hex')
   run('DELETE FROM sessions WHERE expires_at < :now', { now: Date.now() })
   run('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (:h, :u, :e)', {
     h: tokenHash(token),
     u: userId,
-    e: Date.now() + SESSION_TTL_MS,
+    e: Date.now() + (remember ? REMEMBER_TTL_MS : SESSION_TTL_MS),
   })
   return token
 }

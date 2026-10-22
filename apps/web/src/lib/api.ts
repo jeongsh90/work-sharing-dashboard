@@ -7,9 +7,18 @@ export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const SESSION_KEY = 'wsd-session'
 
+// 로그인 정보는 이 탭(sessionStorage)에 두고, "로그인 상태 유지"면 브라우저(localStorage)에 둔다.
+export function readSessionRaw(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY)
+  } catch {
+    return null
+  }
+}
+
 export function storedToken(): string | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = readSessionRaw()
     return raw ? (JSON.parse(raw) as { token: string }).token : null
   } catch {
     return null
