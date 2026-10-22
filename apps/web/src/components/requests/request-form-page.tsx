@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useSidebar } from "@/components/ui/sidebar"
 import { Textarea } from "@/components/ui/textarea"
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { FilePicker } from "@/components/requests/file-picker"
@@ -199,6 +200,9 @@ export function RequestForm({
   const [pending, setPending] = useState(false)
   // 새 요청은 오늘 이전 날짜를 고를 수 없다. 기준 날짜는 화면을 열 때 한 번 잡는다.
   const [today] = useState(() => startOfDay(new Date()))
+  // 보내기 막대는 화면 하단에 고정한다. 왼쪽 끝은 헤더처럼 사이드바 폭(펼침/접힘/모바일)에 맞춘다.
+  const { state: sidebarState, isMobile } = useSidebar()
+  const barLeft = isMobile ? "0px" : sidebarState === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)"
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -370,25 +374,30 @@ export function RequestForm({
           <FilePicker files={files} onChange={setFiles} hint="이미지, PDF, 문서 등 한 파일 100MB까지" />
           <FieldDescription>참고 이미지나 기존 시안이 있으면 같이 올려 주세요.</FieldDescription>
         </Field>
-        {errors.form && <FieldError>{errors.form}</FieldError>}
-        {/* 보내기 버튼 위에 긴급 처리 요청 체크 */}
-        <div className="flex flex-col items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+        {/* 하단 고정 막대에 가려지지 않게 빈 공간 */}
+        <div className="h-24 shrink-0" aria-hidden />
+      </FieldGroup>
+      {/* 화면 하단 고정 막대: 긴급처리요청 체크 · (취소) · 요청 보내기 */}
+      <div
+        className="fixed right-0 bottom-0 z-20 flex flex-col items-center gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur transition-[left] duration-200 ease-linear"
+        style={{ left: barLeft }}
+      >
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <label className="mr-2 flex cursor-pointer items-center gap-2 text-sm font-medium">
             <Checkbox checked={urgent} onCheckedChange={(v) => setUrgent(v === true)} />
             긴급처리요청
           </label>
-          <div className="flex items-center gap-2">
-            {onCancel && (
-              <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={onCancel} disabled={pending}>
-                취소
-              </Button>
-            )}
-            <Button type="submit" className="h-14 px-10 text-base" disabled={pending}>
-              {pending ? "보내는 중…" : initial ? "수정 내용 저장" : "요청 보내기"}
+          {onCancel && (
+            <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={onCancel} disabled={pending}>
+              취소
             </Button>
-          </div>
+          )}
+          <Button type="submit" className="h-14 px-10 text-base" disabled={pending}>
+            {pending ? "보내는 중…" : initial ? "수정 내용 저장" : "요청 보내기"}
+          </Button>
         </div>
-      </FieldGroup>
+        {errors.form && <FieldError>{errors.form}</FieldError>}
+      </div>
     </form>
   )
 }
