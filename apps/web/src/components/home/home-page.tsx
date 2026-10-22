@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button"
 import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { StatCards } from "@/components/home/stat-cards"
+import { PresenceButton } from "@/components/home/presence-button"
 import { PageState } from "@/components/page-state"
+import type { Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import type { Presence } from "@/lib/presence"
 import { navigate } from "@/lib/router"
-import { useDesigners, useRequests } from "@/lib/store"
+import { isDesignWorker, useDesigners, useRequests } from "@/lib/store"
 
 export function Section({
   title,
@@ -45,7 +47,7 @@ function MoreButton({ label, onClick }: { label: string; onClick: () => void }) 
 }
 
 // 홈은 관리자·작업자·요청자 모두 같은 화면이다.
-export function HomePage() {
+export function HomePage({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
   const { requests, error } = useRequests()
   const designers = useDesigners()
 
@@ -53,8 +55,11 @@ export function HomePage() {
 
   const presence = Object.fromEntries(designers.map((d) => [d.id, d.presence])) as Record<string, Presence>
 
+  // 오른쪽 아래 상태 버튼이 표의 마지막 줄을 가리지 않게 아래 여백을 둔다
+  const showPresence = isDesignWorker(session)
+
   return (
-    <div className={PAGE_GRID}>
+    <div className={`${PAGE_GRID} ${showPresence ? "pb-24 md:pb-24" : ""}`}>
       <Section
         title="금주 진행 현황"
         action={<MoreButton label="금주 진행 현황 자세히 보기 (디자인팀 일정)" onClick={() => navigate("schedule")} />}
@@ -67,6 +72,8 @@ export function HomePage() {
       <Section title="작업 현황">
         <RequestTable requests={requests} emptyMessage="아직 들어온 요청이 없습니다." />
       </Section>
+      {/* 작업자(디자인팀 관리자 포함)만: 오른쪽 아래 내 현재 상태 버튼 */}
+      {showPresence && <PresenceButton session={session} onSessionChange={onSessionChange} />}
     </div>
   )
 }

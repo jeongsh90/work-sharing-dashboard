@@ -94,7 +94,7 @@ export default function App() {
   const content = (() => {
     switch (page) {
       case 'home':
-        return <HomePage />
+        return <HomePage session={session} onSessionChange={setSession} />
       case 'request':
         return <RequestFormPage session={session} />
       case 'inbox':
