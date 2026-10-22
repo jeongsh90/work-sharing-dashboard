@@ -63,11 +63,18 @@ export function FilePicker({
         />
       </label>
       {files.length > 0 && (
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {files.map((file, i) => (
-            <PickedFile key={`${file.name}-${i}`} file={file} onRemove={() => onChange(files.filter((_, j) => j !== i))} />
-          ))}
-        </ul>
+        <>
+          <p className="text-xs text-muted-foreground tabular-nums">선택한 파일 {files.length}개</p>
+          {/* 최대 6개(넓은 화면 2열 × 3줄, 좁은 화면 1열 × 6줄)까지 보이고 나머지는 이 안에서 스크롤 */}
+          <ul
+            className="grid max-h-[388px] grid-cols-1 content-start gap-2 overflow-y-auto pr-1 sm:max-h-[190px] sm:grid-cols-2"
+            data-lenis-prevent
+          >
+            {files.map((file, i) => (
+              <PickedFile key={`${file.name}-${i}`} file={file} onRemove={() => onChange(files.filter((_, j) => j !== i))} />
+            ))}
+          </ul>
+        </>
       )}
     </div>
   )
