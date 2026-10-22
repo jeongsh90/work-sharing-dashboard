@@ -16,12 +16,13 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Section } from "@/components/home/home-page"
+import { UserAvatar } from "@/components/user-avatar"
 import { PageState } from "@/components/page-state"
 import { api, ApiError } from "@/lib/api"
 import { COMPANY_EMAIL_DOMAIN, ROLE_LABEL, type Role, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
-import { invalidate, useUsers, type UserInfo } from "@/lib/store"
+import { DESIGN_TEAM, invalidate, useUsers, type UserInfo } from "@/lib/store"
 
 // 팀 관리(관리자): 계정 만들기, 역할·부서 바꾸기, 비밀번호 정해 주기, 사용 중지
 export function TeamPage({ session }: { session: Session }) {
@@ -33,6 +34,15 @@ export function TeamPage({ session }: { session: Session }) {
   // 승인 전 계정은 슈퍼관리자에게만 온다. 위쪽 가입 승인 대기에서 따로 처리한다.
   const pending = users.filter((u) => !u.approved)
   const members = users.filter((u) => u.approved)
+  // 부서별로 묶는다. 디자인팀이 맨 앞, 나머지는 부서 이름 순. 부서가 비면 "부서 미지정"
+  const NO_TEAM = "부서 미지정"
+  const groups = new Map<string, UserInfo[]>()
+  for (const u of members) {
+    const team = u.department.trim() || NO_TEAM
+    groups.set(team, [...(groups.get(team) ?? []), u])
+  }
+  const rank = (t: string) => (t === DESIGN_TEAM ? 0 : t === NO_TEAM ? 2 : 1)
+  const teams = [...groups.entries()].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b, "ko"))
 
   return (
     <div className={PAGE_GRID}>
@@ -47,55 +57,21 @@ export function TeamPage({ session }: { session: Session }) {
           </Button>
         }
       >
-        <div className="rounded-xl border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-4">이름</TableHead>
-                <TableHead>아이디</TableHead>
-                <TableHead>역할</TableHead>
-                <TableHead>부서</TableHead>
-                <TableHead>직급·직책</TableHead>
-                <TableHead>로그인</TableHead>
-                <TableHead className="pr-4 text-right">
-                  <span className="sr-only">관리</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((u) => {
-                const locked = u.role === "superadmin" && session.role !== "superadmin"
-                return (
-                  <TableRow key={u.id} className={u.active ? undefined : "text-muted-foreground"}>
-                    <TableCell className="pl-4 font-medium">{u.name}</TableCell>
-                    <TableCell>{u.id}</TableCell>
-                    <TableCell>{ROLE_LABEL[u.role]}</TableCell>
-                    <TableCell>{u.department || "-"}</TableCell>
-                    <TableCell>{[u.rank, u.position].filter(Boolean).join(" · ") || "-"}</TableCell>
-                    <TableCell>
-                      {!u.active ? (
-                        <Badge variant="outline">사용 중지</Badge>
-                      ) : u.canLogin ? (
-                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-                          가능
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground">
-                          비밀번호 없음
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="pr-4 text-right">
-                      <Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing(u)}>
-                        수정
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <ul className="grid grid-cols-12 gap-4 md:gap-6">
+          {teams.map(([team, list]) => (
+            <li key={team} className="col-span-12 flex flex-col rounded-xl border bg-card md:col-span-6 xl:col-span-4">
+              <div className="flex items-center gap-2 border-b px-4 py-3">
+                <h3 className="font-semibold">{team}</h3>
+                <span className="text-sm text-muted-foreground tabular-nums">{list.length}명</span>
+              </div>
+              <ul className="flex flex-col divide-y">
+                {list.map((u) => (
+                  <MemberRow key={u.id} user={u} session={session} onEdit={() => setEditing(u)} />
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
       </Section>
       {editing && (
         <UserDialog
@@ -207,6 +183,44 @@ function PendingSignups({ users }: { users: UserInfo[] }) {
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
     </Section>
+  )
+}
+
+// 팀 카드 안의 한 사람: 사진, 이름, 직급·직책, 아이디, 역할, 로그인 상태, 수정
+function MemberRow({ user: u, session, onEdit }: { user: UserInfo; session: Session; onEdit: () => void }) {
+  const locked = u.role === "superadmin" && session.role !== "superadmin"
+  return (
+    <li className={`flex items-center gap-3 px-4 py-3 ${u.active ? "" : "opacity-60"}`}>
+      <UserAvatar name={u.name} avatarId={u.avatarId} className="size-10" />
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1.5 truncate">
+          <span className="font-medium">{u.name}</span>
+          {(u.rank || u.position) && (
+            <span className="text-xs text-muted-foreground">{[u.rank, u.position].filter(Boolean).join(" · ")}</span>
+          )}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">{u.id}</p>
+        <div className="mt-1 flex flex-wrap gap-1">
+          <Badge variant="outline">{ROLE_LABEL[u.role]}</Badge>
+          {!u.active ? (
+            <Badge variant="outline" className="text-muted-foreground">
+              사용 중지
+            </Badge>
+          ) : u.canLogin ? (
+            <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+              로그인 가능
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-muted-foreground">
+              비밀번호 없음
+            </Badge>
+          )}
+        </div>
+      </div>
+      <Button variant="ghost" size="sm" disabled={locked} onClick={onEdit}>
+        수정
+      </Button>
+    </li>
   )
 }
 
