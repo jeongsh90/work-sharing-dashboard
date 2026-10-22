@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { Check, MapPin, RotateCcw } from "lucide-react"
+import { Check, Download, MapPin, RotateCcw } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { AuthImage } from "@/components/requests/file-list"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, downloadFile } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
 import { scrollToElement } from "@/lib/smooth-scroll"
@@ -110,7 +110,13 @@ export function ReviewBoard({
                 />
               )}
             </div>
-            <figcaption className="truncate text-xs text-muted-foreground">{file.name}</figcaption>
+            <figcaption className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate">{file.name}</span>
+              <Button variant="ghost" size="xs" onClick={() => downloadFile(file.id, file.name)}>
+                <Download data-icon="inline-start" />
+                받기
+              </Button>
+            </figcaption>
           </figure>
         ))}
       </div>

@@ -14,7 +14,8 @@ export const STATUSES = [
   'in-progress',
   'review',
   'revising',
-  'approved',
+  'approved', // 예전 흐름의 컨펌 완료(작업 완료 처리 전). 새 요청은 컨펌하면 바로 source-pending
+  'source-pending', // 완료(원본 대기): 컨펌으로 작업은 끝났고, 작업자가 원본 파일을 올리기를 기다린다
   'done',
   'canceled',
 ] as const
@@ -90,6 +91,7 @@ export type Action =
   | 'reject'
   | 'approve'
   | 'complete'
+  | 'upload-source'
   | 'cancel'
   | 'pin'
   | 'comment'
@@ -113,6 +115,7 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     reject: (owner || manager) && s === 'review',
     approve: (owner || manager) && s === 'review',
     complete: (assignee || manager) && s === 'approved',
+    'upload-source': (assignee || manager) && s === 'source-pending',
     cancel: active && (owner || manager),
     // 핀은 시안 확인 중일 때 최신 시안에만 꽂는다. 핀 댓글·일반 댓글은 관계자 누구나
     pin: s === 'review' && (owner || manager || assignee || designer),
@@ -383,7 +386,7 @@ export function requestDetail(user: PublicUser, id: number) {
 // 최종 파일 보관함: 완료된 요청과 최종 파일·컨펌된 시안
 export function archive() {
   const done = all<RequestRow & { requester_name: string }>(
-    `${SUMMARY_SQL} WHERE r.status = 'done' ORDER BY r.completed_at DESC`,
+    `${SUMMARY_SQL} WHERE r.status IN ('done', 'source-pending') ORDER BY r.completed_at DESC`,
   )
   return done.map((row) => {
     const approved = get<{ id: number }>(
@@ -571,9 +574,12 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           logEvent(id, user.id, action, req.status, 'revising', note ? `${latest.round}차 시안 반려 · ${note}` : `${latest.round}차 시안 반려`)
           notify(assignees, user.id, id, `${latest.round}차 시안이 반려되었습니다: ${req.title}`)
         } else {
-          setStatus(req, 'approved', { approved_at: Date.now() })
-          logEvent(id, user.id, action, req.status, 'approved', note ? `${latest.round}차 시안 컨펌 · ${note}` : `${latest.round}차 시안 컨펌`)
-          notify(assignees, user.id, id, `${latest.round}차 시안이 컨펌되었습니다: ${req.title}`)
+          // 컨펌하면 작업은 완료로 본다. 작업자는 이어서 작업 원본을 올린다(원본 대기 → 원본 업로드 → 완료).
+          const now = Date.now()
+          setStatus(req, 'source-pending', { approved_at: now, completed_at: now })
+          logEvent(id, user.id, action, req.status, 'source-pending', note ? `${latest.round}차 시안 컨펌 · ${note}` : `${latest.round}차 시안 컨펌`)
+          notify([req.requester_id], user.id, id, `작업이 완료되었습니다(${latest.round}차 시안 컨펌): ${req.title}`)
+          notify(assignees, user.id, id, `컨펌 완료 · 작업 원본 파일을 올려 주세요: ${req.title}`)
         }
         return
       }
@@ -582,6 +588,14 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         setStatus(req, 'done', { completed_at: Date.now() })
         logEvent(id, user.id, action, req.status, 'done', note)
         notify([req.requester_id], user.id, id, `작업이 완료되었습니다: ${req.title}`)
+        return
+      }
+      case 'upload-source': {
+        const count = claimFiles(user, body.fileIds, { requestId: id, kind: 'final' })
+        if (count === 0) throw new HttpError(400, '작업 원본 파일을 한 개 이상 올려 주세요.')
+        setStatus(req, 'done')
+        logEvent(id, user.id, action, req.status, 'done', note ? `원본 ${count}개 · ${note}` : `원본 ${count}개`)
+        notify([req.requester_id], user.id, id, `작업 원본 파일이 등록되었습니다: ${req.title}`)
         return
       }
       case 'cancel': {

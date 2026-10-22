@@ -97,7 +97,7 @@ export function SchedulePage() {
   const monthStart = month
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0)
   const thisMonthCount = items.filter((i) => i.start <= monthEnd && i.end >= monthStart).length
-  const legend: RequestStatus[] = ["requested", "waiting", "in-progress", "review", "revising", "approved", ...(includeDone ? (["done"] as RequestStatus[]) : [])]
+  const legend: RequestStatus[] = ["requested", "waiting", "in-progress", "review", "revising", "approved", ...(includeDone ? (["source-pending", "done"] as RequestStatus[]) : [])]
 
   return (
     <div className={PAGE_GRID}>

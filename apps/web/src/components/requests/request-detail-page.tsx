@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowLeft, Check } from "lucide-react"
+import { ArrowLeft, Check, Download } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,16 +17,18 @@ import type { Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type RequestDetailDto, type RequestStatus } from "@/lib/requests"
 import { STATUS_BEAM } from "@/lib/status-colors"
+import { downloadFile } from "@/lib/api"
 import { useApi, invalidate, useUserNames } from "@/lib/store"
 
 // 진행 단계 표시. 기획 흐름: 요청 → 담당 지정 → 작업 → 컨펌 요청 → 컨펌 → 완료
 const STEPS: { label: string; reached: RequestStatus[] }[] = [
-  { label: "요청", reached: ["requested", "needs-info", "waiting", "in-progress", "review", "revising", "approved", "done"] },
-  { label: "담당 지정", reached: ["waiting", "in-progress", "review", "revising", "approved", "done"] },
-  { label: "작업", reached: ["in-progress", "review", "revising", "approved", "done"] },
-  { label: "컨펌 요청", reached: ["review", "revising", "approved", "done"] },
-  { label: "컨펌 완료", reached: ["approved", "done"] },
-  { label: "작업 완료", reached: ["done"] },
+  { label: "요청", reached: ["requested", "needs-info", "waiting", "in-progress", "review", "revising", "approved", "source-pending", "done"] },
+  { label: "담당 지정", reached: ["waiting", "in-progress", "review", "revising", "approved", "source-pending", "done"] },
+  { label: "작업", reached: ["in-progress", "review", "revising", "approved", "source-pending", "done"] },
+  { label: "컨펌 요청", reached: ["review", "revising", "approved", "source-pending", "done"] },
+  // 컨펌하면 작업은 완료. 그다음 작업자가 원본을 올린다(예전 요청의 approved 도 여기)
+  { label: "컨펌·완료", reached: ["approved", "source-pending", "done"] },
+  { label: "원본 등록", reached: ["done"] },
 ]
 
 // 진행 단계: 지름 56px 원(휴대폰은 44px)을 선으로 잇는다. 지난 단계는 체크, 현재 단계는 지금 상태 색 테두리, 남은 단계는 흐린 번호
@@ -119,7 +121,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           </div>
           {detail.finals.length > 0 && (
             <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">최종 파일</h3>
+              <h3 className="text-xs font-medium text-muted-foreground">작업 원본</h3>
               <FileGallery files={detail.finals} />
             </div>
           )}
@@ -169,6 +171,18 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
                   컨펌
                 </Badge>
               )}
+              {/* 이 차수 시안 이미지만 한 번에 내려받기(원본 없이 컨펌 이미지만 필요할 때) */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={async () => {
+                  for (const f of shown.files) await downloadFile(f.id, f.name)
+                }}
+              >
+                <Download data-icon="inline-start" />
+                시안 이미지 받기{shown.files.length > 1 ? ` (${shown.files.length}개)` : ""}
+              </Button>
             </div>
             {shown.note && <p className="whitespace-pre-wrap text-muted-foreground">{shown.note}</p>}
             {shown.decision && (

@@ -29,7 +29,7 @@ const WEEK_TAGS: { label: string; statuses: RequestStatus[]; color: RequestStatu
   { label: "작업 중", statuses: ["in-progress", "revising", "approved"], color: "in-progress" },
   { label: "작업 대기", statuses: ["requested", "needs-info", "waiting"], color: "waiting" },
   { label: "검토 대기", statuses: ["review"], color: "review" },
-  { label: "완료", statuses: ["done"], color: "done" },
+  { label: "완료", statuses: ["done", "source-pending"], color: "done" },
 ]
 
 function WorkingMarker({ request }: { request: DesignRequest }) {

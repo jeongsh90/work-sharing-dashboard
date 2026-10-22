@@ -8,6 +8,7 @@ export type RequestStatus =
   | 'review' // 시안 확인(컨펌 요청 중)
   | 'revising' // 수정 중 (n차)
   | 'approved' // 컨펌 완료(작업 완료 처리 전)
+  | 'source-pending' // 완료(원본 대기): 컨펌으로 작업은 끝났고 작업자가 원본 파일을 올리기를 기다린다
   | 'done' // 완료
   | 'canceled' // 취소
 
@@ -98,6 +99,7 @@ export const STATUS_LABEL: Record<RequestStatus, string> = {
   review: '시안 확인',
   revising: '수정 중',
   approved: '컨펌 완료',
+  'source-pending': '완료(원본 대기)',
   done: '완료',
   canceled: '취소',
 }
@@ -241,6 +243,7 @@ export type RequestAction =
   | 'reject'
   | 'approve'
   | 'complete'
+  | 'upload-source'
   | 'cancel'
   | 'pin'
   | 'comment'
@@ -274,5 +277,6 @@ export const EVENT_LABEL: Record<string, string> = {
   reject: '반려',
   approve: '컨펌',
   complete: '작업 완료',
+  'upload-source': '원본 업로드',
   cancel: '요청 취소',
 }

@@ -11,6 +11,19 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.4.0',
+    date: '2026-10-23',
+    changes: [
+      '컨펌하면 바로 완료 처리하고 요청자에게 알림, 상태 "완료(원본 대기)" 추가',
+      '작업자에게 작업 원본 업로드 요청 알림, 원본 업로드 후 최종 완료',
+      '요청 상세에서 시안 이미지만 내려받기(차수 전체·이미지별)',
+      '진행 단계를 원형으로 크게 표시',
+      '프로필 사진 등록, 팀 관리 부서별 카드',
+      '로그인 화면 아이디 기억·로그인 상태 유지',
+      '건의 새 글 알림은 admin·정상훈에게만',
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-10-22',
     changes: [

@@ -53,7 +53,7 @@ const FILTERS: { id: string; label: string; statuses: RequestStatus[] | null }[]
   { id: "waiting", label: "작업 대기", statuses: ["requested", "needs-info", "waiting"] },
   { id: "working", label: "작업 중", statuses: ["in-progress", "revising", "approved"] },
   { id: "review", label: "시안 확인", statuses: ["review"] },
-  { id: "done", label: "완료", statuses: ["done", "canceled"] },
+  { id: "done", label: "완료", statuses: ["source-pending", "done", "canceled"] },
 ]
 
 // 미배정(담당 없음) 요청을 맨 위에, 그다음 진행 중인 요청을 마감이 빠른 순으로, 끝난 요청은 최근 마감 순으로 뒤에

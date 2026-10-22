@@ -59,7 +59,7 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
     label: "컨펌",
     dialog: {
       title: "시안 컨펌",
-      description: "이 시안으로 확정합니다. 작업자가 최종 파일을 정리해 작업 완료 처리합니다.",
+      description: "이 시안으로 확정하고 작업을 완료 처리합니다. 요청자에게 완료 알림이, 작업자에게 원본 업로드 요청 알림이 갑니다.",
       confirm: "컨펌",
       note: { label: "메모", placeholder: "전달할 말이 있으면 적어 주세요(선택)" },
     },
@@ -81,6 +81,16 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
       description: "요청자에게 완료 알림이 가고 최종 파일 보관함에 올라갑니다.",
       confirm: "작업 완료",
       files: { label: "최종 파일", hint: "원본(PSD·AI)이나 최종 이미지(선택)" },
+      note: { label: "메모", placeholder: "선택" },
+    },
+  },
+  "upload-source": {
+    label: "원본 업로드",
+    dialog: {
+      title: "작업 원본 업로드",
+      description: "컨펌된 작업의 원본 파일(PSD·AI 등)을 올리면 최종 완료되고 요청자에게 알림이 갑니다.",
+      confirm: "원본 올리고 완료",
+      files: { label: "작업 원본", hint: "PSD·AI·소스 이미지 등, 여러 개 가능", required: true },
       note: { label: "메모", placeholder: "선택" },
     },
   },
@@ -128,6 +138,7 @@ const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
   approve: "border-teal-500 text-teal-700 hover:bg-teal-500/10 hover:text-teal-700 dark:border-teal-500/70 dark:text-teal-300 dark:hover:bg-teal-500/15 dark:hover:text-teal-300",
   reject: "border-orange-500 text-orange-700 hover:bg-orange-500/10 hover:text-orange-700 dark:border-orange-500/70 dark:text-orange-300 dark:hover:bg-orange-500/15 dark:hover:text-orange-300",
   complete: "border-emerald-500 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:border-emerald-500/70 dark:text-emerald-300 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300",
+  "upload-source": "border-lime-600 text-lime-700 hover:bg-lime-500/10 hover:text-lime-700 dark:border-lime-500/70 dark:text-lime-300 dark:hover:bg-lime-500/15 dark:hover:text-lime-300",
   "request-info": "border-amber-500 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:border-amber-500/70 dark:text-amber-300 dark:hover:bg-amber-500/15 dark:hover:text-amber-300",
   resubmit: "border-slate-500 text-slate-700 hover:bg-slate-500/10 hover:text-slate-700 dark:border-slate-500/70 dark:text-slate-300 dark:hover:bg-slate-500/15 dark:hover:text-slate-300",
   // 취소는 되돌릴 수 없으므로 빨간색
@@ -135,7 +146,7 @@ const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
 }
 
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
-const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "complete", "resubmit", "assign", "request-info", "cancel"]
+const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "upload-source", "complete", "resubmit", "assign", "request-info", "cancel"]
 
 export function ActionPanel({
   detail,
