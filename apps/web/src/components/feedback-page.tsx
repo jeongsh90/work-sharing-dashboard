@@ -1,0 +1,241 @@
+import { useState } from "react"
+import { Trash2 } from "lucide-react"
+
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Section } from "@/components/home/home-page"
+import { PageState } from "@/components/page-state"
+import { api, ApiError } from "@/lib/api"
+import { isManager, type Session } from "@/lib/auth"
+import { PAGE_GRID } from "@/lib/layout"
+import { timeAgo } from "@/lib/requests"
+import { invalidate, useApi, useUserNames } from "@/lib/store"
+
+// 건의게시판. 누구나 쓰고, 관리자가 처리 상태와 답변을 남긴다(apps/api/src/suggestions.ts).
+
+type SuggestionStatus = "open" | "reviewing" | "done" | "declined"
+
+type Suggestion = {
+  id: number
+  authorId: string
+  authorName: string
+  title: string
+  body: string
+  status: SuggestionStatus
+  reply: string
+  repliedBy: string | null
+  repliedAt: number | null
+  createdAt: number
+}
+
+const STATUS: Record<SuggestionStatus, { label: string; className: string }> = {
+  open: { label: "접수", className: "bg-slate-500/10 text-slate-700 dark:text-slate-300" },
+  reviewing: { label: "검토 중", className: "bg-blue-500/10 text-blue-700 dark:text-blue-300" },
+  done: { label: "반영 완료", className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  declined: { label: "보류", className: "bg-muted text-muted-foreground" },
+}
+
+function WriteForm() {
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim() || !body.trim()) return setError("제목과 내용을 입력해 주세요.")
+    setPending(true)
+    setError(null)
+    try {
+      await api("/suggestions", { body: { title, body } })
+      setTitle("")
+      setBody("")
+      setDone(true)
+      invalidate()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "등록하지 못했습니다.")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>건의하기</CardTitle>
+        <CardDescription>불편한 점이나 있었으면 하는 기능을 자유롭게 적어 주세요. 관리자가 확인 후 답변드립니다.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} noValidate>
+          <FieldGroup className="gap-4">
+            <Field>
+              <FieldLabel htmlFor="fb-title">제목</FieldLabel>
+              <Input
+                id="fb-title"
+                value={title}
+                maxLength={100}
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  setDone(false)
+                }}
+                placeholder="예: 요청서에 참고 링크 칸이 있었으면 좋겠어요"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="fb-body">내용</FieldLabel>
+              <Textarea
+                id="fb-body"
+                value={body}
+                maxLength={5000}
+                onChange={(e) => {
+                  setBody(e.target.value)
+                  setDone(false)
+                }}
+                className="min-h-28"
+              />
+            </Field>
+            {error && <FieldError>{error}</FieldError>}
+            <div className="flex items-center justify-end gap-3">
+              {done && <span className="text-sm text-emerald-700 dark:text-emerald-300">등록했습니다.</span>}
+              <Button type="submit" disabled={pending}>
+                {pending ? "등록 중…" : "건의 등록"}
+              </Button>
+            </div>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SuggestionItem({ item, session }: { item: Suggestion; session: Session }) {
+  const manager = isManager(session)
+  const userName = useUserNames()
+  const [status, setStatus] = useState(item.status)
+  const [reply, setReply] = useState(item.reply)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const canDelete = manager || (item.authorId === session.id && item.status === "open")
+  const changed = status !== item.status || reply.trim() !== item.reply
+
+  const run = async (work: () => Promise<unknown>) => {
+    setPending(true)
+    setError(null)
+    try {
+      await work()
+      invalidate()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "처리하지 못했습니다.")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <li className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+      <div className="flex items-start gap-2">
+        <Badge variant="secondary" className={STATUS[item.status].className}>
+          {STATUS[item.status].label}
+        </Badge>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium break-words">{item.title}</p>
+          <p className="text-xs text-muted-foreground">
+            {item.authorName} · {timeAgo(new Date(item.createdAt))}
+          </p>
+        </div>
+        {canDelete && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`${item.title} 삭제`}
+            disabled={pending}
+            onClick={() => window.confirm("이 건의글을 지울까요?") && run(() => api(`/suggestions/${item.id}`, { method: "DELETE" }))}
+          >
+            <Trash2 />
+          </Button>
+        )}
+      </div>
+      <p className="text-sm whitespace-pre-wrap break-words">{item.body}</p>
+      {item.reply && !manager && (
+        <div className="rounded-lg bg-muted/50 p-3 text-sm">
+          <p className="mb-1 text-xs text-muted-foreground">
+            답변 · {userName(item.repliedBy)} {item.repliedAt ? `· ${timeAgo(new Date(item.repliedAt))}` : ""}
+          </p>
+          <p className="whitespace-pre-wrap break-words">{item.reply}</p>
+        </div>
+      )}
+      {manager && (
+        <div className="flex flex-col gap-2 rounded-lg bg-muted/50 p-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">처리 상태</span>
+            <Select value={status} onValueChange={(v) => setStatus(v as SuggestionStatus)}>
+              <SelectTrigger size="sm" className="w-32" aria-label="처리 상태">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(STATUS) as SuggestionStatus[]).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS[s].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {item.repliedAt && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                답변 {userName(item.repliedBy)} · {timeAgo(new Date(item.repliedAt))}
+              </span>
+            )}
+          </div>
+          <Textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder="답변(작성자에게 알림이 갑니다)"
+            aria-label={`${item.title} 답변`}
+            maxLength={5000}
+            className="min-h-16 bg-background"
+          />
+          <Button
+            size="sm"
+            className="self-end"
+            disabled={pending || !changed}
+            onClick={() => run(() => api(`/suggestions/${item.id}`, { method: "PATCH", body: { status, reply } }))}
+          >
+            {pending ? "저장 중…" : "저장"}
+          </Button>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </li>
+  )
+}
+
+export function FeedbackPage({ session }: { session: Session }) {
+  const { data, error } = useApi<Suggestion[]>("/suggestions", 60_000)
+
+  return (
+    <div className={PAGE_GRID}>
+      <div className="col-span-12 flex flex-col gap-6 lg:col-span-8 xl:col-span-6">
+        <WriteForm />
+        <Section title="건의 목록" aside={data && <span className="text-sm text-muted-foreground">{data.length}건</span>}>
+          {!data ? (
+            <PageState error={error} />
+          ) : data.length === 0 ? (
+            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">아직 건의글이 없습니다.</p>
+          ) : (
+            <ol className="flex flex-col gap-3">
+              {data.map((item) => (
+                <SuggestionItem key={`${item.id}-${item.status}-${item.reply}`} item={item} session={session} />
+              ))}
+            </ol>
+          )}
+        </Section>
+      </div>
+    </div>
+  )
+}

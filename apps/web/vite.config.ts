@@ -1,13 +1,27 @@
+import { execSync } from 'node:child_process'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+
+function gitCommit() {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return ''
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
   // GitHub Pages 는 /work-sharing-dashboard/ 하위 경로, 로컬·Tailscale 은 / 에서 연다.
   base: process.env.VITE_BASE ?? '/',
   plugins: [react(), tailwindcss()],
+  // 버전 정보 화면에 보여 줄 배포 시각과 커밋(git 이 없으면 비워 둔다)
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __COMMIT__: JSON.stringify(gitCommit()),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

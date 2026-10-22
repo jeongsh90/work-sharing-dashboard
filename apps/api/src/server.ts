@@ -35,6 +35,7 @@ import {
   updateRequest,
   type Action,
 } from './requests.ts'
+import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import {
   approveUser,
   createSession,
@@ -379,6 +380,20 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     const body = await readJson(req)
     resolvePin(user, Number(m[1]), body.resolved !== false)
     return sendJson(res, 200, { ok: true })
+  }
+
+  // ── 건의게시판 ──
+  if (path === '/api/suggestions') {
+    if (method === 'GET') return sendJson(res, 200, listSuggestions())
+    if (method === 'POST') return sendJson(res, 201, createSuggestion(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/suggestions\/(\d+)$/))) {
+    const id = Number(m[1])
+    if (method === 'PATCH') return sendJson(res, 200, answerSuggestion(user, id, await readJson(req)))
+    if (method === 'DELETE') {
+      deleteSuggestion(user, id)
+      return sendJson(res, 200, { ok: true })
+    }
   }
 
   // ── 알림 ──

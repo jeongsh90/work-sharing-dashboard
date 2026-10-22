@@ -157,6 +157,20 @@ CREATE INDEX IF NOT EXISTS idx_pins_file ON pins(file_id);
 CREATE INDEX IF NOT EXISTS idx_comments_request ON comments(request_id);
 CREATE INDEX IF NOT EXISTS idx_events_request ON events(request_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
+
+-- 건의게시판. status: open(접수) | reviewing(검토 중) | done(반영 완료) | declined(보류)
+CREATE TABLE IF NOT EXISTS suggestions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id   TEXT NOT NULL REFERENCES users(id),
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'open',
+  reply       TEXT NOT NULL DEFAULT '',
+  replied_by  TEXT REFERENCES users(id),
+  replied_at  INTEGER,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
 `)
 
 // 이미 만들어진 DB 에 나중에 생긴 칸을 더한다.

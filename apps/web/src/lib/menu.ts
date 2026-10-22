@@ -5,7 +5,9 @@ import {
   FolderArchive,
   House,
   Inbox,
+  Info,
   ListChecks,
+  MessageSquareText,
   UserRound,
   Users,
   type LucideIcon,
@@ -20,7 +22,8 @@ const TEAM: Role[] = [...MANAGERS, "designer"]
 
 // 메뉴 구조도 v0.2(Figma) 기준. roles 가 없으면 모든 역할에 보인다.
 // 홈은 관리자·작업자·요청자 모두 같은 화면이다.
-export const MENU_GROUPS: { label: string; items: MenuItem[] }[] = [
+// bottom: 사이드메뉴 맨 아래에 붙는 묶음
+export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }[] = [
   {
     label: "업무",
     items: [
@@ -41,6 +44,14 @@ export const MENU_GROUPS: { label: string; items: MenuItem[] }[] = [
     items: [
       { id: "notifications", title: "알림함", icon: Bell },
       { id: "me", title: "내 정보", icon: UserRound },
+    ],
+  },
+  {
+    label: "지원",
+    bottom: true,
+    items: [
+      { id: "feedback", title: "건의게시판", icon: MessageSquareText },
+      { id: "version", title: "버전 정보", icon: Info },
     ],
   },
 ]

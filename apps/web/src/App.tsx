@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
+import { FeedbackPage } from '@/components/feedback-page'
 import { FilesPage } from '@/components/files-page'
 import { HomePage } from '@/components/home/home-page'
 import { MePage } from '@/components/me-page'
@@ -13,6 +14,7 @@ import { RequestFormPage } from '@/components/requests/request-form-page'
 import { RequestListPage } from '@/components/requests/request-list-page'
 import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
+import { VersionPage } from '@/components/version-page'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { UNAUTHORIZED_EVENT } from '@/lib/api'
 import { useAskOnFirstClick } from '@/lib/desktop-notify'
@@ -115,6 +117,10 @@ export default function App() {
         return <MePage session={session} onSessionChange={setSession} />
       case 'team':
         return <TeamPage session={session} />
+      case 'feedback':
+        return <FeedbackPage session={session} />
+      case 'version':
+        return <VersionPage />
       default:
         return <Placeholder />
     }
