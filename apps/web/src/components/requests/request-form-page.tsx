@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import { Plus, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -6,8 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useSidebar } from "@/components/ui/sidebar"
 import { Textarea } from "@/components/ui/textarea"
+import { BottomBar } from "@/components/bottom-bar"
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { FilePicker } from "@/components/requests/file-picker"
 import { FileChip } from "@/components/requests/file-list"
@@ -200,9 +200,8 @@ export function RequestForm({
   const [pending, setPending] = useState(false)
   // 새 요청은 오늘 이전 날짜를 고를 수 없다. 기준 날짜는 화면을 열 때 한 번 잡는다.
   const [today] = useState(() => startOfDay(new Date()))
-  // 보내기 막대는 화면 하단에 고정한다. 왼쪽 끝은 헤더처럼 사이드바 폭(펼침/접힘/모바일)에 맞춘다.
-  const { state: sidebarState, isMobile } = useSidebar()
-  const barLeft = isMobile ? "0px" : sidebarState === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)"
+  // 보내기 막대는 화면 하단 고정(BottomBar, 폼 바깥에 그려진다)이라 form 속성으로 이 폼에 연결한다.
+  const formId = useId()
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -262,7 +261,7 @@ export function RequestForm({
   }
 
   return (
-    <form onSubmit={submit} noValidate>
+    <form id={formId} onSubmit={submit} noValidate>
       <FieldGroup>
         <Field data-invalid={invalid("title")}>
           <FieldLabel htmlFor="req-title">제목</FieldLabel>
@@ -378,10 +377,7 @@ export function RequestForm({
         <div className="h-24 shrink-0" aria-hidden />
       </FieldGroup>
       {/* 화면 하단 고정 막대: 긴급처리요청 체크 · (취소) · 요청 보내기 */}
-      <div
-        className="fixed right-0 bottom-0 z-20 flex flex-col items-center gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur transition-[left] duration-200 ease-linear"
-        style={{ left: barLeft }}
-      >
+      <BottomBar>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <label className="mr-2 flex cursor-pointer items-center gap-2 text-sm font-medium">
             <Checkbox checked={urgent} onCheckedChange={(v) => setUrgent(v === true)} />
@@ -392,12 +388,12 @@ export function RequestForm({
               취소
             </Button>
           )}
-          <Button type="submit" className="h-14 px-10 text-base" disabled={pending}>
+          <Button type="submit" form={formId} className="h-14 px-10 text-base" disabled={pending}>
             {pending ? "보내는 중…" : initial ? "수정 내용 저장" : "요청 보내기"}
           </Button>
         </div>
         {errors.form && <FieldError>{errors.form}</FieldError>}
-      </div>
+      </BottomBar>
     </form>
   )
 }

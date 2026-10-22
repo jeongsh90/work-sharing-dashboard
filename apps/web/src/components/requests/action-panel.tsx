@@ -1,7 +1,6 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { useSidebar } from "@/components/ui/sidebar"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -14,6 +13,7 @@ import {
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { BottomBar } from "@/components/bottom-bar"
 import { FilePicker } from "@/components/requests/file-picker"
 import { api, ApiError, uploadAll } from "@/lib/api"
 import type { RequestAction, RequestDetailDto } from "@/lib/requests"
@@ -171,19 +171,12 @@ export function ActionPanel({
   const available = ORDER.filter((a) => detail.actions.includes(a) && ACTIONS[a])
   const spec = open ? ACTIONS[open] : null
 
-  // 화면 하단에 고정한 막대. 왼쪽 끝은 헤더처럼 사이드바 폭(펼침/접힘/모바일)에 맞춘다.
-  const { state, isMobile } = useSidebar()
-  const left = isMobile ? "0px" : state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)"
-
   if (available.length === 0 && !detail.actions.includes("edit")) return null
 
   return (
     <>
       {/* 화면 하단 고정 막대. 가려지는 내용이 없게 상세 화면이 아래쪽 여백(pb-28)을 둔다 */}
-      <div
-        className="fixed right-0 bottom-0 z-20 flex flex-col items-center gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur transition-[left] duration-200 ease-linear"
-        style={{ left }}
-      >
+      <BottomBar>
         <div className="flex flex-wrap justify-center gap-2">
           {available.map((a) => {
             const s = ACTIONS[a]!
@@ -206,7 +199,7 @@ export function ActionPanel({
           )}
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
-      </div>
+      </BottomBar>
       {open && spec?.dialog && (
         <ActionDialog
           key={open}
