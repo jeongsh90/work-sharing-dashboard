@@ -1,11 +1,11 @@
-import { LoaderCircle } from "lucide-react"
+import { LoaderCircle, MessageCircle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { UserAvatar } from "@/components/user-avatar"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import {
-  BUSY_LABEL,
-  busyLevel,
   designerTitle,
   isActive,
   isThisWeek,
@@ -64,8 +64,6 @@ export function DesignerCards({
     <div className={INNER_GRID}>
       {designers.map((d) => {
         const now: Presence = presence[d.id] ?? "off"
-        // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
-        const level = busyLevel(requests.filter((r) => isActive(r) && r.designers.includes(d.id)).length)
         // 진행 중인 작업은 마감이 이번 주가 아니어도 모두 보인다(카드 활성화·테두리 빛·작업 표시).
         // 완료는 이번 주에 완료한 것만(완료 시각 기준).
         const mine = requests.filter((r) => r.designers.includes(d.id))
@@ -96,14 +94,25 @@ export function DesignerCards({
                 />
               </>
             )}
-            {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 바쁜 정도 */}
+            {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 1:1 채팅(준비 중) */}
             <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
               <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
               {PRESENCE_LABEL[now]}
             </Badge>
-            <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
-              {BUSY_LABEL[level]}
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* 1:1 채팅은 준비 중이라 아직 아무 일도 하지 않는다 */}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-2 right-2 text-muted-foreground"
+                  aria-label={`${d.name}에게 1:1 채팅 (준비 중)`}
+                >
+                  <MessageCircle />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>1:1 채팅 (준비 중)</TooltipContent>
+            </Tooltip>
             {/* 프로필(사진·이름) 묶음과 작업 태그를 위쪽부터 차례로 쌓는다 */}
             <div className="flex flex-1 flex-col items-center gap-3">
               <div className="flex flex-col items-center gap-3">
