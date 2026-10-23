@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom"
 import { ChevronUp } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -15,13 +14,12 @@ import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib
 
 // 홈 화면 오른쪽 아래에 떠 있는 내 현재 상태 버튼(작업자·디자인팀 관리자만).
 // 누르면 상태를 고르는 메뉴가 열리고, 고르면 바로 디자인팀 카드에 반영된다.
-// 페이지 페이드 효과(transform) 동안 위치가 튀지 않게 문서 맨 바깥(body)에 그린다.
+// 위치는 오른쪽 아래 버튼 묶음(FloatingDock)이 정한다.
 export function PresenceButton({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
   const now = (session.presence in PRESENCE_LABEL ? session.presence : "off") as Presence
 
-  return createPortal(
-    <div className="fixed right-6 bottom-6 z-30">
-      <DropdownMenu>
+  return (
+    <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" className="h-12 gap-2 rounded-full bg-background px-5 text-base shadow-lg" aria-label="내 현재 상태 바꾸기">
             <span className={`size-2.5 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
@@ -43,8 +41,6 @@ export function PresenceButton({ session, onSessionChange }: { session: Session;
             ))}
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
-      </DropdownMenu>
-    </div>,
-    document.body,
+    </DropdownMenu>
   )
 }

@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button"
 import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { StatCards } from "@/components/home/stat-cards"
-import { PresenceButton } from "@/components/home/presence-button"
+import { dockItemCount, FloatingDock } from "@/components/home/floating-dock"
 import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
 import { PageState } from "@/components/page-state"
 import { updateStoredUser, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { setTeamPresence, type Presence } from "@/lib/presence"
 import { navigate } from "@/lib/router"
-import { isDesignWorker, useDesigners, useRequests } from "@/lib/store"
+import { useDesigners, useRequests } from "@/lib/store"
 
 export function Section({
   title,
@@ -58,8 +58,8 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
 
   const presence = Object.fromEntries(designers.map((d) => [d.id, d.presence])) as Record<string, Presence>
 
-  // 오른쪽 아래 상태 버튼이 표의 마지막 줄을 가리지 않게 아래 여백을 둔다
-  const showPresence = isDesignWorker(session)
+  // 오른쪽 아래 버튼 묶음이 표의 마지막 줄을 가리지 않게 아래 여백을 둔다
+  const dockPad = ["", "pb-24 md:pb-24", "pb-40 md:pb-40", "pb-56 md:pb-56"][dockItemCount(session)]
 
   // 관리자는 팀원 상태를 바꾼다(카드 배지에서 한 명씩, 일괄 변경으로 여러 명). 내 상태가 바뀌면 로그인 정보도 맞춘다.
   const manager = session.role === "admin" || session.role === "superadmin"
@@ -73,7 +73,7 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
   }
 
   return (
-    <div className={`${PAGE_GRID} ${showPresence ? "pb-24 md:pb-24" : ""}`}>
+    <div className={`${PAGE_GRID} ${dockPad}`}>
       <Section
         title="금주 진행 현황"
         action={<MoreButton label="금주 진행 현황 자세히 보기 (디자인팀 일정)" onClick={() => navigate("schedule")} />}
@@ -110,8 +110,8 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
       <Section title="작업 현황">
         <RequestTable requests={requests} emptyMessage="아직 들어온 요청이 없습니다." />
       </Section>
-      {/* 작업자(디자인팀 관리자 포함)만: 오른쪽 아래 내 현재 상태 버튼 */}
-      {showPresence && <PresenceButton session={session} onSessionChange={onSessionChange} />}
+      {/* 오른쪽 아래 버튼 묶음: 컨펌 대기·받은 요청·내 현재 상태 */}
+      <FloatingDock session={session} requests={requests} onSessionChange={onSessionChange} />
     </div>
   )
 }
