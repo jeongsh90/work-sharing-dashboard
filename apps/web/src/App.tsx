@@ -1,24 +1,13 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 
 import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
-import { FeedbackPage } from '@/components/feedback-page'
-import { FilesPage } from '@/components/files-page'
 import { HomePage } from '@/components/home/home-page'
-import { MePage } from '@/components/me-page'
-import { NotificationsPage } from '@/components/notifications-page'
 import { OverlayScrollbar } from '@/components/overlay-scrollbar'
 import { LoginForm } from '@/components/login-form'
-import { RequestDetailPage } from '@/components/requests/request-detail-page'
-import { RequestFormPage } from '@/components/requests/request-form-page'
-import { RequestListPage } from '@/components/requests/request-list-page'
-import { SchedulePage } from '@/components/schedule-page'
-import { OrgPage } from '@/components/org-page'
+import { PageState } from '@/components/page-state'
 import { dockItemCount, FloatingDock } from '@/components/home/floating-dock'
-import { SignupForm } from '@/components/signup-form'
-import { TeamPage } from '@/components/team-page'
 import { UpdateNotice } from '@/components/update-notice'
-import { VersionPage } from '@/components/version-page'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { UNAUTHORIZED_EVENT } from '@/lib/api'
 import { useAskOnFirstClick } from '@/lib/desktop-notify'
@@ -28,6 +17,23 @@ import { markAllRead, useNotificationSync } from '@/lib/notifications'
 import { navigate, useRoute } from '@/lib/router'
 import { recoverScroll, useSmoothScroll } from '@/lib/smooth-scroll'
 import { clearCache } from '@/lib/store'
+
+// 홈 말고는 화면을 열 때 받는다(첫 화면이 빨리 뜨게).
+const FeedbackPage = lazy(() => import('@/components/feedback-page').then((m) => ({ default: m.FeedbackPage })))
+const FilesPage = lazy(() => import('@/components/files-page').then((m) => ({ default: m.FilesPage })))
+const MePage = lazy(() => import('@/components/me-page').then((m) => ({ default: m.MePage })))
+const NotificationsPage = lazy(() => import('@/components/notifications-page').then((m) => ({ default: m.NotificationsPage })))
+const RequestDetailPage = lazy(() => import('@/components/requests/request-detail-page').then((m) => ({ default: m.RequestDetailPage })))
+const RequestFormPage = lazy(() => import('@/components/requests/request-form-page').then((m) => ({ default: m.RequestFormPage })))
+const RequestListPage = lazy(() => import('@/components/requests/request-list-page').then((m) => ({ default: m.RequestListPage })))
+const SchedulePage = lazy(() => import('@/components/schedule-page').then((m) => ({ default: m.SchedulePage })))
+const OrgPage = lazy(() => import('@/components/org-page').then((m) => ({ default: m.OrgPage })))
+const SignupForm = lazy(() => import('@/components/signup-form').then((m) => ({ default: m.SignupForm })))
+const TeamPage = lazy(() => import('@/components/team-page').then((m) => ({ default: m.TeamPage })))
+const VersionPage = lazy(() => import('@/components/version-page').then((m) => ({ default: m.VersionPage })))
+
+// 새 버전을 올리면 예전 화면 조각 파일이 사라진다. 그 조각을 못 받으면 새로 고쳐 새 버전을 받는다.
+window.addEventListener('vite:preloadError', () => window.location.reload())
 
 function environmentName() {
   const { hostname } = window.location
@@ -89,7 +95,9 @@ export default function App() {
         <div className="w-full max-w-sm md:max-w-4xl">
           {/* 로그인 전에는 회원가입(#/signup)과 로그인만 있다. */}
           {route.page === 'signup' ? (
-            <SignupForm key="signup" className={FADE_IN} />
+            <Suspense fallback={<PageState />}>
+              <SignupForm key="signup" className={FADE_IN} />
+            </Suspense>
           ) : (
             <LoginForm key="login" className={FADE_IN} onLogin={setSession} />
           )}
@@ -181,7 +189,7 @@ export default function App() {
         />
         {/* 오른쪽 아래 버튼 묶음(컨펌 대기·받은 요청·내 현재 상태)이 내용 끝을 가리지 않게 아래 여백을 둔다 */}
         <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${DOCK_PAD[dockItemCount(session)]} ${FADE_IN}`}>
-          {content}
+          <Suspense fallback={<PageState />}>{content}</Suspense>
         </div>
         <FloatingDock
           session={session}

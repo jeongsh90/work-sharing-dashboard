@@ -13,17 +13,24 @@ export function scrollToElement(el: HTMLElement) {
 
 // 열린 창(대화상자)·메뉴가 없는데 스크롤 잠금이 남아 있으면 푼다.
 // (Radix 창이 닫히는 도중 화면이 바뀌면 body 의 잠금 표시가 남아 페이지 스크롤이 멈출 수 있다)
+// 휠을 굴릴 때마다 불리므로 잠금이 실제로 남아 있을 때만 DOM 을 찾고 고친다(평소에는 속성 몇 개만 본다).
 export function recoverScroll() {
-  const overlayOpen = document.querySelector('[role=dialog][data-state=open], [role=alertdialog][data-state=open], [role=menu][data-state=open], [data-radix-popper-content-wrapper]')
-  if (overlayOpen) return
   const body = document.body
-  if (body.hasAttribute('data-scroll-locked')) body.removeAttribute('data-scroll-locked')
+  const locked =
+    body.hasAttribute('data-scroll-locked') ||
+    body.style.pointerEvents === 'none' ||
+    body.style.overflow === 'hidden' ||
+    !!pageLenis?.isStopped
+  if (!locked) return
+  const overlayOpen = document.querySelector(
+    '[role=dialog][data-state=open], [role=alertdialog][data-state=open], [role=menu][data-state=open], [data-radix-popper-content-wrapper]',
+  )
+  if (overlayOpen) return
+  body.removeAttribute('data-scroll-locked')
   if (body.style.pointerEvents === 'none') body.style.pointerEvents = ''
   if (body.style.overflow === 'hidden') body.style.overflow = ''
-  if (pageLenis) {
-    if (pageLenis.isStopped) pageLenis.start()
-    pageLenis.resize()
-  }
+  if (pageLenis?.isStopped) pageLenis.start()
+  pageLenis?.resize()
 }
 
 // Lenis 부드러운 스크롤(https://lenis.dev). 움직임 줄이기 설정이면 기본 스크롤을 쓴다.

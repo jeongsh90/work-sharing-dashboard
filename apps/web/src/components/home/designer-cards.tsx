@@ -94,11 +94,6 @@ export function DesignerCards({
             {working.length > 0 && (
               <>
                 <span
-                  className="border-beam-glow"
-                  style={{ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties}
-                  aria-hidden
-                />
-                <span
                   className="border-beam"
                   style={{ "--beam-color": STATUS_BEAM[working[0].status] } as React.CSSProperties}
                   aria-hidden
