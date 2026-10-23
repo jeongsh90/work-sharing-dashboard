@@ -44,6 +44,7 @@ type RequestRow = {
   status: Status
   revision: number
   requested_start_at: number | null
+  ongoing: number
   due_at: number
   created_at: number
   updated_at: number
@@ -224,11 +225,18 @@ const describe = (list: Item[]) =>
   list.map((i) => `[${i.label} ${i.width ?? '자유'}×${i.height ?? '자유'}]\n${i.body}`).join('\n\n')
 
 // 작업 기간: 시작일(선택)과 마감 일시. 시작일이 마감보다 늦으면 안 된다.
+// 계속 업무(마감 없음)의 due_at. 마감 정렬에서 맨 뒤로 가고, 마감 지남·이번 주 마감에 걸리지 않는다.
+export const ONGOING_DUE = Date.UTC(9999, 11, 31)
+
 function period(body: Record<string, unknown>) {
+  if (body.ongoing === true) {
+    // 계속 업무는 시작일만 있다.
+    return { startAt: timestamp(body.requestedStartAt, '시작일'), dueAt: ONGOING_DUE, ongoing: 1 }
+  }
   const dueAt = timestamp(body.dueAt, '마감 일시')
   const startAt = body.requestedStartAt === undefined || body.requestedStartAt === null ? null : timestamp(body.requestedStartAt, '시작일')
   if (startAt !== null && startAt > dueAt) throw new HttpError(400, '시작일이 마감 일시보다 늦습니다.')
-  return { startAt, dueAt }
+  return { startAt, dueAt, ongoing: 0 }
 }
 
 function urgency(value: unknown) {
@@ -277,6 +285,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     status: row.status,
     revision: row.revision,
     requestedStartAt: row.requested_start_at,
+    ongoing: row.ongoing === 1,
     dueAt: row.due_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -413,13 +422,13 @@ export function createRequest(user: PublicUser, body: Record<string, unknown>) {
   const itemList = items(body.items)
   const description = describe(itemList)
   const department = text(body.department, '부서', { max: 40 }) || user.department
-  const { startAt, dueAt } = period(body)
+  const { startAt, dueAt, ongoing } = period(body)
   const now = Date.now()
   return transaction(() => {
     const result = run(
-      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, created_at, updated_at)
-       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :now, :now)`,
-      { title, workType, description, department, requester: user.id, urgency: urgency(body.urgency), startAt, dueAt, now },
+      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, ongoing, created_at, updated_at)
+       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :ongoing, :now, :now)`,
+      { title, workType, description, department, requester: user.id, urgency: urgency(body.urgency), startAt, dueAt, ongoing, now },
     )
     const id = Number(result.lastInsertRowid)
     saveItems(id, itemList)
@@ -434,12 +443,12 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
   const req = loadRequest(id)
   requireAction(user, req, 'edit')
   const itemList = items(body.items)
-  const { startAt, dueAt } = period(body)
+  const { startAt, dueAt, ongoing } = period(body)
   transaction(() => {
     saveItems(id, itemList)
     run(
       `UPDATE requests SET title = :title, work_type = :workType, description = :description, department = :department,
-       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, updated_at = :now WHERE id = :id`,
+       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, ongoing = :ongoing, updated_at = :now WHERE id = :id`,
       {
         id,
         title: text(body.title, '제목', { required: true, max: 100 }),
@@ -449,6 +458,7 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
         urgency: urgency(body.urgency),
         startAt,
         dueAt,
+        ongoing,
         now: Date.now(),
       },
     )

@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatusBadge, UrgencyBadge } from "@/components/home/status-badge"
 import {
+  dueText,
   formatDateTime,
   isActive,
   isUnassigned,
@@ -221,7 +222,7 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
                     {r.startedAt ? formatDateTime(r.startedAt) : "-"}
                   </TableCell>
                   <TableCell className={overdue ? "font-medium text-destructive" : undefined}>
-                    {formatDateTime(r.dueAt)}
+                    {dueText(r)}
                     {overdue && <span className="ml-1 text-xs">마감 지남</span>}
                   </TableCell>
                   <TableCell>

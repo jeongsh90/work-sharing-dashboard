@@ -187,6 +187,8 @@ addColumn('users', 'approved', 'INTEGER NOT NULL DEFAULT 1')
 addColumn('notifications', 'link', 'TEXT')
 // 프로필 사진(files.id). 사진 파일은 kind = 'avatar' 로 표시하고 로그인한 사람 누구나 볼 수 있다.
 addColumn('users', 'avatar_id', 'TEXT')
+// 계속 업무(마감 없음). 1 이면 due_at 에는 아주 먼 날짜(ONGOING_DUE)를 넣어 마감 정렬에서 맨 뒤로 간다.
+addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {

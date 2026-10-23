@@ -228,14 +228,20 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
               detail.designers.map(userName).join(", ")
             )}
           </Meta>
-          {/* 작업 기간: 요청자가 고른 시작일 ~ 마감 일시. 시작일이 없거나 마감일과 같으면 마감 일시만 */}
+          {/* 작업 기간: 요청자가 고른 시작일 ~ 마감 일시. 시작일이 없거나 마감일과 같으면 마감 일시만. 계속 업무는 시작일 ~ 계속 */}
           <Meta label="작업 기간">
             <span className={overdue ? "font-medium text-destructive" : undefined}>
+              {detail.ongoing ? (
+                `${detail.requestedStartAt ? `${new Date(detail.requestedStartAt).getMonth() + 1}월 ${new Date(detail.requestedStartAt).getDate()}일 ~ ` : ""}계속 업무`
+              ) : (
+                <>
               {detail.requestedStartAt !== null &&
                 new Date(detail.requestedStartAt).toDateString() !== new Date(detail.dueAt).toDateString() &&
                 `${new Date(detail.requestedStartAt).getMonth() + 1}월 ${new Date(detail.requestedStartAt).getDate()}일 ~ `}
               {formatDateTime(new Date(detail.dueAt))}
               {overdue && " · 마감 지남"}
+                </>
+              )}
             </span>
           </Meta>
           <Meta label="등록">{formatDateTime(new Date(detail.createdAt))}</Meta>

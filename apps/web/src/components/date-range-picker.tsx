@@ -21,7 +21,9 @@ export function DateRangePicker({
   disabled,
   placeholder = "기간을 골라 주세요",
   invalid,
+  single = false,
 }: {
+  single?: boolean // 한 날짜만 고른다(value.from 만 쓴다)
   id?: string
   value: DateRange | undefined
   onChange: (range: DateRange | undefined) => void
@@ -45,7 +47,7 @@ export function DateRangePicker({
           {value?.from ? (
             <span className="truncate">
               {label(value.from)}
-              {value.to && value.to.getTime() !== value.from.getTime() && ` - ${label(value.to)}`}
+              {!single && value.to && value.to.getTime() !== value.from.getTime() && ` - ${label(value.to)}`}
             </span>
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
@@ -53,15 +55,26 @@ export function DateRangePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="range"
-          defaultMonth={value?.from}
-          selected={value}
-          onSelect={onChange}
-          numberOfMonths={isMobile ? 1 : 2}
-          disabled={disabled}
-          locale={ko}
-        />
+        {single ? (
+          <Calendar
+            mode="single"
+            defaultMonth={value?.from}
+            selected={value?.from}
+            onSelect={(d) => onChange(d ? { from: d, to: undefined } : undefined)}
+            disabled={disabled}
+            locale={ko}
+          />
+        ) : (
+          <Calendar
+            mode="range"
+            defaultMonth={value?.from}
+            selected={value}
+            onSelect={onChange}
+            numberOfMonths={isMobile ? 1 : 2}
+            disabled={disabled}
+            locale={ko}
+          />
+        )}
       </PopoverContent>
     </Popover>
   )

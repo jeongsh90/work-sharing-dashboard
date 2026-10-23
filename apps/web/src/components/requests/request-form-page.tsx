@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { BottomBar } from "@/components/bottom-bar"
@@ -168,16 +169,20 @@ export function RequestForm({
   const [title, setTitle] = useState(initial?.title ?? "")
   const [workType, setWorkType] = useState(initial?.workType ?? "")
   const [department, setDepartment] = useState(initial?.department ?? session.department)
+  // 계속 업무(마감 없음): 체크하면 시작일만 고르고 마감 시각은 쓰지 않는다.
+  const [ongoing, setOngoing] = useState(initial?.ongoing ?? false)
   const [range, setRange] = useState<DateRange | undefined>(() =>
     initial
-      ? {
-          from: startOfDay(new Date(initial.requestedStartAt ?? initial.dueAt)),
-          to: startOfDay(new Date(initial.dueAt)),
-        }
+      ? initial.ongoing
+        ? { from: startOfDay(new Date(initial.requestedStartAt ?? initial.createdAt)), to: undefined }
+        : {
+            from: startOfDay(new Date(initial.requestedStartAt ?? initial.dueAt)),
+            to: startOfDay(new Date(initial.dueAt)),
+          }
       : defaultRange(),
   )
   const [dueTime, setDueTime] = useState(() => {
-    if (!initial) return "18:00"
+    if (!initial || initial.ongoing) return "18:00"
     const d = new Date(initial.dueAt)
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`
   })
@@ -212,7 +217,9 @@ export function RequestForm({
     const startDay = range?.from
     const dueDay = range?.to ?? range?.from
     const dueAt = dueDay ? withTime(dueDay, dueTime) : null
-    if (!startDay || !dueAt) next.period = "작업 기간을 골라 주세요."
+    if (ongoing) {
+      if (!startDay) next.period = "시작일을 골라 주세요."
+    } else if (!startDay || !dueAt) next.period = "작업 기간을 골라 주세요."
     else if (!initial && dueAt < new Date()) next.period = "마감 일시가 이미 지났습니다. 마감일이나 시각을 바꿔 주세요."
     // 완전히 빈 묶음은 빼고 보낸다. 쓰기 시작한 묶음은 제목·요청 내용을 채워야 한다(너비·높이는 비우면 자유).
     const filled = items.filter((r) => !isBlank(r))
@@ -238,7 +245,8 @@ export function RequestForm({
           body: r.body.trim(),
         })),
         requestedStartAt: startDay!.getTime(),
-        dueAt: dueAt!.getTime(),
+        ongoing,
+        dueAt: ongoing ? undefined : dueAt!.getTime(),
         fileIds: uploaded.map((f) => f.id),
         keepFileIds: kept.map((f) => f.id),
       }
@@ -306,9 +314,23 @@ export function RequestForm({
             <Input id="req-dept" value={department} maxLength={40} onChange={(e) => setDepartment(e.target.value)} />
           </Field>
           <Field data-invalid={invalid("period")}>
-            <FieldLabel htmlFor="req-period">작업 기간 (시작일 ~ 마감일)</FieldLabel>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor="req-period">{ongoing ? "작업 시작일 (계속 업무)" : "작업 기간 (시작일 ~ 마감일)"}</FieldLabel>
+              <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                <Checkbox
+                  checked={ongoing}
+                  onCheckedChange={(v) => {
+                    setOngoing(v === true)
+                    clear("period")
+                  }}
+                />
+                계속 업무
+              </Label>
+            </div>
             <DateRangePicker
               id="req-period"
+              single={ongoing}
+              placeholder={ongoing ? "시작일을 골라 주세요" : undefined}
               value={range}
               onChange={(r) => {
                 setRange(r)
@@ -321,9 +343,9 @@ export function RequestForm({
           </Field>
           <Field>
             <FieldLabel htmlFor="req-due-time">마감 시각</FieldLabel>
-            <Select value={dueTime} onValueChange={setDueTime}>
+            <Select value={dueTime} onValueChange={setDueTime} disabled={ongoing}>
               <SelectTrigger id="req-due-time" className="w-full">
-                <SelectValue />
+                {ongoing ? <span className="text-muted-foreground">마감 없음(계속 업무)</span> : <SelectValue />}
               </SelectTrigger>
               <SelectContent>
                 {dueTimes.map((t) => (

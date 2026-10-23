@@ -28,6 +28,7 @@ export type DesignRequest = {
   startedAt: Date | null // 실제 시작 시각('작업 중'으로 바꾼 때). 시작 전이면 null
   dueAt: Date
   completedAt: Date | null
+  ongoing: boolean // 계속 업무(마감 없음). 이때 dueAt 은 아주 먼 날짜라 마감 지남·이번 주 마감에 걸리지 않는다
   urgency: Urgency
   status: RequestStatus
   revision: number // 수정 차수. 수정 중일 때 표시
@@ -47,6 +48,7 @@ export type RequestSummaryDto = {
   status: RequestStatus
   revision: number
   requestedStartAt: number | null // 요청자가 고른 작업 시작일
+  ongoing: boolean // 계속 업무(마감 없음)
   dueAt: number
   createdAt: number
   startedAt: number | null
@@ -70,6 +72,7 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     startedAt: toDate(dto.startedAt),
     dueAt: new Date(dto.dueAt),
     completedAt: toDate(dto.completedAt),
+    ongoing: dto.ongoing,
     urgency: dto.urgency,
     status: dto.status,
     revision: dto.revision,
@@ -160,6 +163,11 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 export function formatDateTime(date: Date) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+// 마감 표시: 계속 업무면 "계속 업무"
+export function dueText(r: { ongoing: boolean; dueAt: Date }) {
+  return r.ongoing ? '계속 업무' : formatDateTime(r.dueAt)
 }
 
 // <input type="datetime-local"> 값(로컬 시각)
