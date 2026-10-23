@@ -133,6 +133,14 @@ export default function App() {
     }
   })()
 
+  // 계정을 바꾸면 이 탭의 로그인을 새 계정으로 바꾸고, 받아 둔 데이터를 비운 뒤 홈으로 간다.
+  const onSwitched = (token: string, user: Session) => {
+    writeStored({ token, user })
+    clearCache()
+    setSession(user)
+    navigate('home')
+  }
+
   return (
     <SidebarProvider className={FADE_IN}>
       <AppSidebar
@@ -146,6 +154,7 @@ export default function App() {
           setSession(null)
           navigate('home')
         }}
+        onSwitched={onSwitched}
       />
       {/* 로그인하면 업데이트 공지(다시 보지 않기 전까지) */}
       <UpdateNotice key={session.id} session={session} />
@@ -159,13 +168,7 @@ export default function App() {
           // 요청자는 어느 화면에서든 헤더 오른쪽 버튼으로 바로 디자인 요청을 쓴다.
           onNewRequest={session.role === 'requester' ? () => navigate('request') : undefined}
           currentId={session.id}
-          onSwitched={(token, user) => {
-            // 계정을 바꾸면 이 탭의 로그인을 새 계정으로 바꾸고, 받아 둔 데이터를 비운 뒤 홈으로 간다.
-            writeStored({ token, user })
-            clearCache()
-            setSession(user)
-            navigate('home')
-          }}
+          onSwitched={onSwitched}
         />
         <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
           {content}

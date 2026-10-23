@@ -4,6 +4,7 @@ import { ROLE_LABEL, type Session } from "@/lib/auth"
 import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
 import { isDesignWorker } from "@/lib/store"
 import { UserAvatar } from "@/components/user-avatar"
+import { AccountSwitchItems, useAccountSwitch, type OnSwitched } from "@/components/account-switcher"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,13 +42,17 @@ export function NavUser({
   onNavigate,
   onSessionChange,
   onLogout,
+  onSwitched,
 }: {
   session: Session
   onNavigate: (id: string) => void
   onSessionChange: (session: Session) => void
   onLogout: () => void
+  onSwitched: OnSwitched
 }) {
   const { isMobile } = useSidebar()
+  // 계정 전환 묶음(서버 SWITCH_ACCOUNTS)에 든 계정이면 메뉴 안에 전환할 계정을 모두 보여 준다.
+  const sw = useAccountSwitch(onSwitched)
 
   return (
     <SidebarMenu>
@@ -103,6 +108,13 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+            {sw.accounts.length > 0 && (
+              <>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">계정 전환</DropdownMenuLabel>
+                <AccountSwitchItems currentId={session.id} {...sw} />
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onSelect={onLogout}>
               <LogOut />
               로그아웃

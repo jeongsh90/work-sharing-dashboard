@@ -6,6 +6,7 @@ import { useSeen } from "@/lib/seen"
 import { useApi } from "@/lib/store"
 import { APP_VERSION } from "@/lib/version"
 import { NavUser } from "@/components/nav-user"
+import type { OnSwitched } from "@/components/account-switcher"
 import {
   Sidebar,
   SidebarContent,
@@ -37,6 +38,7 @@ export function AppSidebar({
   onNavigate,
   onSessionChange,
   onLogout,
+  onSwitched,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   session: Session
@@ -44,6 +46,7 @@ export function AppSidebar({
   onNavigate: (id: string) => void
   onSessionChange: (session: Session) => void
   onLogout: () => void
+  onSwitched: OnSwitched
 }) {
   const fresh = useFreshMenus(session.id)
 
@@ -99,7 +102,7 @@ export function AppSidebar({
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser session={session} onNavigate={onNavigate} onSessionChange={onSessionChange} onLogout={onLogout} />
+        <NavUser session={session} onNavigate={onNavigate} onSessionChange={onSessionChange} onLogout={onLogout} onSwitched={onSwitched} />
       </SidebarFooter>
     </Sidebar>
   )
