@@ -84,14 +84,16 @@ export function DesignerCards({
           .filter((r) => r.status === "in-progress" || r.status === "revising")
           .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
         const hidden = working.length - MAX_WORKING_MARKERS
+        // 활성 카드: 현재 상태가 작업 중이고 진행 중인 작업(작업 중·수정 중)이 있을 때.
+        // 퇴근·자리 비움·회의 중·외근·휴가이거나 진행 중인 작업이 없으면 흐리게(50%) 하고 테두리 빛도 끈다.
+        const activeCard = now === "working" && working.length > 0
         return (
           <div
             key={d.id}
-            // 진행 중인 작업(작업 중·수정 중)이 없는 작업자 카드는 흐리게(50%)
-            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md transition-opacity ${working.length === 0 ? "opacity-50" : ""} ${CARD_SPAN}`}
+            className={`@container relative flex aspect-[5/7] min-w-0 flex-col rounded-xl border bg-card px-4 pt-11 pb-5 text-card-foreground shadow-md transition-opacity ${activeCard ? "" : "opacity-50"} ${CARD_SPAN}`}
           >
             {/* 작업 중인 카드는 테두리를 따라 빛이 돈다. 색은 카드 아래에 보이는 작업의 상태 색(작업 중 파랑, 수정 중 주황 등) */}
-            {working.length > 0 && (
+            {activeCard && (
               <>
                 <span
                   className="border-beam"
