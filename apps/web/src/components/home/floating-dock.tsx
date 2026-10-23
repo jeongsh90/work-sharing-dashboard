@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { PresenceButton } from "@/components/home/presence-button"
 import type { Session } from "@/lib/auth"
-import { isActive, type DesignRequest } from "@/lib/requests"
+import { isActive } from "@/lib/requests"
 import { navigate } from "@/lib/router"
-import { isDesignWorker } from "@/lib/store"
+import { isDesignWorker, useRequests } from "@/lib/store"
 
-// 홈 화면 오른쪽 아래에 떠 있는 버튼 묶음. 위에서부터
+// 모든 화면 오른쪽 아래에 떠 있는 버튼 묶음. 위에서부터
 // 컨펌 대기(관리자·요청자) → 받은 요청(디자인팀·관리자, 미배정 건수) → 내 현재 상태(작업자)
 // 페이지 페이드 효과(transform) 동안 위치가 튀지 않게 문서 맨 바깥(body)에 그린다.
 
@@ -48,7 +48,7 @@ function DockButton({
   )
 }
 
-// 홈 아래 여백 계산용: 이 사용자에게 보이는 버튼 수
+// 화면 아래 여백 계산용: 이 사용자에게 보이는 버튼 수
 export function dockItemCount(session: Session) {
   const manager = session.role === "admin" || session.role === "superadmin"
   return (
@@ -60,22 +60,24 @@ export function dockItemCount(session: Session) {
 
 export function FloatingDock({
   session,
-  requests,
   onSessionChange,
+  raised = false,
 }: {
   session: Session
-  requests: DesignRequest[]
   onSessionChange: (s: Session) => void
+  raised?: boolean // 화면 아래 고정 막대(진행 버튼·요청 보내기)가 있는 화면에서는 그 위로 올린다
 }) {
+  const { requests } = useRequests()
   const manager = session.role === "admin" || session.role === "superadmin"
   const requester = session.role === "requester"
   // 컨펌 대기: 관리자는 전체, 요청자는 내 요청 중 시안 확인 상태
+  if (!requests) return null
   const review = requests.filter((r) => r.status === "review" && (manager || r.requesterId === session.id)).length
   // 받은 요청: 아직 담당 작업자가 없는 진행 중 요청
   const unassigned = requests.filter((r) => isActive(r) && r.designers.length === 0).length
 
   return createPortal(
-    <div className="fixed right-6 bottom-6 z-30 flex flex-col items-end gap-3">
+    <div className={`fixed right-6 z-30 flex flex-col items-end gap-3 ${raised ? "bottom-28" : "bottom-6"}`}>
       {(manager || requester) && (
         <DockButton
           icon={FileImage}

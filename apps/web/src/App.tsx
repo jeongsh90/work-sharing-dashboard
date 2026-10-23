@@ -14,6 +14,7 @@ import { RequestFormPage } from '@/components/requests/request-form-page'
 import { RequestListPage } from '@/components/requests/request-list-page'
 import { SchedulePage } from '@/components/schedule-page'
 import { OrgPage } from '@/components/org-page'
+import { dockItemCount, FloatingDock } from '@/components/home/floating-dock'
 import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
 import { UpdateNotice } from '@/components/update-notice'
@@ -47,6 +48,8 @@ function Placeholder() {
     </div>
   )
 }
+
+const DOCK_PAD = ['', 'pb-16', 'pb-32', 'pb-48']
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession)
@@ -176,9 +179,15 @@ export default function App() {
           currentId={session.id}
           onSwitched={onSwitched}
         />
-        <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${FADE_IN}`}>
+        {/* 오른쪽 아래 버튼 묶음(컨펌 대기·받은 요청·내 현재 상태)이 내용 끝을 가리지 않게 아래 여백을 둔다 */}
+        <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${DOCK_PAD[dockItemCount(session)]} ${FADE_IN}`}>
           {content}
         </div>
+        <FloatingDock
+          session={session}
+          onSessionChange={setSession}
+          raised={page === 'request' || page === 'request-detail'}
+        />
       </SidebarInset>
     </SidebarProvider>
   )

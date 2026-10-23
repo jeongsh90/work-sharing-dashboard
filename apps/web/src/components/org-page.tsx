@@ -1,15 +1,18 @@
-import { Building2 } from "lucide-react"
+import { MessageCircle } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { UserAvatar } from "@/components/user-avatar"
-import type { Role } from "@/lib/auth"
+import { loadSession, type Role } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { PRESENCE_DOT, PRESENCE_LABEL, type Presence } from "@/lib/presence"
 import { DESIGN_TEAM, useApi } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
-// 조직도: 부서별로 사람을 묶어 회사 아래 가지로 보여 준다. 테스트·admin 계정은 서버에서 뺀다.
+// 조직도: 부서별로 사람을 묶어 부서 카드로 보여 준다. 테스트·admin 계정은 서버에서 뺀다.
 // 정상훈·슈퍼관리자(서버 ONLINE_VIEWERS)에게만 지금 사이트에 접속한 사람을 함께 보여 준다.
 
 type OrgMember = {
@@ -98,6 +101,17 @@ function Person({ m, canSeeOnline, className }: { m: OrgMember; canSeeOnline: bo
           )}
         </div>
       </div>
+      {/* 1:1 채팅(준비 중). 나에게는 보이지 않는다 */}
+      {m.id !== loadSession()?.id && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" aria-label={`${m.name}에게 1:1 채팅 (준비 중)`}>
+              <MessageCircle />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>1:1 채팅 (준비 중)</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   )
 }
@@ -147,13 +161,6 @@ export function OrgPage() {
         }
       >
         <div className="flex flex-col items-center">
-          {/* 회사(맨 위 가지) */}
-          <div className="flex items-center gap-2 rounded-xl border bg-card px-5 py-3 font-semibold shadow-xs">
-            <Building2 className="size-4 text-muted-foreground" aria-hidden />
-            오웬푸드
-          </div>
-          <div className="h-6 w-px bg-border" aria-hidden />
-          {/* 부서 가지 */}
           <ul className="grid w-full grid-cols-12 gap-4 md:gap-6">
             {teams.map((t) => (
               <li
