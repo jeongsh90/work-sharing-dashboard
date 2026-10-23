@@ -83,6 +83,7 @@ function assigneesOf(id: number) {
 export type Action =
   | 'edit'
   | 'assign'
+  | 'reassign'
   | 'take'
   | 'request-info'
   | 'resubmit'
@@ -106,7 +107,10 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   const s = req.status
   const can: Record<Action, boolean> = {
     edit: active && ((owner && (s === 'requested' || s === 'needs-info')) || manager),
-    assign: active && manager,
+    // 작업자 지정은 처음 한 번(아직 담당이 없을 때). 그 뒤에는 작업자 변경으로 넘긴다.
+    assign: active && manager && assignees.length === 0,
+    reassign:
+      manager && assignees.length > 0 && ['needs-info', 'waiting', 'in-progress', 'review', 'revising'].includes(s),
     take: designer && !assignee && (s === 'requested' || s === 'needs-info' || s === 'waiting'),
     'request-info': (manager || designer) && (s === 'requested' || s === 'waiting'),
     resubmit: (owner || manager) && s === 'needs-info',
@@ -473,6 +477,19 @@ export function deleteRequest(user: PublicUser, id: number) {
   })
 }
 
+// 담당으로 고른 사람들(작업자·관리자만, 사용 중인 계정)
+function designerIdsFrom(body: Record<string, unknown>) {
+  const ids = Array.isArray(body.designerIds) ? body.designerIds.filter((v): v is string => typeof v === 'string') : []
+  if (ids.length === 0) throw new HttpError(400, '담당 작업자를 한 명 이상 골라 주세요.')
+  for (const uid of ids) {
+    const u = findUser(uid)
+    if (!u || !u.active || !(u.role === 'designer' || isManager(u))) {
+      throw new HttpError(400, '담당으로 지정할 수 없는 사용자가 있습니다.')
+    }
+  }
+  return ids
+}
+
 // ── 진행 동작 ─────────────────────────────────────────
 
 export function performAction(user: PublicUser, id: number, action: Action, body: Record<string, unknown>) {
@@ -484,21 +501,25 @@ export function performAction(user: PublicUser, id: number, action: Action, body
 
   transaction(() => {
     switch (action) {
+      case 'reassign': {
+        // 작업자 변경: 프로젝트를 새 작업자에게 넘기고 작업 대기부터 다시 시작한다(시작 일시도 새로 잡는다).
+        const ids = designerIdsFrom(body)
+        if (ids.length === assignees.length && ids.every((uid, i) => uid === assignees[i])) {
+          throw new HttpError(400, '지금과 다른 작업자를 골라 주세요.')
+        }
+        run('DELETE FROM assignees WHERE request_id = :id', { id })
+        ids.forEach((uid, ord) => run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, :ord)', { id, uid, ord }))
+        setStatus(req, 'waiting', { started_at: null })
+        const nameOf = (list: string[]) => list.map((uid) => findUser(uid)?.name ?? uid).join(', ')
+        logEvent(id, user.id, action, req.status, 'waiting', `담당: ${nameOf(assignees)} → ${nameOf(ids)}`)
+        notify(ids.filter((uid) => !assignees.includes(uid)), user.id, id, `작업자 변경으로 담당이 되었습니다: ${req.title}`)
+        notify(assignees.filter((uid) => !ids.includes(uid)), user.id, id, `작업자 변경으로 담당에서 빠졌습니다: ${req.title}`)
+        notify([req.requester_id], user.id, id, `담당 작업자가 바뀌었습니다(${nameOf(ids)}): ${req.title}`)
+        return
+      }
       case 'assign':
       case 'take': {
-        let ids: string[]
-        if (action === 'take') {
-          ids = [...assignees, user.id]
-        } else {
-          ids = Array.isArray(body.designerIds) ? body.designerIds.filter((v): v is string => typeof v === 'string') : []
-          if (ids.length === 0) throw new HttpError(400, '담당 작업자를 한 명 이상 골라 주세요.')
-          for (const uid of ids) {
-            const u = findUser(uid)
-            if (!u || !u.active || !(u.role === 'designer' || isManager(u))) {
-              throw new HttpError(400, '담당으로 지정할 수 없는 사용자가 있습니다.')
-            }
-          }
-        }
+        const ids = action === 'take' ? [...assignees, user.id] : designerIdsFrom(body)
         run('DELETE FROM assignees WHERE request_id = :id', { id })
         ids.forEach((uid, ord) => run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, :ord)', { id, uid, ord }))
         const to: Status = req.status === 'requested' ? 'waiting' : req.status

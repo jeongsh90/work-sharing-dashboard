@@ -36,11 +36,20 @@ type ActionSpec = { label: string; dialog?: DialogSpec }
 const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
   take: { label: "내가 맡기" },
   assign: {
-    label: "담당 지정",
+    label: "작업자 지정",
     dialog: {
-      title: "담당 작업자 지정",
-      description: "첫 번째로 고른 사람이 주 담당입니다. 요청됨 상태면 작업 대기로 바뀝니다.",
+      title: "작업자 지정",
+      description: "첫 번째로 고른 사람이 주 담당입니다. 지정하면 작업 대기로 바뀝니다.",
       confirm: "지정",
+      designers: true,
+    },
+  },
+  reassign: {
+    label: "작업자 변경",
+    dialog: {
+      title: "작업자 변경",
+      description: "바꾸면 프로젝트가 새 작업자에게 넘어가고 작업 대기로 돌아갑니다. 새 작업자·빠지는 작업자·요청자에게 알림이 갑니다.",
+      confirm: "변경",
       designers: true,
     },
   },
@@ -132,6 +141,7 @@ const BAR_BUTTON = "h-12 px-6 text-base"
 // 모두 외곽선 형태: 테두리·글자만 상태 색, 마우스를 올리면 같은 색으로 옅게 칠한다.
 const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
   take: "border-sky-500 text-sky-700 hover:bg-sky-500/10 hover:text-sky-700 dark:border-sky-500/70 dark:text-sky-300 dark:hover:bg-sky-500/15 dark:hover:text-sky-300",
+  reassign: "border-indigo-500 text-indigo-700 hover:bg-indigo-500/10 hover:text-indigo-700 dark:border-indigo-500/70 dark:text-indigo-300 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-300",
   assign: "border-sky-500 text-sky-700 hover:bg-sky-500/10 hover:text-sky-700 dark:border-sky-500/70 dark:text-sky-300 dark:hover:bg-sky-500/15 dark:hover:text-sky-300",
   start: "border-blue-500 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700 dark:border-blue-500/70 dark:text-blue-300 dark:hover:bg-blue-500/15 dark:hover:text-blue-300",
   submit: "border-violet-500 text-violet-700 hover:bg-violet-500/10 hover:text-violet-700 dark:border-violet-500/70 dark:text-violet-300 dark:hover:bg-violet-500/15 dark:hover:text-violet-300",
@@ -146,7 +156,7 @@ const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
 }
 
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
-const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "upload-source", "complete", "resubmit", "assign", "request-info", "cancel"]
+const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "upload-source", "complete", "resubmit", "assign", "reassign", "request-info", "cancel"]
 
 export function ActionPanel({
   detail,

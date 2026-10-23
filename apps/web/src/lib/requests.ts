@@ -235,6 +235,7 @@ export type EventDto = {
 export type RequestAction =
   | 'edit'
   | 'assign'
+  | 'reassign'
   | 'take'
   | 'request-info'
   | 'resubmit'
@@ -268,7 +269,8 @@ export type RequestDetailDto = RequestSummaryDto & {
 export const EVENT_LABEL: Record<string, string> = {
   create: '요청 등록',
   edit: '요청 내용 수정',
-  assign: '담당 지정',
+  assign: '작업자 지정',
+  reassign: '작업자 변경',
   take: '담당 맡음',
   'request-info': '보완 요청',
   resubmit: '보완 완료',
