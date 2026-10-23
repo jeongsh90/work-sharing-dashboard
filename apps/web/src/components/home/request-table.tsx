@@ -75,7 +75,16 @@ function EmptyRow({ message }: { message: string }) {
   )
 }
 
-export function RequestTable({ requests, emptyMessage }: { requests: DesignRequest[]; emptyMessage?: string }) {
+// statusTabs: 상태별 탭(전체·작업 대기…). 상태가 하나뿐인 목록(미배정 등)에서는 끈다.
+export function RequestTable({
+  requests,
+  emptyMessage,
+  statusTabs = true,
+}: {
+  requests: DesignRequest[]
+  emptyMessage?: string
+  statusTabs?: boolean
+}) {
   const [filter, setFilter] = useState("all")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
@@ -131,23 +140,25 @@ export function RequestTable({ requests, emptyMessage }: { requests: DesignReque
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs
-          value={filter}
-          onValueChange={(v) => {
-            setFilter(v)
-            setPage(1)
-          }}
-        >
-          <TabsList>
-            {FILTERS.map((f) => (
-              <TabsTrigger key={f.id} value={f.id}>
-                {f.label}
-                <span className="text-xs text-muted-foreground tabular-nums">{counts[f.id]}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        <div className="relative w-full sm:w-64">
+        {statusTabs && (
+          <Tabs
+            value={filter}
+            onValueChange={(v) => {
+              setFilter(v)
+              setPage(1)
+            }}
+          >
+            <TabsList>
+              {FILTERS.map((f) => (
+                <TabsTrigger key={f.id} value={f.id}>
+                  {f.label}
+                  <span className="text-xs text-muted-foreground tabular-nums">{counts[f.id]}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
+        <div className="relative w-full sm:ml-auto sm:w-64">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}

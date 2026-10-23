@@ -52,7 +52,7 @@ export function RequestListPage({ session, mode }: { session: Session; mode: "in
               )
             }
           >
-            <RequestTable requests={rows} emptyMessage={sc.empty} />
+            <RequestTable requests={rows} emptyMessage={sc.empty} statusTabs={sc.id !== "unassigned"} />
           </Section>
         )
       })}
