@@ -1,11 +1,21 @@
 import { useEffect } from "react"
-import { ChevronLeft, ChevronRight, Download } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { AuthImage } from "@/components/requests/file-list"
 import { downloadFile, formatBytes } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// 여러 이미지를 차례로 받는다(한꺼번에 누르면 브라우저가 일부를 막을 수 있어 간격을 둔다)
+async function downloadAll(files: FileInfo[]) {
+  for (const f of files) {
+    await downloadFile(f.id, f.name)
+    await sleep(400)
+  }
+}
 
 // 이미지 슬라이드 보기(모달). 이전·다음 버튼과 키보드 ←/→ 로 넘기고, 슬라이드마다 내려받기 버튼이 있다.
 // fullscreen: 화면 전체를 덮고, 이미지는 원래 크기(폭은 화면까지)로 보여 세로로 긴 이미지는 스크롤해서 본다.
@@ -46,20 +56,34 @@ export function ImageLightbox({
             : "flex max-h-[95svh] flex-col gap-3 p-4 sm:max-w-5xl"
         }
         data-lenis-prevent
+        showCloseButton={false}
       >
         {current && (
           <>
-            <div className="flex items-center gap-3 pr-8">
+            {/* 제목 줄: 파일 이름 · 전체 다운로드(외곽선) · 이 이미지 다운로드 · 닫기 */}
+            <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-sm">{current.name}</DialogTitle>
                 <DialogDescription className="text-xs tabular-nums">
                   {i + 1} / {images.length} · {formatBytes(current.size)}
                 </DialogDescription>
               </div>
-              <Button size="sm" onClick={() => downloadFile(current.id, current.name)}>
+              {images.length > 1 && (
+                <Button size="sm" variant="outline" aria-label="전체 다운로드" onClick={() => void downloadAll(images)}>
+                  <Download data-icon="inline-start" />
+                  <span className="hidden sm:inline">전체 다운로드</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{images.length}</span>
+                </Button>
+              )}
+              <Button size="sm" aria-label="이 이미지 다운로드" onClick={() => downloadFile(current.id, current.name)}>
                 <Download data-icon="inline-start" />
-                다운로드
+                <span className="hidden sm:inline">이 이미지 다운로드</span>
               </Button>
+              <DialogClose asChild>
+                <Button size="icon-sm" variant="ghost" aria-label="닫기">
+                  <X />
+                </Button>
+              </DialogClose>
             </div>
             <div
               className={`relative min-h-0 flex-1 rounded-lg bg-muted/40 ${fullscreen ? "overflow-auto" : "flex items-center justify-center overflow-hidden"}`}
