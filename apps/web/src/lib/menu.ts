@@ -8,6 +8,7 @@ import {
   Info,
   ListChecks,
   MessageSquareText,
+  Network,
   UserRound,
   Users,
   type LucideIcon,
@@ -33,6 +34,7 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "my-requests", title: "내 요청", icon: ListChecks },
       { id: "schedule", title: "디자인팀 일정", icon: CalendarDays },
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
+      { id: "org", title: "조직도", icon: Network },
     ],
   },
   {

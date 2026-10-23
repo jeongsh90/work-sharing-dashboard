@@ -13,6 +13,7 @@ import { RequestDetailPage } from '@/components/requests/request-detail-page'
 import { RequestFormPage } from '@/components/requests/request-form-page'
 import { RequestListPage } from '@/components/requests/request-list-page'
 import { SchedulePage } from '@/components/schedule-page'
+import { OrgPage } from '@/components/org-page'
 import { SignupForm } from '@/components/signup-form'
 import { TeamPage } from '@/components/team-page'
 import { UpdateNotice } from '@/components/update-notice'
@@ -125,6 +126,8 @@ export default function App() {
         return <VersionPage session={session} />
       case 'schedule':
         return <SchedulePage />
+      case 'org':
+        return <OrgPage />
       default:
         return <Placeholder />
     }

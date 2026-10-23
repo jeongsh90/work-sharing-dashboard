@@ -187,6 +187,8 @@ addColumn('users', 'approved', 'INTEGER NOT NULL DEFAULT 1')
 addColumn('notifications', 'link', 'TEXT')
 // 프로필 사진(files.id). 사진 파일은 kind = 'avatar' 로 표시하고 로그인한 사람 누구나 볼 수 있다.
 addColumn('users', 'avatar_id', 'TEXT')
+// 마지막으로 서버에 요청한 시각(조직도의 접속 중 표시)
+addColumn('users', 'last_seen_at', 'INTEGER')
 // 계속 업무(마감 없음). 1 이면 due_at 에는 아주 먼 날짜(ONGOING_DUE)를 넣어 마감 정렬에서 맨 뒤로 간다.
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 

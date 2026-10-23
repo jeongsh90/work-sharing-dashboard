@@ -11,6 +11,7 @@ import {
   LOCK_MS,
   MAX_FAILED_LOGINS,
   SWITCH_ACCOUNTS,
+  ONLINE_VIEWERS,
   PORT,
   UPLOAD_DIR,
   WEB_DIR,
@@ -55,6 +56,8 @@ import {
   verifyUser,
   type PublicUser,
   type Role,
+  orgMembers,
+  touchSeen,
 } from './users.ts'
 
 const failures = new Map<string, { count: number; lockedUntil: number }>()
@@ -260,7 +263,14 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
 
   const user = requireUser(req)
+  touchSeen(user.id)
   let m: RegExpMatchArray | null
+
+  // ── 조직도. 접속 중 표시는 ONLINE_VIEWERS 에게만 ──
+  if (path === '/api/org' && method === 'GET') {
+    const canSeeOnline = ONLINE_VIEWERS.includes(user.id)
+    return sendJson(res, 200, { canSeeOnline, members: orgMembers(canSeeOnline) })
+  }
 
   // ── 계정 전환(SWITCH_ACCOUNTS 묶음끼리만) ──
   if (path === '/api/switch') {

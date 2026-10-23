@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 
-import { REMEMBER_TTL_MS, SESSION_TTL_MS } from './config.ts'
+import { hiddenFromOrg, ONLINE_MS, REMEMBER_TTL_MS, SESSION_TTL_MS } from './config.ts'
 import { all, get, run } from './db.ts'
 
 const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>
@@ -58,6 +58,35 @@ function toPublic(u: UserRow): PublicUser {
     createdAt: u.created_at,
     avatarId: u.avatar_id,
   }
+}
+
+// 마지막 접속 시각 기록. 요청마다 DB 에 쓰지 않도록 한 사람당 30초에 한 번만 쓴다.
+const lastTouched = new Map<string, number>()
+export function touchSeen(id: string) {
+  const now = Date.now()
+  if (now - (lastTouched.get(id) ?? 0) < 30_000) return
+  lastTouched.set(id, now)
+  run('UPDATE users SET last_seen_at = :now WHERE id = :id', { id, now })
+}
+
+// 조직도: 승인·사용 중인 계정(테스트·admin 제외). withOnline 이면 접속 중 여부와 마지막 접속 시각도 넣는다.
+export function orgMembers(withOnline: boolean) {
+  const now = Date.now()
+  return all<UserRow & { last_seen_at: number | null }>('SELECT * FROM users WHERE active = 1 AND approved = 1 ORDER BY name')
+    .filter((u) => !hiddenFromOrg(u))
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      rank: u.rank,
+      position: u.position,
+      department: u.department,
+      presence: u.presence,
+      avatarId: u.avatar_id,
+      ...(withOnline
+        ? { online: u.last_seen_at !== null && now - u.last_seen_at < ONLINE_MS, lastSeenAt: u.last_seen_at }
+        : {}),
+    }))
 }
 
 export function isManager(user: { role: Role }) {
