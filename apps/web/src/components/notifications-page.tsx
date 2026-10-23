@@ -15,31 +15,31 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-import {
-  Trace,
-  TraceCollapsible,
-  TraceCollapsibleContent,
-  TraceCollapsibleTrigger,
-  TraceDescription,
-  TraceIcon,
-  TraceLine,
-  TraceTitle,
-} from "@/components/ui/trace"
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { DesktopNotifyToggle } from "@/components/desktop-notify-toggle"
 import { Section } from "@/components/home/home-page"
 import { PAGE_GRID } from "@/lib/layout"
 import { useNotifications, type AppNotification } from "@/lib/notifications"
 import { navigate, openRequest } from "@/lib/router"
+import { cn } from "@/lib/utils"
 
-// 알림함: shadcn Trace 로 날짜별 묶음을 접었다 펼치고, 알림 한 줄마다 종류 아이콘·내용·시각을 보여 준다.
-// 새 알림(이 화면을 열기 전까지 안 읽은 것)은 반짝이게(running), 반려·취소는 빨갛게(error) 표시한다.
+// 알림함: 프로젝트(요청)별로 알림을 묶어 shadcn Alert 카드 하나로 보여 준다.
+// 카드 제목은 요청 제목, 내용은 그 요청에 온 알림을 최근 것부터 몇 줄. 요청과 관계없는 알림(가입·건의)은 한 건씩 카드로.
+// 새 알림(이 화면을 열기 전까지 안 읽은 것)이 있는 카드는 "새 알림" 배지, 최근 알림이 반려·취소면 빨갛게(destructive) 표시한다.
 
 const pad = (n: number) => String(n).padStart(2, "0")
+const MAX_LINES = 4
 
-// 알림 문구로 종류를 고른다(서버 알림 문구: apps/api/src/requests.ts, suggestions.ts).
-// 문구는 "무슨 일: 요청 제목" 꼴이라 제목에 든 낱말에 휘둘리지 않게 앞부분만 본다.
+// 알림 문구는 "무슨 일: 요청 제목" 꼴이다(서버 알림 문구: apps/api/src/requests.ts, suggestions.ts).
+function split(full: string) {
+  const i = full.indexOf(": ")
+  return i < 0 ? { what: full, subject: "" } : { what: full.slice(0, i), subject: full.slice(i + 2) }
+}
+
+// 알림 문구로 종류를 고른다. 제목에 든 낱말에 휘둘리지 않게 앞부분만 본다.
 function kindOf(full: string): { icon: LucideIcon; error?: boolean } {
-  const message = full.split(": ")[0]
+  const message = split(full).what
   if (message.includes("새 디자인 요청")) return { icon: FilePlus2 }
   if (message.includes("반려")) return { icon: Undo2, error: true }
   if (message.includes("취소")) return { icon: CircleX, error: true }
@@ -54,12 +54,11 @@ function kindOf(full: string): { icon: LucideIcon; error?: boolean } {
   return { icon: Bell }
 }
 
-function dayLabel(d: Date, today: Date) {
-  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
-  const days = Math.round((start(today) - start(d)) / 86_400_000)
-  if (days === 0) return "오늘"
-  if (days === 1) return "어제"
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`
+// 오늘이면 시:분, 아니면 월/일 시:분
+function timeLabel(at: number, today: Date) {
+  const d = new Date(at)
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return d.toDateString() === today.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`
 }
 
 function open(n: AppNotification) {
@@ -67,26 +66,41 @@ function open(n: AppNotification) {
   else if (n.link) navigate(n.link)
 }
 
+type Group = { key: string; title: string; list: AppNotification[] }
+
+// 알림은 최근 것이 앞에 오므로, 처음 나온 순서대로 묶으면 최근 소식이 있는 프로젝트가 위로 간다.
+function groupByProject(items: AppNotification[]) {
+  const groups: Group[] = []
+  const byRequest = new Map<number, Group>()
+  for (const n of items) {
+    if (n.requestId === null) {
+      const { what, subject } = split(n.message)
+      groups.push({ key: `n${n.id}`, title: subject ? `${what}: ${subject}` : what, list: [n] })
+      continue
+    }
+    let g = byRequest.get(n.requestId)
+    if (!g) {
+      g = { key: `r${n.requestId}`, title: split(n.message).subject || n.message, list: [] }
+      byRequest.set(n.requestId, g)
+      groups.push(g)
+    }
+    g.list.push(n)
+  }
+  return groups
+}
+
 export function NotificationsPage() {
   const { items } = useNotifications()
   // 이 화면을 열면 모두 읽음 처리되므로, 처음 열 때 안 읽었던 알림을 기억해 새 알림으로 표시한다.
   const [fresh] = useState(() => new Set(items.filter((n) => !n.read).map((n) => n.id)))
   const [today] = useState(() => new Date())
-
-  // 날짜별로 묶기(최근 날짜가 위)
-  const groups: { label: string; list: AppNotification[] }[] = []
-  for (const n of items) {
-    const label = dayLabel(new Date(n.createdAt), today)
-    const last = groups.at(-1)
-    if (last?.label === label) last.list.push(n)
-    else groups.push({ label, list: [n] })
-  }
+  const groups = groupByProject(items)
 
   return (
     <div className={PAGE_GRID}>
       <Section
         title="알림"
-        aside={<span className="text-sm text-muted-foreground">{items.length}건</span>}
+        aside={<span className="text-sm text-muted-foreground">프로젝트 {groups.length} · {items.length}건</span>}
         className="col-span-12 lg:col-span-8 xl:col-span-6"
       >
         <DesktopNotifyToggle compact />
@@ -96,48 +110,49 @@ export function NotificationsPage() {
             받은 알림이 없습니다.
           </div>
         ) : (
-          <div className="flex flex-col gap-4 rounded-xl border bg-card p-4">
-            {groups.map((g, gi) => {
+          <div className="flex flex-col gap-3">
+            {groups.map((g) => {
+              const latest = g.list[0]
+              const kind = kindOf(latest.message)
               const newCount = g.list.filter((n) => fresh.has(n.id)).length
+              const project = latest.requestId !== null
+              const clickable = project || !!latest.link
               return (
-                <TraceCollapsible key={g.label} defaultOpen={gi < 2 || newCount > 0}>
-                  <TraceCollapsibleTrigger>
-                    <TraceLine>
-                      <TraceTitle className="font-medium text-foreground">{g.label}</TraceTitle>
-                      <TraceDescription>
-                        {g.list.length}건{newCount > 0 && ` · 새 알림 ${newCount}`}
-                      </TraceDescription>
-                    </TraceLine>
-                  </TraceCollapsibleTrigger>
-                  <TraceCollapsibleContent>
-                    <Trace>
-                      {g.list.map((n) => {
-                        const kind = kindOf(n.message)
-                        const at = new Date(n.createdAt)
-                        const isNew = fresh.has(n.id)
-                        return (
-                          <button
-                            key={n.id}
-                            type="button"
-                            disabled={!n.requestId && !n.link}
-                            onClick={() => open(n)}
-                            className="disabled:cursor-default"
-                          >
-                            <TraceLine status={kind.error ? "error" : isNew ? "running" : undefined}>
-                              <TraceIcon>
-                                <kind.icon />
-                              </TraceIcon>
-                              <TraceTitle className={isNew ? "font-medium text-foreground" : undefined}>{n.message}</TraceTitle>
-                              <TraceDescription>
-                                {pad(at.getHours())}:{pad(at.getMinutes())}
-                              </TraceDescription>
-                            </TraceLine>
-                          </button>
-                        )
-                      })}
-                    </Trace>
-                  </TraceCollapsibleContent>
-                </TraceCollapsible>
+                <Alert
+                  key={g.key}
+                  role="status"
+                  variant={kind.error ? "destructive" : "default"}
+                  onClick={clickable ? () => open(latest) : undefined}
+                  className={cn(
+                    "px-4 py-3 pr-28 has-data-[slot=alert-action]:pr-28",
+                    clickable && "cursor-pointer transition-colors hover:bg-accent/50",
+                    newCount > 0 && "border-primary/40",
+                  )}
+                >
+                  <kind.icon />
+                  <AlertTitle className="truncate">{g.title}</AlertTitle>
+                  <AlertDescription>
+                    {project ? (
+                      <ul className="mt-1 flex flex-col gap-0.5">
+                        {g.list.slice(0, MAX_LINES).map((n) => (
+                          <li key={n.id} className={cn("flex gap-2", fresh.has(n.id) && "text-foreground")}>
+                            <span className="shrink-0 text-muted-foreground/70 tabular-nums">{timeLabel(n.createdAt, today)}</span>
+                            <span className="min-w-0">{split(n.message).what}</span>
+                          </li>
+                        ))}
+                        {g.list.length > MAX_LINES && (
+                          <li className="text-muted-foreground/70">외 {g.list.length - MAX_LINES}건</li>
+                        )}
+                      </ul>
+                    ) : (
+                      <span className="tabular-nums">{timeLabel(latest.createdAt, today)}</span>
+                    )}
+                  </AlertDescription>
+                  <AlertAction className="top-3 right-4 flex items-center gap-2">
+                    {newCount > 0 && <Badge>새 알림 {newCount}</Badge>}
+                    {project && <span className="text-xs text-muted-foreground tabular-nums">{g.list.length}건</span>}
+                  </AlertAction>
+                </Alert>
               )
             })}
           </div>
