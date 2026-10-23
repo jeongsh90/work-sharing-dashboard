@@ -25,7 +25,7 @@ import { isManager, loadSession, logout, verifySession, writeStored, type Sessio
 import { menuFor, PAGE_TITLES } from '@/lib/menu'
 import { markAllRead, useNotificationSync } from '@/lib/notifications'
 import { navigate, useRoute } from '@/lib/router'
-import { useSmoothScroll } from '@/lib/smooth-scroll'
+import { recoverScroll, useSmoothScroll } from '@/lib/smooth-scroll'
 import { clearCache } from '@/lib/store'
 
 function environmentName() {
@@ -73,6 +73,12 @@ export default function App() {
   useEffect(() => {
     if (route.page === 'notifications') markAllRead()
   }, [route.page])
+
+  // 화면을 옮기면 창·메뉴가 닫히는 효과가 끝난 뒤 남은 스크롤 잠금이 있는지 확인해 푼다.
+  useEffect(() => {
+    const timer = setTimeout(recoverScroll, 400)
+    return () => clearTimeout(timer)
+  }, [route.page, route.id])
 
   if (!session) {
     return (

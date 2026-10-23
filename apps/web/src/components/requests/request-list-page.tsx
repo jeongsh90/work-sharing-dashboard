@@ -1,8 +1,6 @@
-import { useState } from "react"
 import { Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Section } from "@/components/home/home-page"
 import { RequestTable } from "@/components/home/request-table"
 import { PageState } from "@/components/page-state"
@@ -14,7 +12,8 @@ import { useRequests } from "@/lib/store"
 
 type Scope = { id: string; label: string; match: (r: DesignRequest) => boolean; empty: string }
 
-// 받은 요청함(작업자·관리자): 내 담당 / 미배정 / 전체
+// 받은 요청함(작업자·관리자): 내 담당 / 미배정 / 전체를 탭 없이 섹션으로 나눠 위아래로 보여 준다.
+// 관리자는 미배정이 맨 위, 작업자는 내 담당이 맨 위.
 // 내 요청(모두): 내가 요청한 건
 export function RequestListPage({ session, mode }: { session: Session; mode: "inbox" | "mine" }) {
   const { requests, error } = useRequests()
@@ -31,41 +30,32 @@ export function RequestListPage({ session, mode }: { session: Session; mode: "in
           { id: "all", label: "전체", match: () => true, empty: "아직 들어온 요청이 없습니다." },
         ]
       : [{ id: "mine", label: "내 요청", match: (r) => r.requesterId === session.id, empty: "보낸 요청이 없습니다." }]
-  const [scope, setScope] = useState(mode === "inbox" && isManager(session) ? "unassigned" : scopes[0].id)
+  const ordered = mode === "inbox" && isManager(session) ? [scopes[1], scopes[0], ...scopes.slice(2)] : scopes
 
   if (!requests) return <PageState error={error} />
 
-  const current = scopes.find((s) => s.id === scope) ?? scopes[0]
-  const rows = requests.filter(current.match)
-
   return (
     <div className={PAGE_GRID}>
-      <Section
-        title={mode === "inbox" ? "받은 요청" : "내가 보낸 요청"}
-        aside={
-          scopes.length > 1 && (
-            <Tabs value={scope} onValueChange={setScope} className="ml-2">
-              <TabsList>
-                {scopes.map((s) => (
-                  <TabsTrigger key={s.id} value={s.id}>
-                    {s.label}
-                    <span className="text-xs text-muted-foreground tabular-nums">{requests.filter(s.match).length}</span>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          )
-        }
-        action={
-          mode === "mine" && (
-            <Button size="sm" onClick={() => navigate("request")}>
-              <Plus data-icon="inline-start" />새 요청
-            </Button>
-          )
-        }
-      >
-        <RequestTable key={scope} requests={rows} emptyMessage={current.empty} />
-      </Section>
+      {ordered.map((sc, i) => {
+        const rows = requests.filter(sc.match)
+        return (
+          <Section
+            key={sc.id}
+            title={mode === "inbox" ? (sc.id === "all" ? "전체 요청" : sc.label) : "내가 보낸 요청"}
+            aside={<span className="text-sm text-muted-foreground tabular-nums">{rows.length}건</span>}
+            action={
+              mode === "mine" &&
+              i === 0 && (
+                <Button size="sm" onClick={() => navigate("request")}>
+                  <Plus data-icon="inline-start" />새 요청
+                </Button>
+              )
+            }
+          >
+            <RequestTable requests={rows} emptyMessage={sc.empty} />
+          </Section>
+        )
+      })}
     </div>
   )
 }

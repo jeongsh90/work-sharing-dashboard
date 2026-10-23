@@ -30,7 +30,7 @@ function DockButton({
         <Button
           variant="outline"
           size="icon"
-          className="relative size-12 rounded-full bg-background shadow-lg [&_svg:not([class*='size-'])]:size-5"
+          className="relative size-12 rounded-full bg-background shadow-lg dark:border-primary dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 dark:hover:text-primary-foreground [&_svg:not([class*='size-'])]:size-5"
           aria-label={`${label} ${count}건`}
           onClick={onClick}
         >
