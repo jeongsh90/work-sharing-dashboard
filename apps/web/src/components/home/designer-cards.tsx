@@ -24,7 +24,8 @@ const CARD_SPAN = "col-span-6 md:col-span-4 lg:col-span-3 xl:col-span-2"
 // 카드 아래 "작업 중…" 표시는 이 건수까지만 보여 주고 나머지는 "외 n건"으로 묶는다
 const MAX_WORKING_MARKERS = 1
 
-// 카드 가운데 태그: 이번 주 작업을 상태 묶음별로 센다. 색은 대표 상태의 배지 색.
+// 카드 가운데 태그: 작업을 상태 묶음별로 센다. 색은 대표 상태의 배지 색.
+// 진행 중인 묶음(작업 중·작업 대기·검토 대기)은 마감일과 상관없이 전부, 완료는 이번 주에 완료한 것만 센다.
 const WEEK_TAGS: { label: string; statuses: RequestStatus[]; color: RequestStatus }[] = [
   { label: "작업 중", statuses: ["in-progress", "revising", "approved"], color: "in-progress" },
   { label: "작업 대기", statuses: ["requested", "needs-info", "waiting"], color: "waiting" },
@@ -65,10 +66,12 @@ export function DesignerCards({
         const now: Presence = presence[d.id] ?? "off"
         // 바쁜 정도는 이번 주와 상관없이 진행 중인 전체 건수로 정한다.
         const level = busyLevel(requests.filter((r) => isActive(r) && r.designers.includes(d.id)).length)
-        // 태그와 작업 표시는 이번 주(마감일 기준) 작업만. 완료일 데이터가 생기면 완료는 완료일 기준으로 바꾼다.
-        const thisWeek = requests.filter((r) => r.designers.includes(d.id) && isThisWeek(r.dueAt))
-        const tags = WEEK_TAGS.map((t) => ({ ...t, count: thisWeek.filter((r) => t.statuses.includes(r.status)).length }))
-        const working = thisWeek
+        // 진행 중인 작업은 마감이 이번 주가 아니어도 모두 보인다(카드 활성화·테두리 빛·작업 표시).
+        // 완료는 이번 주에 완료한 것만(완료 시각 기준).
+        const mine = requests.filter((r) => r.designers.includes(d.id))
+        const counted = mine.filter((r) => isActive(r) || (r.completedAt !== null && isThisWeek(r.completedAt)))
+        const tags = WEEK_TAGS.map((t) => ({ ...t, count: counted.filter((r) => t.statuses.includes(r.status)).length }))
+        const working = mine
           .filter((r) => r.status === "in-progress" || r.status === "revising")
           .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
         const hidden = working.length - MAX_WORKING_MARKERS
@@ -101,7 +104,7 @@ export function DesignerCards({
             <Badge variant="outline" className="absolute top-3 right-3 text-muted-foreground">
               {BUSY_LABEL[level]}
             </Badge>
-            {/* 프로필(사진·이름) 묶음과 이번 주 작업 태그를 위쪽부터 차례로 쌓는다 */}
+            {/* 프로필(사진·이름) 묶음과 작업 태그를 위쪽부터 차례로 쌓는다 */}
             <div className="flex flex-1 flex-col items-center gap-3">
               <div className="flex flex-col items-center gap-3">
                 <div className="relative">
@@ -117,7 +120,7 @@ export function DesignerCards({
                 </div>
               </div>
               {/* 카드 안쪽 폭이 200px 이상이면 2행 2열, 좁으면 한 열(글자가 넘치지 않게) */}
-              <div className="grid w-full grid-cols-1 gap-1 @[200px]:grid-cols-2" aria-label="이번 주 작업">
+              <div className="grid w-full grid-cols-1 gap-1 @[200px]:grid-cols-2" aria-label="작업 현황">
                 {tags.map((t) => (
                   <Badge
                     key={t.label}
