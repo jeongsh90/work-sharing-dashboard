@@ -33,7 +33,7 @@ export function FilesPage() {
                     완료 {item.completedAt ? formatDateTime(new Date(item.completedAt)) : "-"}
                   </span>
                 </button>
-                <FileGallery files={item.files} empty="보관된 파일이 없습니다." />
+                <FileGallery files={item.files} empty="보관된 파일이 없습니다." maxImages={4} />
               </li>
             ))}
           </ul>

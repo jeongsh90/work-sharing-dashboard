@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { Download, FileText, ImageOff, LoaderCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ImageLightbox } from "@/components/requests/image-lightbox"
 import { downloadFile, formatBytes, useFileUrl } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
 
@@ -54,24 +56,33 @@ export function FileChip({ file }: { file: FileInfo }) {
   )
 }
 
-// 이미지는 작은 그림으로, 나머지는 이름으로 보여 준다.
-export function FileGallery({ files, empty }: { files: FileInfo[]; empty?: string }) {
+// 이미지는 작은 그림으로, 나머지는 이름으로 보여 준다. 그림을 누르면 슬라이드 보기(ImageLightbox)가 열린다.
+// maxImages: 작은 그림을 이만큼만 보이고, 더 있으면 마지막 칸에 "+N" 을 겹쳐 보인다(보관함 카드 등)
+export function FileGallery({ files, empty, maxImages }: { files: FileInfo[]; empty?: string; maxImages?: number }) {
+  const [open, setOpen] = useState<number | null>(null)
   if (files.length === 0) return empty ? <p className="text-sm text-muted-foreground">{empty}</p> : null
   const images = files.filter((f) => f.mime.startsWith("image/"))
   const others = files.filter((f) => !f.mime.startsWith("image/"))
+  const shown = maxImages ? images.slice(0, maxImages) : images
+  const hidden = images.length - shown.length
   return (
     <div className="flex flex-col gap-3">
       {images.length > 0 && (
-        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {images.map((f) => (
+        <ul className={`grid gap-2 ${maxImages ? "grid-cols-4" : "grid-cols-3 sm:grid-cols-4"}`}>
+          {shown.map((f, i) => (
             <li key={f.id}>
               <button
                 type="button"
-                className="block w-full overflow-hidden rounded-lg border"
-                onClick={() => downloadFile(f.id, f.name)}
-                title={`${f.name} 내려받기`}
+                className="relative block w-full overflow-hidden rounded-lg border"
+                onClick={() => setOpen(i)}
+                title={`${f.name} 크게 보기`}
               >
                 <AuthImage fileId={f.id} alt={f.name} className="aspect-square w-full object-cover" />
+                {hidden > 0 && i === shown.length - 1 && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-semibold text-white tabular-nums">
+                    +{hidden}
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -86,6 +97,7 @@ export function FileGallery({ files, empty }: { files: FileInfo[]; empty?: strin
           ))}
         </ul>
       )}
+      <ImageLightbox images={images} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />
     </div>
   )
 }
