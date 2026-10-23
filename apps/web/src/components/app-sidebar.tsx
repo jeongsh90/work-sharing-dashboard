@@ -6,6 +6,7 @@ import { useSeen } from "@/lib/seen"
 import { useApi } from "@/lib/store"
 import { APP_VERSION } from "@/lib/version"
 import { NavUser } from "@/components/nav-user"
+import { DiskUsage } from "@/components/disk-usage"
 import type { OnSwitched } from "@/components/account-switcher"
 import {
   Sidebar,
@@ -97,6 +98,8 @@ export function AppSidebar({
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
+              {/* 지원 아래: 서버 D 드라이브 용량(정상훈·슈퍼관리자만) */}
+              {group.bottom && <DiskUsage />}
             </SidebarGroupContent>
           </SidebarGroup>
         ))}

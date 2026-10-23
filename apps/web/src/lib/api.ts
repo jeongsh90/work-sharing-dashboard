@@ -138,5 +138,7 @@ export async function downloadFile(id: string, name: string) {
 export function formatBytes(size: number) {
   if (size < 1024) return `${size}B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)}KB`
-  return `${(size / 1024 / 1024).toFixed(1)}MB`
+  if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(1)}MB`
+  if (size < 1024 ** 4) return `${(size / 1024 ** 3).toFixed(1)}GB`
+  return `${(size / 1024 ** 4).toFixed(2)}TB`
 }

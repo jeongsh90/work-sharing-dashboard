@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readFile, stat, unlink } from 'node:fs/promises'
+import { mkdir, readFile, stat, statfs, unlink } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, normalize, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -12,6 +12,7 @@ import {
   MAX_FAILED_LOGINS,
   SWITCH_ACCOUNTS,
   ONLINE_VIEWERS,
+  DISK_PATH,
   PORT,
   UPLOAD_DIR,
   WEB_DIR,
@@ -265,6 +266,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   const user = requireUser(req)
   touchSeen(user.id)
   let m: RegExpMatchArray | null
+
+  // ── 서버 드라이브 남은 용량(정상훈·슈퍼관리자만). 다른 계정은 null ──
+  if (path === '/api/disk' && method === 'GET') {
+    if (!ONLINE_VIEWERS.includes(user.id)) return sendJson(res, 200, null)
+    const s = await statfs(DISK_PATH)
+    return sendJson(res, 200, { drive: DISK_PATH.slice(0, 2), total: s.blocks * s.bsize, free: s.bavail * s.bsize })
+  }
 
   // ── 조직도. 접속 중 표시는 ONLINE_VIEWERS 에게만 ──
   if (path === '/api/org' && method === 'GET') {

@@ -31,6 +31,9 @@ export const FEEDBACK_NOTIFY = ['admin', '49634613@owenfood.com']
 // 조직도에서 지금 사이트에 접속한 사람을 볼 수 있는 계정(정상훈 + 슈퍼관리자 둘)
 export const ONLINE_VIEWERS = ['49634613@owenfood.com', 'admin', 'owenfood']
 // 마지막 요청이 이 시간 안이면 접속 중으로 본다. 화면은 알림을 15초마다 받아 오므로 창을 열어 두면 계속 접속 중이다.
+// 사이드메뉴 아래 남은 용량을 보여 줄 드라이브. 보는 계정은 ONLINE_VIEWERS 와 같다.
+export const DISK_PATH = 'D:/'
+
 export const ONLINE_MS = 2 * 60 * 1000
 // 조직도에 보이지 않는 계정: admin, test 로 시작하는 계정, 부서가 "테스트"인 계정
 export function hiddenFromOrg(u: { id: string; department: string }) {
