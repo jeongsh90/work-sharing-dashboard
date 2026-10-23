@@ -370,7 +370,7 @@ export function RequestForm({
               ))}
             </ul>
           )}
-          <FilePicker files={files} onChange={setFiles} hint="이미지, PDF, 문서 등 한 파일 100MB까지" />
+          <FilePicker files={files} onChange={setFiles} hint="이미지, PDF, 문서 등 크기 제한 없음" />
           <FieldDescription>참고 이미지나 기존 시안이 있으면 같이 올려 주세요.</FieldDescription>
         </Field>
         {/* 하단 고정 막대에 가려지지 않게 빈 공간 */}

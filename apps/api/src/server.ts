@@ -10,7 +10,6 @@ import {
   COMPANY_EMAIL_DOMAIN,
   LOCK_MS,
   MAX_FAILED_LOGINS,
-  MAX_UPLOAD_BYTES,
   SWITCH_ACCOUNTS,
   PORT,
   UPLOAD_DIR,
@@ -160,11 +159,10 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse) {
 }
 
 // 파일 올리기: 본문이 파일 그대로(멀티파트 아님). 파일 이름은 X-File-Name 헤더(URL 인코딩)로 받는다.
+// 크기 제한은 두지 않는다(작업 원본 PSD 등). 메모리에 올리지 않고 받는 대로 디스크에 쓴다.
 async function handleUpload(req: IncomingMessage, res: ServerResponse, user: PublicUser) {
   const name = decodeURIComponent(String(req.headers['x-file-name'] ?? '')).trim().slice(0, 200)
   if (!name) throw new HttpError(400, '파일 이름이 없습니다.')
-  const declared = Number(req.headers['content-length'] ?? 0)
-  if (declared > MAX_UPLOAD_BYTES) throw new HttpError(413, '파일이 너무 큽니다(최대 100MB).')
   const mime = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0] || 'application/octet-stream'
   const id = randomUUID()
   const path = join(UPLOAD_DIR, id)
@@ -172,7 +170,6 @@ async function handleUpload(req: IncomingMessage, res: ServerResponse, user: Pub
   let size = 0
   req.on('data', (chunk: Buffer) => {
     size += chunk.length
-    if (size > MAX_UPLOAD_BYTES) req.destroy(new HttpError(413, '파일이 너무 큽니다(최대 100MB).'))
   })
   try {
     await pipeline(req, createWriteStream(path))
