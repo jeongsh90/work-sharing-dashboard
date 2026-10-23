@@ -201,13 +201,17 @@ export function RequestTable({
               const overdue = isActive(r) && r.dueAt < now
               // 담당이 아직 없는 진행 중 요청은 왼쪽 주황 선과 옅은 배경으로 눈에 띄게
               const waitingAssign = isUnassigned(r) && isActive(r)
+              // 컨펌 대기(시안 확인 중)도 같은 방식으로 보라 선·배경
+              const waitingReview = r.status === "review"
               return (
                 <TableRow
                   key={r.id}
                   className={
                     waitingAssign
                       ? "cursor-pointer bg-amber-500/8 shadow-[inset_3px_0_0_var(--color-amber-500)] hover:bg-amber-500/15"
-                      : "cursor-pointer"
+                      : waitingReview
+                        ? "cursor-pointer bg-violet-500/8 shadow-[inset_3px_0_0_var(--color-violet-500)] hover:bg-violet-500/15"
+                        : "cursor-pointer"
                   }
                   onClick={() => openRequest(r.id)}
                 >
@@ -266,7 +270,14 @@ export function RequestTable({
                     <UrgencyBadge urgency={r.urgency} />
                   </TableCell>
                   <TableCell>
-                    <StatusBadge request={r} />
+                    {waitingReview ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                        <span className="size-1.5 animate-pulse rounded-full bg-violet-500 motion-reduce:animate-none" aria-hidden />
+                        컨펌 대기
+                      </span>
+                    ) : (
+                      <StatusBadge request={r} />
+                    )}
                   </TableCell>
                   <TableCell className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
