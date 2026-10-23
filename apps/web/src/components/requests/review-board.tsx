@@ -68,7 +68,7 @@ export function ReviewBoard({
         {submission.files.map((file) => (
           <figure key={file.id} className="flex flex-col gap-1">
             <div
-              className={`relative overflow-visible rounded-lg border bg-muted/30 ${canPin ? "cursor-crosshair" : ""}`}
+              className={`relative w-fit max-w-full overflow-visible rounded-lg border bg-muted/30 ${canPin ? "cursor-crosshair" : ""}`}
               onClick={(e) => {
                 if (!canPin || (e.target as HTMLElement).closest("[data-pin],[data-draft]")) return
                 const rect = e.currentTarget.getBoundingClientRect()
@@ -80,7 +80,7 @@ export function ReviewBoard({
                 })
               }}
             >
-              <AuthImage fileId={file.id} alt={file.name} className="block h-auto w-full rounded-lg select-none" />
+              <AuthImage fileId={file.id} alt={file.name} className="block h-auto max-w-full rounded-lg select-none" />
               {pins
                 .filter((p) => p.fileId === file.id)
                 .map((p) => (
