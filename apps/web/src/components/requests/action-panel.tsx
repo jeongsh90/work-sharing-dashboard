@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Undo2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { BottomBar } from "@/components/bottom-bar"
 import { FilePicker } from "@/components/requests/file-picker"
 import { api, ApiError, uploadAll } from "@/lib/api"
-import type { RequestAction, RequestDetailDto } from "@/lib/requests"
+import { STATUS_LABEL, type RequestAction, type RequestDetailDto } from "@/lib/requests"
 import { invalidate, isDesignWorker, useUsers } from "@/lib/store"
 
 // 진행 동작 버튼. 어떤 버튼이 보일지는 서버가 준 actions 로 정한다(apps/api/src/requests.ts).
@@ -125,12 +126,20 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
     label: "요청 취소",
     dialog: {
       title: "요청 취소",
-      description: "취소한 요청은 되돌릴 수 없습니다.",
+      description: "요청을 취소합니다. 잘못 취소했다면 작업 취소로 바로 되돌릴 수 있습니다.",
       confirm: "요청 취소",
       destructive: true,
       note: { label: "취소 사유", placeholder: "선택" },
     },
   },
+}
+
+// 작업 취소: 마지막 단계를 되돌린다. 확인 창 문구는 detail.undo 로 채운다.
+const UNDO_SPEC: DialogSpec = {
+  title: "작업 취소",
+  description: "",
+  confirm: "되돌리기",
+  note: { label: "사유", placeholder: "선택" },
 }
 
 // 진행 버튼 크기: 기본 버튼의 1.5배(높이 48px)
@@ -190,9 +199,23 @@ export function ActionPanel({
   }
 
   const available = ORDER.filter((a) => detail.actions.includes(a) && ACTIONS[a])
-  const spec = open ? ACTIONS[open] : null
+  const spec: ActionSpec | null | undefined =
+    open === "undo"
+      ? {
+          label: "작업 취소",
+          dialog: {
+            ...UNDO_SPEC,
+            description: detail.undo
+              ? `마지막 단계(${detail.undo.label})를 취소하고 이전 상태(${STATUS_LABEL[detail.undo.to]})로 되돌립니다. 관계자에게 알림이 갑니다.`
+              : "",
+          },
+        }
+      : open
+        ? ACTIONS[open]
+        : null
+  const canUndo = detail.actions.includes("undo") && detail.undo !== null
 
-  if (available.length === 0 && !detail.actions.includes("edit")) return null
+  if (available.length === 0 && !detail.actions.includes("edit") && !canUndo) return null
 
   return (
     <>
@@ -216,6 +239,17 @@ export function ActionPanel({
           {detail.actions.includes("edit") && (
             <Button variant="outline" className={BAR_BUTTON} onClick={onEdit}>
               요청 수정
+            </Button>
+          )}
+          {canUndo && (
+            <Button
+              variant="outline"
+              className={`${BAR_BUTTON} text-muted-foreground`}
+              disabled={pending !== null}
+              onClick={() => setOpen("undo")}
+            >
+              <Undo2 data-icon="inline-start" />
+              작업 취소
             </Button>
           )}
         </div>

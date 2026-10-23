@@ -98,6 +98,40 @@ export type Action =
   | 'pin'
   | 'comment'
   | 'resolve'
+  | 'undo'
+
+// 작업 취소(되돌리기) 대상: 아직 되돌리지 않은 마지막 상태 변경. 지금 상태로 바꾼 기록이어야 한다.
+type UndoTarget = { id: number; type: string; actor_id: string; from_status: Status; to_status: Status }
+const UNDO_LABEL: Record<string, string> = {
+  assign: '작업자 지정',
+  reassign: '작업자 변경',
+  take: '담당 맡음',
+  'request-info': '보완 요청',
+  resubmit: '보완 완료',
+  start: '작업 시작',
+  submit: '컨펌 요청',
+  reject: '반려',
+  approve: '컨펌',
+  complete: '작업 완료',
+  'upload-source': '원본 업로드',
+  cancel: '요청 취소',
+}
+function undoTarget(req: RequestRow) {
+  const ev = get<UndoTarget>(
+    `SELECT id, type, actor_id, from_status, to_status FROM events
+     WHERE request_id = :id AND undone = 0 AND type != 'undo' AND type != 'create'
+       AND from_status IS NOT NULL AND to_status IS NOT NULL AND from_status != to_status
+     ORDER BY id DESC LIMIT 1`,
+    { id: req.id },
+  )
+  return ev && ev.to_status === req.status && UNDO_LABEL[ev.type] ? ev : null
+}
+
+// 상세 화면에 보낼 되돌리기 정보(버튼 확인 창 문구용)
+export function undoInfo(req: RequestRow) {
+  const t = undoTarget(req)
+  return t ? { label: UNDO_LABEL[t.type], to: t.from_status } : null
+}
 
 function availableActions(user: PublicUser, req: RequestRow, assignees: string[]): Action[] {
   const owner = req.requester_id === user.id
@@ -126,6 +160,11 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     pin: s === 'review' && (owner || manager || assignee || designer),
     comment: s !== 'canceled' && (owner || manager || assignee || designer),
     resolve: assignee || manager,
+    // 작업 취소: 마지막 단계를 되돌린다. 관리자 또는 그 단계를 한 사람만
+    undo: (() => {
+      const t = undoTarget(req)
+      return !!t && (manager || t.actor_id === user.id)
+    })(),
   }
   return (Object.keys(can) as Action[]).filter((a) => can[a])
 }
@@ -393,6 +432,7 @@ export function requestDetail(user: PublicUser, id: number) {
     comments: comments.filter((c) => c.pinId === null),
     events,
     actions: availableActions(user, row, assigneesOf(id)),
+    undo: undoInfo(row),
   }
 }
 
@@ -627,6 +667,38 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         setStatus(req, 'done')
         logEvent(id, user.id, action, req.status, 'done', note ? `원본 ${count}개 · ${note}` : `원본 ${count}개`)
         notify([req.requester_id], user.id, id, `작업 원본 파일이 등록되었습니다: ${req.title}`)
+        return
+      }
+      case 'undo': {
+        const t = undoTarget(req)!
+        const latest = get<{ id: number; round: number }>(
+          'SELECT id, round FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1',
+          { id },
+        )
+        const extra: Record<string, unknown> = {}
+        if (t.type === 'assign') run('DELETE FROM assignees WHERE request_id = :id', { id })
+        if (t.type === 'take') run('DELETE FROM assignees WHERE request_id = :id AND user_id = :uid', { id, uid: t.actor_id })
+        if (t.type === 'submit' && latest) {
+          // 올린 시안을 지운다(핀·핀 댓글·시안 파일 기록 포함)
+          run('DELETE FROM comments WHERE pin_id IN (SELECT p.id FROM pins p JOIN files f ON f.id = p.file_id WHERE f.submission_id = :sid)', { sid: latest.id })
+          run('DELETE FROM pins WHERE file_id IN (SELECT id FROM files WHERE submission_id = :sid)', { sid: latest.id })
+          run('DELETE FROM files WHERE submission_id = :sid', { sid: latest.id })
+          run('DELETE FROM submissions WHERE id = :sid', { sid: latest.id })
+        }
+        if ((t.type === 'reject' || t.type === 'approve') && latest) {
+          run(
+            "UPDATE submissions SET decision = NULL, decided_by = NULL, decided_at = NULL, decision_note = '' WHERE id = :sid",
+            { sid: latest.id },
+          )
+        }
+        if (t.type === 'reject') extra.revision = Math.max(0, req.revision - 1)
+        if (t.type === 'approve') Object.assign(extra, { approved_at: null, completed_at: null })
+        if (t.type === 'complete') extra.completed_at = null
+        if (t.type === 'start') extra.started_at = null
+        setStatus(req, t.from_status, extra)
+        run('UPDATE events SET undone = 1 WHERE id = :eid', { eid: t.id })
+        logEvent(id, user.id, action, req.status, t.from_status, `취소한 단계: ${UNDO_LABEL[t.type]}${note ? ` · ${note}` : ''}`)
+        notify(assigneesOf(id).concat(req.requester_id, assignees), user.id, id, `작업이 이전 단계로 되돌려졌습니다(${UNDO_LABEL[t.type]} 취소): ${req.title}`)
         return
       }
       case 'cancel': {

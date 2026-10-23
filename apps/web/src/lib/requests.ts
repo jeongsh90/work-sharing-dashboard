@@ -257,6 +257,7 @@ export type RequestAction =
   | 'pin'
   | 'comment'
   | 'resolve'
+  | 'undo'
 
 // 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 그 사이즈의 요청 내용. 높이가 null 이면 자유(제한 없음)
 export type RequestItem = { label: string; width: number | null; height: number | null; body: string }
@@ -271,6 +272,7 @@ export type RequestDetailDto = RequestSummaryDto & {
   comments: CommentDto[]
   events: EventDto[]
   actions: RequestAction[]
+  undo: { label: string; to: RequestStatus } | null // 작업 취소로 되돌릴 마지막 단계와 돌아갈 상태
 }
 
 // 진행 기록에 보이는 동작 이름
@@ -289,4 +291,5 @@ export const EVENT_LABEL: Record<string, string> = {
   complete: '작업 완료',
   'upload-source': '원본 업로드',
   cancel: '요청 취소',
+  undo: '작업 취소',
 }
