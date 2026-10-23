@@ -18,6 +18,7 @@ async function downloadAll(files: FileInfo[]) {
 }
 
 // 이미지 슬라이드 보기(모달). 이전·다음 버튼과 키보드 ←/→ 로 넘기고, 슬라이드마다 내려받기 버튼이 있다.
+// 기본: 모달 크기는 화면 높이에서 위아래 여백만 뺀 고정 크기(이미지마다 크기가 바뀌지 않는다), 이미지는 그 안에 맞춰 보인다.
 // fullscreen: 화면 전체를 덮고, 이미지는 원래 크기(폭은 화면까지)로 보여 세로로 긴 이미지는 스크롤해서 본다.
 export function ImageLightbox({
   images,
@@ -53,7 +54,7 @@ export function ImageLightbox({
         className={
           fullscreen
             ? "flex h-svh max-h-svh w-screen max-w-none flex-col gap-3 rounded-none p-4 sm:max-w-none"
-            : "flex max-h-[95svh] flex-col gap-3 p-4 sm:max-w-5xl"
+            : "flex h-[calc(100svh-3rem)] max-h-none flex-col gap-3 p-4 sm:max-w-5xl"
         }
         data-lenis-prevent
         showCloseButton={false}
@@ -92,7 +93,7 @@ export function ImageLightbox({
                 key={current.id}
                 fileId={current.id}
                 alt={current.name}
-                className={fullscreen ? "mx-auto block h-auto max-w-full" : "max-h-[75svh] w-auto max-w-full object-contain"}
+                className={fullscreen ? "mx-auto block h-auto max-w-full" : "absolute inset-0 m-auto max-h-full max-w-full object-contain"}
               />
               {images.length > 1 && (
                 <>
