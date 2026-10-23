@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { MoreHorizontal, Search, Trash2 } from "lucide-react"
 
 import {
@@ -89,6 +89,12 @@ export function RequestTable({
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const tableRef = useRef<HTMLDivElement>(null)
+  // 탭·페이지를 바꿔도 표 높이가 줄지 않게, 지금까지 가장 컸던 높이를 최소 높이로 둔다(아래 내용이 위아래로 튀지 않게).
+  const [minHeight, setMinHeight] = useState(0)
+  useLayoutEffect(() => {
+    const h = tableRef.current?.offsetHeight ?? 0
+    if (h > minHeight) setMinHeight(h)
+  }, [requests, filter, query, page, minHeight])
   const userName = useUserNames()
   const { users } = useUsers()
   const avatarOf = new Map(users?.map((u) => [u.id, u.avatarId]))
@@ -173,17 +179,18 @@ export function RequestTable({
         </div>
       </div>
 
-      <div ref={tableRef} className="relative rounded-xl border bg-card">
-        <Table>
+      <div ref={tableRef} className="relative rounded-xl border bg-card" style={{ minHeight: minHeight || undefined }}>
+        {/* 열 너비 고정(table-fixed): 탭을 바꿔도 열 위치가 움직이지 않는다. 좁은 화면은 가로 스크롤 */}
+        <Table className="min-w-[880px] table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="pl-4">요청</TableHead>
-              <TableHead>요청자</TableHead>
-              <TableHead>담당</TableHead>
-              <TableHead>시작 일시</TableHead>
-              <TableHead>마감 일시</TableHead>
-              <TableHead>긴급도</TableHead>
-              <TableHead>상태</TableHead>
+              <TableHead className="w-[30%] pl-4">요청</TableHead>
+              <TableHead className="w-[11%]">요청자</TableHead>
+              <TableHead className="w-[12%]">담당</TableHead>
+              <TableHead className="w-[13%]">시작 일시</TableHead>
+              <TableHead className="w-[15%]">마감 일시</TableHead>
+              <TableHead className="w-[9%]">긴급도</TableHead>
+              <TableHead className="w-[10%]">상태</TableHead>
               <TableHead className="w-12 pr-4 text-right">
                 <span className="sr-only">관리</span>
               </TableHead>
@@ -192,10 +199,22 @@ export function RequestTable({
           <TableBody>
             {visible.map((r) => {
               const overdue = isActive(r) && r.dueAt < now
+              // 담당이 아직 없는 진행 중 요청은 왼쪽 주황 선과 옅은 배경으로 눈에 띄게
+              const waitingAssign = isUnassigned(r) && isActive(r)
               return (
-                <TableRow key={r.id} className="cursor-pointer" onClick={() => openRequest(r.id)}>
+                <TableRow
+                  key={r.id}
+                  className={
+                    waitingAssign
+                      ? "cursor-pointer bg-amber-500/8 shadow-[inset_3px_0_0_var(--color-amber-500)] hover:bg-amber-500/15"
+                      : "cursor-pointer"
+                  }
+                  onClick={() => openRequest(r.id)}
+                >
                   <TableCell className="pl-4">
-                    <div className="font-medium">{r.title}</div>
+                    <div className="truncate font-medium" title={r.title}>
+                      {r.title}
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {r.code} · {r.workType}
                     </div>
@@ -206,7 +225,14 @@ export function RequestTable({
                   </TableCell>
                   <TableCell>
                     {isUnassigned(r) ? (
-                      <span className="text-muted-foreground">미배정</span>
+                      waitingAssign ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          <span className="size-1.5 animate-pulse rounded-full bg-amber-500 motion-reduce:animate-none" aria-hidden />
+                          미배정
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">미배정</span>
+                      )
                     ) : (
                       <div className="flex items-center gap-2">
                         <div className="flex -space-x-2">
