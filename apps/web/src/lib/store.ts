@@ -93,7 +93,7 @@ export function useUsers() {
 export const DESIGN_TEAM = '디자인팀'
 
 export function isDesignWorker(u: Pick<UserInfo, 'role' | 'department'>) {
-  return u.role === 'designer' || ((u.role === 'admin' || u.role === 'superadmin') && u.department.replace(/s+/g, '') === DESIGN_TEAM)
+  return u.role === 'designer' || ((u.role === 'admin' || u.role === 'superadmin') && u.department.replace(/\s+/g, '') === DESIGN_TEAM)
 }
 
 // 홈의 디자인팀 카드와 담당 지정에 쓰는 작업자 목록
