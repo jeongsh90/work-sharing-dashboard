@@ -28,15 +28,14 @@ function DockButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="outline"
           size="icon"
-          className="relative size-12 rounded-full bg-background shadow-lg dark:border-primary dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 dark:hover:text-primary-foreground [&_svg:not([class*='size-'])]:size-5"
+          className="relative size-12 rounded-full shadow-lg [&_svg:not([class*='size-'])]:size-5"
           aria-label={`${label} ${count}건`}
           onClick={onClick}
         >
           <Icon />
           {count > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white tabular-nums">
+            <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white tabular-nums ring-2 ring-background">
               {count > 99 ? "99+" : count}
             </span>
           )}

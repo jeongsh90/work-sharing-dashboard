@@ -21,10 +21,10 @@ export function PresenceButton({ session, onSessionChange }: { session: Session;
   return (
     <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="h-12 gap-2 rounded-full bg-background px-5 text-base shadow-lg dark:border-primary dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 dark:hover:text-primary-foreground [&_svg]:dark:text-primary-foreground/70" aria-label="내 현재 상태 바꾸기">
+          <Button className="h-12 gap-2 rounded-full px-5 text-base shadow-lg" aria-label="내 현재 상태 바꾸기">
             <span className={`size-2.5 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
             {PRESENCE_LABEL[now]}
-            <ChevronUp className="text-muted-foreground" aria-hidden />
+            <ChevronUp className="opacity-70" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="end" className="min-w-40">
