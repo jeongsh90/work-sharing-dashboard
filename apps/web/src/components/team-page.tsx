@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Check, Plus, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,7 +23,7 @@ import { api, ApiError } from "@/lib/api"
 import { COMPANY_EMAIL_DOMAIN, ROLE_LABEL, type Role, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
-import { DESIGN_TEAM, invalidate, useUsers, type UserInfo } from "@/lib/store"
+import { DESIGN_TEAM, invalidate, isDesignWorker, useUsers, type UserInfo } from "@/lib/store"
 
 // 팀 관리(관리자): 계정 만들기, 역할·부서 바꾸기, 비밀번호 정해 주기, 사용 중지
 export function TeamPage({ session }: { session: Session }) {
@@ -226,6 +227,21 @@ function MemberRow({ user: u, session, onEdit }: { user: UserInfo; session: Sess
           )}
         </div>
       </div>
+      {/* 작업자만: 홈 디자인팀 카드에 보일지 */}
+      {isDesignWorker(u) && u.active && (
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          메인 노출
+          <Switch
+            checked={u.showOnHome}
+            disabled={locked}
+            aria-label={`${u.name} 홈 디자인팀 카드에 보이기`}
+            onCheckedChange={async (v) => {
+              await api(`/users/${encodeURIComponent(u.id)}`, { method: "PATCH", body: { showOnHome: v } })
+              invalidate()
+            }}
+          />
+        </label>
+      )}
       <Button variant="ghost" size="sm" disabled={locked} onClick={onEdit}>
         수정
       </Button>

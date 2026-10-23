@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { ChevronRight, UsersRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -50,7 +50,9 @@ function MoreButton({ label, onClick }: { label: string; onClick: () => void }) 
 // 홈은 관리자·작업자·요청자 모두 같은 화면이다.
 export function HomePage({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
   const { requests, error } = useRequests()
-  const designers = useDesigners()
+  // 홈 카드에는 팀 관리에서 "메인 노출"을 켠 작업자만
+  const allDesigners = useDesigners()
+  const designers = useMemo(() => allDesigners?.filter((d) => d.showOnHome) ?? null, [allDesigners])
   const [batchOpen, setBatchOpen] = useState(false)
 
   if (!requests || !designers) return <PageState error={error} />

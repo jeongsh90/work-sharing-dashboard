@@ -25,6 +25,7 @@ export type PublicUser = {
   approved: boolean // 회원가입 후 슈퍼관리자 승인 여부
   createdAt: number
   avatarId: string | null // 프로필 사진 파일 id
+  showOnHome: boolean // 홈 디자인팀 카드에 보일지
 }
 
 type UserRow = {
@@ -40,6 +41,7 @@ type UserRow = {
   active: number
   approved: number
   avatar_id: string | null
+  show_on_home: number
   created_at: number
 }
 
@@ -57,6 +59,7 @@ function toPublic(u: UserRow): PublicUser {
     approved: u.approved === 1,
     createdAt: u.created_at,
     avatarId: u.avatar_id,
+    showOnHome: u.show_on_home !== 0,
   }
 }
 
@@ -172,7 +175,7 @@ export function superadminIds() {
   return all<{ id: string }>("SELECT id FROM users WHERE role = 'superadmin' AND active = 1 AND approved = 1").map((u) => u.id)
 }
 
-export function updateUser(id: string, fields: Partial<UserFields & { presence: string; active: boolean }>) {
+export function updateUser(id: string, fields: Partial<UserFields & { presence: string; active: boolean; show_on_home: boolean }>) {
   const entries = Object.entries(fields).filter(([, v]) => v !== undefined)
   if (entries.length === 0) return
   const params: Record<string, unknown> = { id }

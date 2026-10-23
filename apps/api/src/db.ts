@@ -191,6 +191,8 @@ addColumn('users', 'avatar_id', 'TEXT')
 addColumn('users', 'last_seen_at', 'INTEGER')
 // 작업 취소(되돌리기)로 취소된 상태 변경 기록이면 1
 addColumn('events', 'undone', 'INTEGER NOT NULL DEFAULT 0')
+// 홈 디자인팀 카드에 보일지(작업자만 의미 있다). 0 이면 카드에서 뺀다. 담당 지정 목록에는 그대로 나온다.
+addColumn('users', 'show_on_home', 'INTEGER NOT NULL DEFAULT 1')
 // 계속 업무(마감 없음). 1 이면 due_at 에는 아주 먼 날짜(ONGOING_DUE)를 넣어 마감 정렬에서 맨 뒤로 간다.
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 

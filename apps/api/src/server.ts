@@ -380,7 +380,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (target.id === user.id && (body.active === false || (f.role && f.role !== user.role))) {
       throw new HttpError(400, '내 계정의 역할이나 사용 여부는 바꿀 수 없습니다.')
     }
-    updateUser(target.id, { ...f, role: f.role ?? undefined, active: typeof body.active === 'boolean' ? body.active : undefined })
+    updateUser(target.id, {
+      ...f,
+      role: f.role ?? undefined,
+      active: typeof body.active === 'boolean' ? body.active : undefined,
+      show_on_home: typeof body.showOnHome === 'boolean' ? body.showOnHome : undefined,
+    })
     if (body.password) await setPassword(target.id, checkPassword(body.password))
     return sendJson(res, 200, { user: findUser(target.id) })
   }
