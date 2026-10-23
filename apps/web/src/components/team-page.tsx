@@ -35,14 +35,23 @@ export function TeamPage({ session }: { session: Session }) {
   const pending = users.filter((u) => !u.approved)
   const members = users.filter((u) => u.approved)
   // 부서별로 묶는다. 디자인팀이 맨 앞, 나머지는 부서 이름 순. 부서가 비면 "부서 미지정"
+  // 띄어쓰기만 다른 부서("마케팅 1팀"·"마케팅1팀")는 한 부서로 묶고, 이름은 가장 많이 쓴 표기로 보여 준다.
   const NO_TEAM = "부서 미지정"
   const groups = new Map<string, UserInfo[]>()
   for (const u of members) {
-    const team = u.department.trim() || NO_TEAM
-    groups.set(team, [...(groups.get(team) ?? []), u])
+    const key = u.department.replace(/\s+/g, "") || NO_TEAM
+    groups.set(key, [...(groups.get(key) ?? []), u])
   }
-  const rank = (t: string) => (t === DESIGN_TEAM ? 0 : t === NO_TEAM ? 2 : 1)
-  const teams = [...groups.entries()].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b, "ko"))
+  const teamName = (key: string, list: UserInfo[]) => {
+    if (key === NO_TEAM) return NO_TEAM
+    const count = new Map<string, number>()
+    for (const u of list) count.set(u.department.trim(), (count.get(u.department.trim()) ?? 0) + 1)
+    return [...count.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  }
+  const rank = (t: string) => (t.replace(/\s+/g, "") === DESIGN_TEAM.replace(/\s+/g, "") ? 0 : t === NO_TEAM ? 2 : 1)
+  const teams = [...groups.entries()]
+    .map(([key, list]) => [teamName(key, list), list] as const)
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b, "ko"))
 
   return (
     <div className={PAGE_GRID}>
