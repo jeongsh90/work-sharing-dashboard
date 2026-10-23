@@ -3,6 +3,15 @@ import { LoaderCircle, MessageCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { UserAvatar } from "@/components/user-avatar"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import {
@@ -55,10 +64,12 @@ export function DesignerCards({
   designers,
   requests,
   presence,
+  onChangePresence,
 }: {
   designers: (Designer & { avatarId?: string | null })[]
   requests: DesignRequest[]
   presence: Record<string, Presence>
+  onChangePresence?: (id: string, p: Presence) => void // 관리자만: 상태 배지를 눌러 바꾼다
 }) {
   return (
     <div className={INNER_GRID}>
@@ -95,10 +106,35 @@ export function DesignerCards({
               </>
             )}
             {/* 왼쪽 위: 작업자 현재 상태, 오른쪽 위: 1:1 채팅(준비 중) */}
-            <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
-              <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
-              {PRESENCE_LABEL[now]}
-            </Badge>
+            {onChangePresence ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="absolute top-3 left-3 rounded-full" aria-label={`${d.name} 상태 바꾸기`}>
+                    <Badge variant="outline" className="cursor-pointer gap-1.5 hover:bg-accent">
+                      <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
+                      {PRESENCE_LABEL[now]}
+                    </Badge>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-36">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">{d.name} 상태</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioGroup value={now} onValueChange={(v) => onChangePresence(d.id, v as Presence)}>
+                    {(Object.keys(PRESENCE_LABEL) as Presence[]).map((p) => (
+                      <DropdownMenuRadioItem key={p} value={p}>
+                        <span className={`size-2 rounded-full ${PRESENCE_DOT[p]}`} aria-hidden />
+                        {PRESENCE_LABEL[p]}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Badge variant="outline" className="absolute top-3 left-3 gap-1.5">
+                <span className={`size-2 rounded-full ${PRESENCE_DOT[now]}`} aria-hidden />
+                {PRESENCE_LABEL[now]}
+              </Badge>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 {/* 1:1 채팅은 준비 중이라 아직 아무 일도 하지 않는다 */}

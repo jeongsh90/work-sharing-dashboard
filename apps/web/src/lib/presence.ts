@@ -25,6 +25,12 @@ export const PRESENCE_DOT: Record<Presence, string> = {
   off: 'bg-slate-400',
 }
 
+// 관리자가 팀원 상태를 바꾼다(한 명 또는 여러 명)
+export async function setTeamPresence(ids: string[], presence: Presence) {
+  await api('/presence', { body: { ids, presence } })
+  invalidate()
+}
+
 export async function savePresence(presence: Presence) {
   const { user } = await api<{ user: Session }>('/me', { method: 'PATCH', body: { presence } })
   updateStoredUser(user)

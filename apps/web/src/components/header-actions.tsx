@@ -130,7 +130,7 @@ function ThemeToggle() {
 }
 
 // onNewRequest 를 주면(요청자) 맨 오른쪽에 디자인 요청 버튼을 둔다. 좁은 화면에서는 아이콘만 보인다.
-// 맨 오른쪽: 계정 전환(정해 둔 계정 묶음일 때만 보인다)
+// 맨 오른쪽: PC 알림 테스트 → 계정 전환(정해 둔 계정 묶음일 때만 보인다)
 export function HeaderActions({
   onOpenNotifications,
   onNewRequest,
@@ -144,7 +144,6 @@ export function HeaderActions({
 }) {
   return (
     <div className="ml-auto flex items-center gap-1">
-      <DesktopTestButton />
       <NotificationButton onOpen={onOpenNotifications} />
       <ThemeToggle />
       {onNewRequest && (
@@ -153,6 +152,7 @@ export function HeaderActions({
           <span className="hidden sm:inline">디자인 요청</span>
         </Button>
       )}
+      <DesktopTestButton />
       <AccountSwitcher currentId={currentId} onSwitched={onSwitched} />
     </div>
   )

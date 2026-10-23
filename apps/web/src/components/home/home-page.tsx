@@ -1,14 +1,16 @@
-import { ChevronRight } from "lucide-react"
+import { useState } from "react"
+import { ChevronRight, UsersRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { StatCards } from "@/components/home/stat-cards"
 import { PresenceButton } from "@/components/home/presence-button"
+import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
 import { PageState } from "@/components/page-state"
-import type { Session } from "@/lib/auth"
+import { updateStoredUser, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
-import type { Presence } from "@/lib/presence"
+import { setTeamPresence, type Presence } from "@/lib/presence"
 import { navigate } from "@/lib/router"
 import { isDesignWorker, useDesigners, useRequests } from "@/lib/store"
 
@@ -50,6 +52,7 @@ function MoreButton({ label, onClick }: { label: string; onClick: () => void }) 
 export function HomePage({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
   const { requests, error } = useRequests()
   const designers = useDesigners()
+  const [batchOpen, setBatchOpen] = useState(false)
 
   if (!requests || !designers) return <PageState error={error} />
 
@@ -57,6 +60,17 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
 
   // 오른쪽 아래 상태 버튼이 표의 마지막 줄을 가리지 않게 아래 여백을 둔다
   const showPresence = isDesignWorker(session)
+
+  // 관리자는 팀원 상태를 바꾼다(카드 배지에서 한 명씩, 일괄 변경으로 여러 명). 내 상태가 바뀌면 로그인 정보도 맞춘다.
+  const manager = session.role === "admin" || session.role === "superadmin"
+  const changePresence = async (ids: string[], p: Presence) => {
+    await setTeamPresence(ids, p)
+    if (ids.includes(session.id)) {
+      const next = { ...session, presence: p }
+      updateStoredUser(next)
+      onSessionChange(next)
+    }
+  }
 
   return (
     <div className={`${PAGE_GRID} ${showPresence ? "pb-24 md:pb-24" : ""}`}>
@@ -66,9 +80,33 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
       >
         <StatCards requests={requests} />
       </Section>
-      <Section title="디자인팀" aside={<span className="text-sm text-muted-foreground">{designers.length}명</span>}>
-        <DesignerCards designers={designers} requests={requests} presence={presence} />
+      <Section
+        title="디자인팀"
+        aside={<span className="text-sm text-muted-foreground">{designers.length}명</span>}
+        action={
+          manager && designers.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)}>
+              <UsersRound data-icon="inline-start" />
+              상태 일괄 변경
+            </Button>
+          ) : undefined
+        }
+      >
+        <DesignerCards
+          designers={designers}
+          requests={requests}
+          presence={presence}
+          onChangePresence={manager ? (id, p) => void changePresence([id], p) : undefined}
+        />
       </Section>
+      {batchOpen && (
+        <PresenceBatchDialog
+          designers={designers}
+          presence={presence}
+          onApply={changePresence}
+          onClose={() => setBatchOpen(false)}
+        />
+      )}
       <Section title="작업 현황">
         <RequestTable requests={requests} emptyMessage="아직 들어온 요청이 없습니다." />
       </Section>

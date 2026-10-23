@@ -309,6 +309,21 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     }
   }
 
+  // ── 팀원 현재 상태(퇴근·회의 중 등) 바꾸기: 관리자가 한 명 또는 여러 명을 한 번에 ──
+  if (path === '/api/presence' && method === 'POST') {
+    requireManager(user)
+    const body = await readJson(req)
+    if (!PRESENCES.includes(body.presence as never)) throw new HttpError(400, '상태 값이 올바르지 않습니다.')
+    const ids = Array.isArray(body.ids) ? body.ids.filter((v): v is string => typeof v === 'string') : []
+    if (ids.length === 0) throw new HttpError(400, '상태를 바꿀 사람을 골라 주세요.')
+    for (const id of ids) {
+      const target = findUser(id)
+      if (!target || !target.active || !target.approved) throw new HttpError(404, '없는 계정이 있습니다.')
+      updateUser(id, { presence: body.presence as string })
+    }
+    return sendJson(res, 200, { ok: true, count: ids.length })
+  }
+
   // ── 사용자(팀 관리) ──
   if (path === '/api/users') {
     if (method === 'GET') {
