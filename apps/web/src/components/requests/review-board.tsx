@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { Check, Download, MapPin, RotateCcw } from "lucide-react"
+import { Check, Download, MapPin, Maximize2, RotateCcw } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { AuthImage } from "@/components/requests/file-list"
+import { ImageLightbox } from "@/components/requests/image-lightbox"
 import { api, ApiError, downloadFile } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
@@ -48,6 +49,9 @@ export function ReviewBoard({
 
   const [selected, setSelected] = useState<number | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
+  // 전체 화면 보기(모달). 핀을 꽂을 수 없을 땐 이미지를 누르면, 꽂을 수 있을 땐 오른쪽 위 버튼으로 연다.
+  const images = submission.files.filter((f) => f.mime.startsWith("image/"))
+  const [viewing, setViewing] = useState<number | null>(null)
 
   const select = (id: number, scrollTo: "image" | "thread") => {
     setSelected(id)
@@ -68,9 +72,13 @@ export function ReviewBoard({
         {submission.files.map((file) => (
           <figure key={file.id} className="flex flex-col gap-1">
             <div
-              className={`relative w-fit max-w-full overflow-visible rounded-lg border bg-muted/30 ${canPin ? "cursor-crosshair" : ""}`}
+              className={`relative min-h-12 w-fit max-w-full min-w-12 overflow-visible rounded-lg border bg-muted/30 ${canPin ? "cursor-crosshair" : "cursor-zoom-in"}`}
               onClick={(e) => {
-                if (!canPin || (e.target as HTMLElement).closest("[data-pin],[data-draft]")) return
+                if ((e.target as HTMLElement).closest("[data-pin],[data-draft]")) return
+                if (!canPin) {
+                  if (images.includes(file)) setViewing(images.indexOf(file))
+                  return
+                }
                 const rect = e.currentTarget.getBoundingClientRect()
                 setSelected(null)
                 setDraft({
@@ -81,6 +89,19 @@ export function ReviewBoard({
               }}
             >
               <AuthImage fileId={file.id} alt={file.name} className="block h-auto max-w-full rounded-lg select-none" />
+              {images.includes(file) && (
+                <Button
+                  type="button"
+                  data-pin
+                  variant="secondary"
+                  size="icon-sm"
+                  className="absolute top-2 right-2 opacity-80 shadow-md hover:opacity-100"
+                  aria-label="전체 화면으로 보기"
+                  onClick={() => setViewing(images.indexOf(file))}
+                >
+                  <Maximize2 />
+                </Button>
+              )}
               {pins
                 .filter((p) => p.fileId === file.id)
                 .map((p) => (
@@ -152,6 +173,7 @@ export function ReviewBoard({
           )}
         </div>
       </aside>
+      <ImageLightbox images={images} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} fullscreen />
     </div>
   )
 }

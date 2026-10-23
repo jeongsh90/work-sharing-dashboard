@@ -8,12 +8,15 @@ import { downloadFile, formatBytes } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
 
 // 이미지 슬라이드 보기(모달). 이전·다음 버튼과 키보드 ←/→ 로 넘기고, 슬라이드마다 내려받기 버튼이 있다.
+// fullscreen: 화면 전체를 덮고, 이미지는 원래 크기(폭은 화면까지)로 보여 세로로 긴 이미지는 스크롤해서 본다.
 export function ImageLightbox({
   images,
   index,
   onIndex,
   onClose,
+  fullscreen = false,
 }: {
+  fullscreen?: boolean
   images: FileInfo[]
   index: number | null
   onIndex: (i: number) => void
@@ -36,7 +39,14 @@ export function ImageLightbox({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[95svh] flex-col gap-3 p-4 sm:max-w-5xl" data-lenis-prevent>
+      <DialogContent
+        className={
+          fullscreen
+            ? "flex h-svh max-h-svh w-screen max-w-none flex-col gap-3 rounded-none p-4 sm:max-w-none"
+            : "flex max-h-[95svh] flex-col gap-3 p-4 sm:max-w-5xl"
+        }
+        data-lenis-prevent
+      >
         {current && (
           <>
             <div className="flex items-center gap-3 pr-8">
@@ -51,14 +61,21 @@ export function ImageLightbox({
                 다운로드
               </Button>
             </div>
-            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted/40">
-              <AuthImage key={current.id} fileId={current.id} alt={current.name} className="max-h-[75svh] w-auto max-w-full object-contain" />
+            <div
+              className={`relative min-h-0 flex-1 rounded-lg bg-muted/40 ${fullscreen ? "overflow-auto" : "flex items-center justify-center overflow-hidden"}`}
+            >
+              <AuthImage
+                key={current.id}
+                fileId={current.id}
+                alt={current.name}
+                className={fullscreen ? "mx-auto block h-auto max-w-full" : "max-h-[75svh] w-auto max-w-full object-contain"}
+              />
               {images.length > 1 && (
                 <>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="absolute top-1/2 left-2 -translate-y-1/2 rounded-full bg-background/80 backdrop-blur"
+                    className={`${fullscreen ? "fixed left-6" : "absolute left-2"} top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/80 backdrop-blur`}
                     aria-label="이전 이미지"
                     onClick={() => go(-1)}
                   >
@@ -67,7 +84,7 @@ export function ImageLightbox({
                   <Button
                     variant="outline"
                     size="icon"
-                    className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full bg-background/80 backdrop-blur"
+                    className={`${fullscreen ? "fixed right-6" : "absolute right-2"} top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/80 backdrop-blur`}
                     aria-label="다음 이미지"
                     onClick={() => go(1)}
                   >
