@@ -1,4 +1,4 @@
-import { LoaderCircle, MessageCircle } from "lucide-react"
+import { CirclePause, LoaderCircle, MessageCircle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -42,7 +42,24 @@ const WEEK_TAGS: { label: string; statuses: RequestStatus[]; color: RequestStatu
   { label: "완료", statuses: ["done", "source-pending"], color: "done" },
 ]
 
-function WorkingMarker({ request }: { request: DesignRequest }) {
+// presence: 작업자의 현재 상태. 작업 중이 아니면(퇴근·회의 중 등) 도는 표시·반짝임을 멈추고 그 상태를 글로 보인다.
+function WorkingMarker({ request, presence }: { request: DesignRequest; presence: Presence }) {
+  if (presence !== "working") {
+    return (
+      <Marker>
+        <MarkerIcon className="text-muted-foreground">
+          <CirclePause />
+        </MarkerIcon>
+        <MarkerContent className="flex min-w-0 flex-1 justify-between gap-2 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate font-medium">{request.title}</span>
+          <span className="flex shrink-0 items-center gap-1">
+            <span className={`size-1.5 rounded-full ${PRESENCE_DOT[presence]}`} aria-hidden />
+            {PRESENCE_LABEL[presence]}
+          </span>
+        </MarkerContent>
+      </Marker>
+    )
+  }
   const doing = request.status === "revising" ? "수정 중…" : "작업 중…"
   const color = STATUS_TEXT[request.status] // 상태 배지와 같은 색(작업 중 파랑, 수정 중 주황)
   return (
@@ -180,7 +197,7 @@ export function DesignerCards({
               {working.length > 0 ? (
                 <>
                   {working.slice(0, MAX_WORKING_MARKERS).map((r) => (
-                    <WorkingMarker key={r.id} request={r} />
+                    <WorkingMarker key={r.id} request={r} presence={now} />
                   ))}
                   {hidden > 0 && (
                     <p className="absolute inset-x-0 top-full text-center text-xs text-muted-foreground">외 {hidden}건</p>
