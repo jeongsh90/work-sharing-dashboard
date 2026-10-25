@@ -325,6 +325,29 @@ function RoadmapDialog({ item, onClose }: { item: RoadmapItem | null; onClose: (
   )
 }
 
+// 업데이트 예정 기능 한 줄. 완료한 기능은 줄을 그어 흐리게
+function RoadmapRow({ item: r, canEdit, onEdit }: { item: RoadmapItem; canEdit: boolean; onEdit: () => void }) {
+  return (
+    <li className="group flex items-start gap-2 py-2.5 text-sm first:pt-0 last:pb-0">
+      <Badge variant="secondary" className={`shrink-0 ${ROADMAP_STYLE[r.status]}`}>
+        {r.status}
+      </Badge>
+      <span className={`min-w-0 flex-1 break-words ${r.status === "완료" ? "text-muted-foreground line-through" : ""}`}>{r.title}</span>
+      {canEdit && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          aria-label={`${r.title} 수정`}
+          onClick={onEdit}
+        >
+          <Pencil />
+        </Button>
+      )}
+    </li>
+  )
+}
+
 // 건의게시판 오른쪽: 업데이트 예정 기능(서버 roadmap). admin·정상훈만 쓰고 고친다(서버 ROADMAP_EDITORS).
 function Roadmap() {
   const { data } = useApi<{ canEdit: boolean; items: RoadmapItem[] }>("/roadmap", 300_000)
@@ -348,28 +371,27 @@ function Roadmap() {
         {data && data.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">아직 적어 둔 예정 기능이 없습니다.</p>
         ) : (
-          <ul className="flex flex-col divide-y">
-            {data?.items.map((r) => (
-              <li key={r.id} className="group flex items-start gap-2 py-2.5 text-sm first:pt-0 last:pb-0">
-                <Badge variant="secondary" className={`shrink-0 ${ROADMAP_STYLE[r.status]}`}>
-                  {r.status}
-                </Badge>
-                {/* 완료한 기능은 줄을 그어 흐리게 */}
-                <span className={`min-w-0 flex-1 break-words ${r.status === "완료" ? "text-muted-foreground line-through" : ""}`}>{r.title}</span>
-                {canEdit && (
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                    aria-label={`${r.title} 수정`}
-                    onClick={() => setEditing(r)}
-                  >
-                    <Pencil />
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
+          // 진행 중인 항목 먼저, 완료한 항목은 아래 "완료" 묶음으로 나눈다
+          <div className="flex flex-col gap-4">
+            <ul className="flex flex-col divide-y">
+              {data?.items
+                .filter((r) => r.status !== "완료")
+                .map((r) => <RoadmapRow key={r.id} item={r} canEdit={canEdit} onEdit={() => setEditing(r)} />)}
+            </ul>
+            {data?.items.some((r) => r.status === "완료") && (
+              <div className="flex flex-col gap-2">
+                <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  완료
+                  <span className="h-px flex-1 bg-border" aria-hidden />
+                </p>
+                <ul className="flex flex-col divide-y">
+                  {data.items
+                    .filter((r) => r.status === "완료")
+                    .map((r) => <RoadmapRow key={r.id} item={r} canEdit={canEdit} onEdit={() => setEditing(r)} />)}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
       {editing && (
