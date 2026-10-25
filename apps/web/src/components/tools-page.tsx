@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { FileCheck2, Search, X, type LucideIcon } from "lucide-react"
+import { FileCheck2, LayoutTemplate, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -25,6 +25,13 @@ const TOOLS: Tool[] = [
     description: "수매 확인서를 만들고 내려받는 도구",
     icon: FileCheck2,
     color: "from-emerald-400 to-teal-600",
+  },
+  {
+    id: "detail-page",
+    name: "상세페이지",
+    description: "상품 상세페이지를 만들고 정리하는 도구",
+    icon: LayoutTemplate,
+    color: "from-sky-400 to-indigo-600",
   },
 ]
 
