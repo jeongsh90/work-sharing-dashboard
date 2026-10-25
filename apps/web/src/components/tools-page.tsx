@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { FileCheck2, LayoutTemplate, Search, X, type LucideIcon } from "lucide-react"
+import { FileCheck2, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PAGE_GRID } from "@/lib/layout"
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
@@ -32,6 +33,14 @@ const TOOLS: Tool[] = [
     description: "상품 상세페이지를 만들고 정리하는 도구",
     icon: LayoutTemplate,
     color: "from-sky-400 to-indigo-600",
+  },
+  {
+    id: "mail-signature",
+    name: "메일 서명",
+    description: "회사 메일 서명을 만들고 복사하는 도구",
+    icon: Mail,
+    color: "from-rose-400 to-red-600",
+    body: <MailSignatureTool />,
   },
 ]
 
