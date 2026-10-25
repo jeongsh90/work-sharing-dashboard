@@ -391,10 +391,10 @@ export function FeedbackPage({ session }: { session: Session }) {
 
   return (
     <div className={PAGE_GRID}>
-      <aside className="col-span-12 lg:order-last lg:col-span-5 xl:col-span-4">
+      <aside className="col-span-12 lg:order-last lg:col-span-4">
         <Roadmap />
       </aside>
-      <div className="col-span-12 flex flex-col gap-6 lg:col-span-7 xl:col-span-6">
+      <div className="col-span-12 flex flex-col gap-6 lg:col-span-8">
         <WriteForm />
         <Section title="건의 목록" aside={data && <span className="text-sm text-muted-foreground">{data.length}건</span>}>
           {!data ? (
