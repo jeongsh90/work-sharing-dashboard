@@ -1,10 +1,10 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { AuthImage } from "@/components/requests/file-list"
-import { downloadFile, formatBytes } from "@/lib/api"
+import { downloadFile, formatBytes, sizeForBox, sizeForWidth, sizeRank, type ImageSize } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -38,6 +38,21 @@ export function ImageLightbox({
   const current = images[i]
   const go = (step: number) => onIndex((i + step + images.length) % images.length)
 
+  // 보여 줄 칸 크기에 맞춘 이미지(크게 보기는 칸 안에, 전체 화면은 가로 기준). 칸이 줄 때는 다시 받지 않는다.
+  const [box, setBox] = useState<HTMLDivElement | null>(null)
+  const [size, setSize] = useState<ImageSize | null>(null)
+  useEffect(() => {
+    if (!box) return
+    const update = () => {
+      const next = fullscreen ? sizeForWidth(box.clientWidth) : sizeForBox(box.clientWidth, box.clientHeight)
+      setSize((cur) => (sizeRank(next) > sizeRank(cur) ? next : cur))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [box, fullscreen])
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -66,7 +81,7 @@ export function ImageLightbox({
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-sm">{current.name}</DialogTitle>
                 <DialogDescription className="text-xs tabular-nums">
-                  {i + 1} / {images.length} · {formatBytes(current.size)}
+                  {i + 1} / {images.length} · 원본 {formatBytes(current.size)}
                 </DialogDescription>
               </div>
               {images.length > 1 && (
@@ -87,16 +102,19 @@ export function ImageLightbox({
               </DialogClose>
             </div>
             <div
+              ref={setBox}
               className={`relative min-h-0 flex-1 rounded-lg bg-muted/40 ${fullscreen ? "overflow-auto" : "flex items-center justify-center overflow-hidden"}`}
             >
-              <AuthImage
-                key={current.id}
-                fileId={current.id}
-                alt={current.name}
-                // 크게 보기는 창 크기에 맞춘 줄인 이미지(세로로 긴 전체 화면 보기는 가로 기준). 원본은 다운로드로
-                size={fullscreen ? "wide" : "view"}
-                className={fullscreen ? "mx-auto block h-auto max-w-full" : "absolute inset-0 m-auto max-h-full max-w-full object-contain"}
-              />
+              {size && (
+                <AuthImage
+                  key={current.id}
+                  fileId={current.id}
+                  alt={current.name}
+                  // 칸 크기에 맞춘 줄인 이미지. 원본은 다운로드로
+                  size={size}
+                  className={fullscreen ? "mx-auto block h-auto max-w-full" : "absolute inset-0 m-auto max-h-full max-w-full object-contain"}
+                />
+              )}
               {images.length > 1 && (
                 <>
                   <Button

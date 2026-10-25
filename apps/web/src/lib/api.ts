@@ -99,15 +99,28 @@ const blobCache = new Map<string, Promise<string>>()
 
 // 화면용 줄인 이미지 크기(서버 apps/api/src/images.ts). 없으면 원본.
 // thumb: 작은 그림 칸, view: 눌러서 크게 보기, wide: 세로로 긴 시안을 그대로 보기
-export type ImageSize = 'thumb' | 'view' | 'wide' | 'w640' | 'w960' | 'w1280' | 'w1600' | 'w1920'
+export type ImageSize =
+  | 'thumb'
+  | 'view'
+  | 'wide'
+  | `w${640 | 960 | 1280 | 1600 | 1920}`
+  | `v${640 | 960 | 1280 | 1600 | 1920}`
 
 // 칸 너비(px)에 맞는 가로 크기. 화면 배율(레티나)을 곱하고, 정해 둔 단계 중 그보다 큰 가장 작은 것을 고른다.
+const STEPS = [640, 960, 1280, 1600, 1920] as const
+const step = (need: number) => STEPS.find((s) => s >= need) ?? 1920
+
 export function sizeForWidth(cssWidth: number): ImageSize {
-  const need = cssWidth * (window.devicePixelRatio || 1)
-  const steps = [640, 960, 1280, 1600, 1920] as const
-  const w = steps.find((s) => s >= need) ?? 1920
-  return `w${w}` as ImageSize
+  return `w${step(cssWidth * (window.devicePixelRatio || 1))}`
 }
+
+// 가로·세로 칸 안에 맞춰 보일 때(크게 보기 창). 긴 쪽 기준으로 고른다.
+export function sizeForBox(cssWidth: number, cssHeight: number): ImageSize {
+  return `v${step(Math.max(cssWidth, cssHeight) * (window.devicePixelRatio || 1))}`
+}
+
+// 이미지 비교용 크기 순위(단계 숫자). 창을 줄일 때 다시 받지 않으려고 쓴다.
+export const sizeRank = (v: ImageSize | null) => (v && /^[wv]\d+$/.test(v) ? Number(v.slice(1)) : 0)
 
 function fileUrl(id: string, size?: ImageSize) {
   const key = size ? `${id}:${size}` : id

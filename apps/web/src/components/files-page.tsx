@@ -1,4 +1,5 @@
-import { Download, FileText, ImageIcon } from "lucide-react"
+import { useState } from "react"
+import { Download, FileText, ImageIcon, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { FileGallery } from "@/components/requests/file-list"
@@ -73,20 +76,79 @@ function DownloadMenu({ files }: { files: FileInfo[] }) {
   )
 }
 
+// 완료일이 고른 기간(시작일 0시 ~ 끝일 다음 날 0시) 안인지
+function inRange(at: number | null, range: DateRange | undefined) {
+  if (!range?.from) return true
+  if (at === null) return false
+  const from = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate()).getTime()
+  const toDay = range.to ?? range.from
+  const to = new Date(toDay.getFullYear(), toDay.getMonth(), toDay.getDate() + 1).getTime()
+  return at >= from && at < to
+}
+
 export function FilesPage() {
   const { data, error } = useApi<ArchiveItem[]>("/archive", 60_000)
+  // 제목 오른쪽: 완료일 기간 + 검색(요청 번호·제목·작업 종류·요청자·파일 이름)
+  const [range, setRange] = useState<DateRange | undefined>()
+  const [query, setQuery] = useState("")
   if (!data) return <PageState error={error} />
+
+  const q = query.trim().toLowerCase()
+  const list = data.filter(
+    (item) =>
+      inRange(item.completedAt, range) &&
+      (!q ||
+        [item.code, item.title, item.workType, item.requesterName, ...item.files.map((f) => f.name)].some((v) =>
+          v.toLowerCase().includes(q),
+        )),
+  )
+  const filtered = !!range?.from || !!q
 
   return (
     <div className={PAGE_GRID}>
-      <Section title="완료된 작업" aside={<span className="text-sm text-muted-foreground">{data.length}건</span>}>
+      <Section
+        title="완료된 작업"
+        aside={
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {filtered ? `${list.length} / ${data.length}건` : `${data.length}건`}
+          </span>
+        }
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-1">
+              <div className="w-60">
+                <DateRangePicker id="files-range" value={range} onChange={setRange} placeholder="기간 검색" />
+              </div>
+              {range?.from && (
+                <Button variant="ghost" size="icon-sm" aria-label="기간 지우기" onClick={() => setRange(undefined)}>
+                  <X />
+                </Button>
+              )}
+            </div>
+            <div className="relative w-56">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="제목·요청자·파일 검색"
+                aria-label="완료된 작업 검색"
+                className="pl-8"
+              />
+            </div>
+          </div>
+        }
+      >
         {data.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
             아직 완료된 작업이 없습니다.
           </p>
+        ) : list.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+            조건에 맞는 완료된 작업이 없습니다.
+          </p>
         ) : (
           <ul className="grid grid-cols-12 gap-4 md:gap-6">
-            {data.map((item) => (
+            {list.map((item) => (
               <li key={item.id} className="col-span-12 flex flex-col gap-3 rounded-xl border bg-card p-4 md:col-span-6 xl:col-span-4">
                 <div className="flex items-start gap-3">
                   <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left" onClick={() => openRequest(item.id)}>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { AuthImage } from "@/components/requests/file-list"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
-import { api, ApiError, downloadFile, sizeForWidth, type ImageSize } from "@/lib/api"
+import { api, ApiError, downloadFile, sizeForWidth, sizeRank, type ImageSize } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
 import { scrollToElement } from "@/lib/smooth-scroll"
@@ -58,10 +58,9 @@ export function ReviewBoard({
   useEffect(() => {
     const el = columnRef.current
     if (!el) return
-    const rank = (v: ImageSize | null) => (v ? Number(v.slice(1)) : 0)
     const update = () => {
       const next = sizeForWidth(el.clientWidth)
-      setImageSize((cur) => (rank(next) > rank(cur) ? next : cur))
+      setImageSize((cur) => (sizeRank(next) > sizeRank(cur) ? next : cur))
     }
     update()
     const ro = new ResizeObserver(update)

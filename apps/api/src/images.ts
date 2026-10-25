@@ -9,7 +9,9 @@ import { UPLOAD_DIR } from './config.ts'
 // view: 이미지를 눌렀을 때 보는 크기(긴 쪽 2000px 안으로, 비율 유지)
 // wide: 세로로 긴 시안을 그대로 보는 곳(가로 1600px 안으로, 세로는 비율대로)
 // w640~w1920: 보여 줄 칸 너비에 맞춘 가로 크기(세로는 비율대로). 원본보다 키우지 않는다.
+// v640~v1920: 보여 줄 칸(가로·세로) 안에 들어가는 크기(크게 보기 창). 원본보다 키우지 않는다.
 const byWidth = (width: number) => (img: sharp.Sharp) => img.resize({ width, withoutEnlargement: true })
+const inBox = (n: number) => (img: sharp.Sharp) => img.resize(n, n, { fit: 'inside', withoutEnlargement: true })
 const SIZES = {
   thumb: (img: sharp.Sharp) => img.resize(320, 320, { fit: 'cover', withoutEnlargement: true }),
   view: (img: sharp.Sharp) => img.resize(2000, 2000, { fit: 'inside', withoutEnlargement: true }),
@@ -19,6 +21,11 @@ const SIZES = {
   w1280: byWidth(1280),
   w1600: byWidth(1600),
   w1920: byWidth(1920),
+  v640: inBox(640),
+  v960: inBox(960),
+  v1280: inBox(1280),
+  v1600: inBox(1600),
+  v1920: inBox(1920),
 }
 export type ImageSize = keyof typeof SIZES
 
