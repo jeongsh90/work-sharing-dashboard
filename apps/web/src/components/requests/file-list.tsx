@@ -3,7 +3,7 @@ import { Download, FileText, ImageOff, LoaderCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
-import { downloadFile, formatBytes, useFileUrl } from "@/lib/api"
+import { downloadFile, formatBytes, useFileUrl, type ImageSize } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
 
 // 로그인이 필요한 서버 이미지를 보여 준다.
@@ -12,13 +12,15 @@ export function AuthImage({
   alt,
   className,
   onLoad,
+  size,
 }: {
+  size?: ImageSize // 화면용 줄인 이미지(없으면 원본)
   fileId: string
   alt: string
   className?: string
   onLoad?: () => void
 }) {
-  const { url, error } = useFileUrl(fileId)
+  const { url, error } = useFileUrl(fileId, size)
   if (error) {
     return (
       <div className={`flex items-center justify-center gap-2 bg-muted p-6 text-sm text-muted-foreground ${className ?? ""}`}>
@@ -88,7 +90,7 @@ export function FileGallery({
                 onClick={() => setOpen(i)}
                 title={`${f.name} 크게 보기`}
               >
-                <AuthImage fileId={f.id} alt={f.name} className="aspect-square w-full object-cover" />
+                <AuthImage fileId={f.id} alt={f.name} size="thumb" className="aspect-square w-full object-cover" />
                 {hidden > 0 && i === shown.length - 1 && (
                   <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-semibold text-white tabular-nums">
                     +{hidden}

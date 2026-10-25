@@ -97,33 +97,39 @@ export async function uploadAll(files: File[]): Promise<UploadedFile[]> {
 // 파일 보기는 로그인이 필요해 <img src> 로 바로 쓸 수 없다. 받아서 브라우저 안 주소(blob:)로 바꾼다.
 const blobCache = new Map<string, Promise<string>>()
 
-function fileUrl(id: string) {
-  let pending = blobCache.get(id)
+// 화면용 줄인 이미지 크기(서버 apps/api/src/images.ts). 없으면 원본.
+// thumb: 작은 그림 칸, view: 눌러서 크게 보기, wide: 세로로 긴 시안을 그대로 보기
+export type ImageSize = 'thumb' | 'view' | 'wide'
+
+function fileUrl(id: string, size?: ImageSize) {
+  const key = size ? `${id}:${size}` : id
+  let pending = blobCache.get(key)
   if (!pending) {
-    pending = apiFetch(`/files/${id}`).then(async (res) => {
+    pending = apiFetch(size ? `/files/${id}?size=${size}` : `/files/${id}`).then(async (res) => {
       if (!res.ok) throw new ApiError(res.status, '파일을 불러오지 못했습니다.')
       return URL.createObjectURL(await res.blob())
     })
-    pending.catch(() => blobCache.delete(id))
-    blobCache.set(id, pending)
+    pending.catch(() => blobCache.delete(key))
+    blobCache.set(key, pending)
   }
   return pending
 }
 
-export function useFileUrl(id: string | null | undefined) {
+export function useFileUrl(id: string | null | undefined, size?: ImageSize) {
   const [state, setState] = useState<{ id: string; url: string | null; error: boolean } | null>(null)
+  const key = id ? (size ? `${id}:${size}` : id) : null
   useEffect(() => {
-    if (!id) return
+    if (!id || !key) return
     let alive = true
-    fileUrl(id).then(
-      (url) => alive && setState({ id, url, error: false }),
-      () => alive && setState({ id, url: null, error: true }),
+    fileUrl(id, size).then(
+      (url) => alive && setState({ id: key, url, error: false }),
+      () => alive && setState({ id: key, url: null, error: true }),
     )
     return () => {
       alive = false
     }
-  }, [id])
-  const current = state && state.id === id ? state : null
+  }, [id, key, size])
+  const current = state && state.id === key ? state : null
   return { url: current?.url ?? null, error: current?.error ?? false }
 }
 

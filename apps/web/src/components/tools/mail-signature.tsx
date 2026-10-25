@@ -4,6 +4,11 @@ import { Check, Copy, Download, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { GuideSlider, type GuideStep } from "@/components/tools/guide-slider"
+import step1 from "@/assets/guides/mail-signature/step1.png"
+import step2 from "@/assets/guides/mail-signature/step2.png"
+import step3 from "@/assets/guides/mail-signature/step3.png"
+import step4 from "@/assets/guides/mail-signature/step4.png"
 
 // 디자인 툴 > 메일 서명: 회사 서명 양식(셰프애찬)에 부서·팀·이름·연락처를 넣어 메일 서명 HTML 을 만든다.
 // 메일 프로그램에 붙여 넣을 수 있게 "서명 복사"는 서식째(HTML) 클립보드에 담는다.
@@ -32,6 +37,14 @@ const EMPTY: Form = {
   email: "",
   addresses: [{ label: "A.", value: "대전광역시 동구 계족로 167, 9층 셰프애찬" }],
 }
+
+// 하이웍스에 서명 등록하는 방법(미리보기 아래 슬라이드)
+const HIWORKS_GUIDE: GuideStep[] = [
+  { src: step1, caption: "하이웍스 메일에서 개인 메일함 옆 설정(톱니) → 기본 설정 → 서명 → 추가하기를 누릅니다." },
+  { src: step2, caption: "서명 추가 창의 편집 도구 오른쪽 끝 » 를 눌러 숨은 도구를 펼칩니다." },
+  { src: step3, caption: "</> (HTML 편집)을 누르고, 이 화면의 'HTML 코드 복사'로 복사한 내용을 본문에 붙여 넣은 뒤 저장합니다." },
+  { src: step4, caption: "보내는 사람 별 서명 설정에서 방금 만든 서명을 고르면 끝입니다." },
+]
 
 const LOGO = "https://yorihaeyou.cafe24.com/mail/logo/logo.png"
 const RED = "rgb(215, 40, 47)"
@@ -266,6 +279,7 @@ export function MailSignatureTool() {
         <div className="overflow-x-auto rounded-xl border bg-white p-6">
           <div className="mx-auto w-fit" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
+        <GuideSlider title="하이웍스에 서명 등록하기" steps={HIWORKS_GUIDE} />
         <p className="text-xs text-muted-foreground">
           "서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸에 붙여 넣으세요. HTML 을 직접 넣는 곳이면 "HTML 코드 복사"를 쓰세요.
         </p>

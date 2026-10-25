@@ -37,6 +37,7 @@ import {
   updateRequest,
   type Action,
 } from './requests.ts'
+import { isImageSize, resizedImage, RESIZABLE } from './images.ts'
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import {
@@ -186,11 +187,30 @@ async function handleUpload(req: IncomingMessage, res: ServerResponse, user: Pub
   sendJson(res, 201, { id, name, mime, size })
 }
 
-async function handleFile(req: IncomingMessage, res: ServerResponse, user: PublicUser, id: string, download: boolean) {
+async function handleFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  user: PublicUser,
+  id: string,
+  download: boolean,
+  size: string | null,
+) {
   const file = findFile(id)
   // 어디에도 붙지 않은 파일은 올린 사람만 볼 수 있다. 프로필 사진은 로그인한 누구나 볼 수 있다.
   if (!file || (file.request_id === null && file.kind !== 'avatar' && file.uploader_id !== user.id)) {
     throw new HttpError(404, '파일을 찾을 수 없습니다.')
+  }
+  // 화면용 줄인 이미지(썸네일·크게 보기). 내려받기는 늘 원본
+  if (!download && size && isImageSize(size) && RESIZABLE.has(file.mime)) {
+    const resized = await resizedImage(file.id, size)
+    res.writeHead(200, {
+      'Content-Type': 'image/webp',
+      'Content-Length': resized.length,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+    })
+    res.end(resized)
+    return
   }
   const disposition = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`
   res.writeHead(200, {
@@ -424,7 +444,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   // ── 파일·핀 ──
   if (path === '/api/uploads' && method === 'POST') return handleUpload(req, res, user)
   if ((m = path.match(/^\/api\/files\/([0-9a-f-]{36})$/)) && method === 'GET') {
-    return handleFile(req, res, user, m[1], url.searchParams.has('download'))
+    return handleFile(req, res, user, m[1], url.searchParams.has('download'), url.searchParams.get('size'))
   }
   if ((m = path.match(/^\/api\/files\/([0-9a-f-]{36})\/pins$/)) && method === 'POST') {
     const pinId = addPin(user, m[1], await readJson(req))

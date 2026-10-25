@@ -15,7 +15,7 @@ export function UserAvatar({
   className?: string
   fallbackClassName?: string
 }) {
-  const { url } = useFileUrl(avatarId ?? null)
+  const { url } = useFileUrl(avatarId ?? null, "thumb")
   return (
     <Avatar className={className}>
       {url && <AvatarImage src={url} alt={`${name} 프로필 사진`} className="object-cover" />}

@@ -93,6 +93,8 @@ export function ImageLightbox({
                 key={current.id}
                 fileId={current.id}
                 alt={current.name}
+                // 크게 보기는 창 크기에 맞춘 줄인 이미지(세로로 긴 전체 화면 보기는 가로 기준). 원본은 다운로드로
+                size={fullscreen ? "wide" : "view"}
                 className={fullscreen ? "mx-auto block h-auto max-w-full" : "absolute inset-0 m-auto max-h-full max-w-full object-contain"}
               />
               {images.length > 1 && (
@@ -131,7 +133,7 @@ export function ImageLightbox({
                         n === i ? "border-primary" : "border-transparent opacity-60 hover:opacity-100"
                       }`}
                     >
-                      <AuthImage fileId={f.id} alt="" className="size-full object-cover" />
+                      <AuthImage fileId={f.id} alt="" size="thumb" className="size-full object-cover" />
                     </button>
                   </li>
                 ))}

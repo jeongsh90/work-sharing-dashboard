@@ -88,7 +88,7 @@ export function ReviewBoard({
                 })
               }}
             >
-              <AuthImage fileId={file.id} alt={file.name} className="block h-auto max-w-full rounded-lg select-none" />
+              <AuthImage fileId={file.id} alt={file.name} size="wide" className="block h-auto max-w-full rounded-lg select-none" />
               {images.includes(file) && (
                 <Button
                   type="button"
