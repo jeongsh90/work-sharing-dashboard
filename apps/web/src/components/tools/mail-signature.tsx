@@ -89,6 +89,21 @@ function signatureHtml(f: Form) {
 </tbody></table>`
 }
 
+// 미리보기 예시 값(입력 칸의 예시와 같다). 비어 있는 칸만 채운다.
+const SAMPLE = { team: "디자인 팀", name: "홍길동", rank: "과장", phone: "010-1234-5678", fax: "042-123-4567", email: "12345678@owenfood.com" }
+function withSamples(f: Form): Form {
+  const or = (v: string, sample: string) => (v.trim() ? v : sample)
+  return {
+    ...f,
+    team: or(f.team, SAMPLE.team),
+    name: or(f.name, SAMPLE.name),
+    rank: or(f.rank, SAMPLE.rank),
+    phones: f.phones.some((p) => p.trim()) ? f.phones : [SAMPLE.phone],
+    fax: or(f.fax, SAMPLE.fax),
+    email: or(f.email, SAMPLE.email),
+  }
+}
+
 // 필수 칸 표시(별표). 색은 테마 변수(destructive)를 쓴다
 const Required = () => (
   <span className="text-destructive" aria-label="필수">
@@ -111,7 +126,9 @@ export function MailSignatureTool() {
   const [form, setForm] = useState<Form>(EMPTY)
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({})
   const [done, setDone] = useState<string | null>(null)
+  // 복사·내려받기는 입력한 값 그대로, 미리보기는 빈 칸을 예시 값으로 채워 완성된 모습을 보여 준다
   const html = signatureHtml(form)
+  const previewHtml = signatureHtml(withSamples(form))
 
   const set = (key: keyof Omit<Form, "phones" | "addresses">) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
@@ -296,11 +313,11 @@ export function MailSignatureTool() {
         </div>
         {/* 서명은 흰 바탕 기준이라 다크 모드에서도 흰 판 위에 보여 준다 */}
         <div className="overflow-x-auto rounded-xl border bg-white p-6">
-          <div className="mx-auto w-fit" dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="mx-auto w-fit" dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </div>
         <GuideSlider title="하이웍스에 서명 등록하기" steps={HIWORKS_GUIDE} />
         <p className="text-xs text-muted-foreground">
-          {'"서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸(하이웍스는 </> HTML 편집)에 붙여 넣으세요.'}
+          {'미리보기의 빈 칸은 예시 값으로 보이며, 복사할 때는 입력한 내용만 들어갑니다. "서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸(하이웍스는 </> HTML 편집)에 붙여 넣으세요.'}
         </p>
       </div>
     </div>
