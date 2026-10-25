@@ -1,12 +1,14 @@
-import { ChevronUp } from "lucide-react"
+import { ChevronUp, UsersRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { Session } from "@/lib/auth"
@@ -15,7 +17,16 @@ import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib
 // 홈 화면 오른쪽 아래에 떠 있는 내 현재 상태 버튼(작업자·디자인팀 관리자만).
 // 누르면 상태를 고르는 메뉴가 열리고, 고르면 바로 디자인팀 카드에 반영된다.
 // 위치는 오른쪽 아래 버튼 묶음(FloatingDock)이 정한다.
-export function PresenceButton({ session, onSessionChange }: { session: Session; onSessionChange: (s: Session) => void }) {
+// onBatch: 관리자만. 메뉴 아래에 "상태 일괄 변경"을 두고 누르면 일괄 변경 창을 연다.
+export function PresenceButton({
+  session,
+  onSessionChange,
+  onBatch,
+}: {
+  session: Session
+  onSessionChange: (s: Session) => void
+  onBatch?: () => void
+}) {
   const now = (session.presence in PRESENCE_LABEL ? session.presence : "off") as Presence
 
   return (
@@ -40,6 +51,15 @@ export function PresenceButton({ session, onSessionChange }: { session: Session;
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
+          {onBatch && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onBatch}>
+                <UsersRound />
+                상태 일괄 변경
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
     </DropdownMenu>
   )

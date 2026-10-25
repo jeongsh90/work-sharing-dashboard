@@ -3,11 +3,14 @@ import { FileImage, Inbox, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useMemo, useState } from "react"
 import { PresenceButton } from "@/components/home/presence-button"
-import type { Session } from "@/lib/auth"
+import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
+import { updateStoredUser, type Session } from "@/lib/auth"
+import { setTeamPresence, type Presence } from "@/lib/presence"
 import { isActive } from "@/lib/requests"
 import { navigate } from "@/lib/router"
-import { isDesignWorker, useRequests } from "@/lib/store"
+import { isDesignWorker, useDesigners, useRequests } from "@/lib/store"
 
 // 모든 화면 오른쪽 아래에 떠 있는 버튼 묶음. 위에서부터
 // 컨펌 대기(관리자·요청자) → 받은 요청(디자인팀·관리자, 미배정 건수) → 내 현재 상태(작업자)
@@ -69,6 +72,22 @@ export function FloatingDock({
 }) {
   const { requests } = useRequests()
   const manager = session.role === "admin" || session.role === "superadmin"
+  // 관리자: 내 상태 메뉴에서 디자인팀 상태 일괄 변경(홈 카드에 보이는 작업자)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const allDesigners = useDesigners()
+  const designers = useMemo(() => allDesigners?.filter((d) => d.showOnHome) ?? [], [allDesigners])
+  const presenceMap = useMemo(
+    () => Object.fromEntries(designers.map((d) => [d.id, d.presence])) as Record<string, Presence>,
+    [designers],
+  )
+  const applyBatch = async (ids: string[], p: Presence) => {
+    await setTeamPresence(ids, p)
+    if (ids.includes(session.id)) {
+      const next = { ...session, presence: p }
+      updateStoredUser(next)
+      onSessionChange(next)
+    }
+  }
   const requester = session.role === "requester"
   // 컨펌 대기: 관리자는 전체, 요청자는 내 요청 중 시안 확인 상태
   if (!requests) return null
@@ -89,7 +108,21 @@ export function FloatingDock({
       {(manager || session.role === "designer") && (
         <DockButton icon={Inbox} label="받은 요청 · 미배정" count={unassigned} onClick={() => navigate("inbox")} />
       )}
-      {isDesignWorker(session) && <PresenceButton session={session} onSessionChange={onSessionChange} />}
+      {isDesignWorker(session) && (
+        <PresenceButton
+          session={session}
+          onSessionChange={onSessionChange}
+          onBatch={manager && designers.length > 0 ? () => setBatchOpen(true) : undefined}
+        />
+      )}
+      {batchOpen && (
+        <PresenceBatchDialog
+          designers={designers}
+          presence={presenceMap}
+          onApply={applyBatch}
+          onClose={() => setBatchOpen(false)}
+        />
+      )}
     </div>,
     document.body,
   )
