@@ -24,7 +24,7 @@ type Form = {
   addresses: Address[] // 여러 개면 줄을 하나씩
 }
 
-// 주소 한 줄: 앞 제목(기본 "A.", 예: "물류센터")과 주소
+// 주소 한 줄: 앞 제목(기본 "A.", 예: "1공장")과 주소
 type Address = { label: string; value: string }
 
 const EMPTY: Form = {
@@ -53,7 +53,7 @@ const TEXT = "rgb(51, 51, 51)"
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 
-// 연락처 한 줄(E. M. F. A.). 제목이 길면(예: 물류센터) 제목 칸이 그만큼 넓어진다.
+// 연락처 한 줄(E. M. F. A.). 제목이 길면(예: 1공장) 제목 칸이 그만큼 넓어진다.
 function contactRow(label: string, value: string) {
   return `<tr><td style="font-weight: 700; vertical-align: top; padding: 0px 6px 0px 0px; min-width: 16px; white-space: nowrap;"><p style="margin: 0px;"><span>${label}</span></p></td><td style="vertical-align: top; padding: 0px;"><p style="margin: 0px;">${value}</p></td></tr>`
 }
@@ -263,7 +263,7 @@ export function MailSignatureTool() {
                 주소 추가
               </Button>
             </div>
-            <FieldDescription>왼쪽 칸은 줄 앞 제목입니다(기본 A., 예: 물류센터). 비운 주소는 서명에서 빠집니다.</FieldDescription>
+            <FieldDescription>왼쪽 칸은 줄 앞 제목입니다(기본 A., 예: 1공장). 비운 주소는 서명에서 빠집니다.</FieldDescription>
           </Field>
           <Button type="button" size="lg" className="w-full" onClick={complete}>
             <CircleCheck data-icon="inline-start" />
