@@ -1,13 +1,15 @@
 import { useState } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 
 // 단계별 안내 이미지 슬라이드. 이미지 크기가 달라도 같은 크기의 틀(16:10, 흰 바탕)에 맞춰 보여 준다.
 export type GuideStep = { src: string; caption: string }
 
 export function GuideSlider({ title, steps }: { title: string; steps: GuideStep[] }) {
   const [i, setI] = useState(0)
+  const [full, setFull] = useState(false) // 전체 화면 보기
   const go = (d: number) => setI((n) => (n + d + steps.length) % steps.length)
   const step = steps[i]
 
@@ -27,6 +29,9 @@ export function GuideSlider({ title, steps }: { title: string; steps: GuideStep[
         <span className="text-xs text-muted-foreground tabular-nums">
           {i + 1} / {steps.length}
         </span>
+        <Button variant="ghost" size="icon-sm" aria-label="전체 화면으로 보기" title="전체 화면" onClick={() => setFull(true)}>
+          <Maximize2 />
+        </Button>
       </div>
 
       {/* 같은 크기의 틀: 이미지는 비율을 지킨 채 가운데 맞춘다 */}
@@ -64,6 +69,54 @@ export function GuideSlider({ title, steps }: { title: string; steps: GuideStep[
         <span className="mr-1.5 font-semibold text-primary tabular-nums">{i + 1}.</span>
         {step.caption}
       </p>
+
+      {/* 전체 화면 보기: 같은 단계를 크게. 이전·다음·←/→ 로 넘긴다 */}
+      <Dialog open={full} onOpenChange={setFull}>
+        <DialogContent
+          showCloseButton={false}
+          className="flex h-svh max-h-svh w-screen max-w-none flex-col gap-3 rounded-none p-4 sm:max-w-none"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") go(-1)
+            if (e.key === "ArrowRight") go(1)
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="truncate">{title}</DialogTitle>
+              <DialogDescription className="text-xs tabular-nums">
+                {i + 1} / {steps.length}
+              </DialogDescription>
+            </div>
+            <DialogClose asChild>
+              <Button variant="ghost" size="icon" aria-label="닫기">
+                <X />
+              </Button>
+            </DialogClose>
+          </div>
+          <div className="relative min-h-0 flex-1 rounded-lg bg-white">
+            <img
+              src={step.src}
+              alt={`${i + 1}단계: ${step.caption}`}
+              className="absolute inset-0 m-auto max-h-full max-w-full object-contain p-4"
+              draggable={false}
+            />
+            {steps.length > 1 && (
+              <>
+                <Button size="icon" className="absolute top-1/2 left-3 -translate-y-1/2 rounded-full shadow-md" aria-label="이전 단계" onClick={() => go(-1)}>
+                  <ChevronLeft />
+                </Button>
+                <Button size="icon" className="absolute top-1/2 right-3 -translate-y-1/2 rounded-full shadow-md" aria-label="다음 단계" onClick={() => go(1)}>
+                  <ChevronRight />
+                </Button>
+              </>
+            )}
+          </div>
+          <p className="text-center text-base">
+            <span className="mr-1.5 font-semibold text-primary tabular-nums">{i + 1}.</span>
+            {step.caption}
+          </p>
+        </DialogContent>
+      </Dialog>
 
       {/* 단계 점: 눌러서 바로 이동 */}
       <div className="flex justify-center gap-1.5">

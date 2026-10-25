@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Check, Copy, Download, Plus, Trash2 } from "lucide-react"
+import { useRef, useState } from "react"
+import { Check, CircleCheck, Copy, Download, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -42,7 +42,7 @@ const EMPTY: Form = {
 const HIWORKS_GUIDE: GuideStep[] = [
   { src: step1, caption: "하이웍스 메일에서 개인 메일함 옆 설정(톱니) → 기본 설정 → 서명 → 추가하기를 누릅니다." },
   { src: step2, caption: "서명 추가 창의 편집 도구 오른쪽 끝 » 를 눌러 숨은 도구를 펼칩니다." },
-  { src: step3, caption: "</> (HTML 편집)을 누르고, 이 화면의 'HTML 코드 복사'로 복사한 내용을 본문에 붙여 넣은 뒤 저장합니다." },
+  { src: step3, caption: "</> (HTML 편집)을 누르고, 이 화면의 '서명 복사'로 복사한 내용을 본문에 붙여 넣은 뒤 저장합니다." },
   { src: step4, caption: "보내는 사람 별 서명 설정에서 방금 만든 서명을 고르면 끝입니다." },
 ]
 
@@ -149,7 +149,17 @@ export function MailSignatureTool() {
       await navigator.clipboard.writeText(html)
     }
   }, "rich")
-  const copyCode = guard(() => navigator.clipboard.writeText(html), "code")
+  // 작성 완료: 필수 칸을 확인하고, 통과하면 서명 복사 버튼으로 옮겨 눈에 띄게 한다
+  const copyRef = useRef<HTMLButtonElement>(null)
+  const [ready, setReady] = useState(false)
+  const complete = () => {
+    const e = validate(form)
+    setErrors(e)
+    if (Object.keys(e).length > 0) return
+    setReady(true)
+    copyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    copyRef.current?.focus({ preventScroll: true })
+  }
   const download = guard(() => {
     const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`], {
       type: "text/html",
@@ -255,6 +265,10 @@ export function MailSignatureTool() {
             </div>
             <FieldDescription>왼쪽 칸은 줄 앞 제목입니다(기본 A., 예: 물류센터). 비운 주소는 서명에서 빠집니다.</FieldDescription>
           </Field>
+          <Button type="button" size="lg" className="w-full" onClick={complete}>
+            <CircleCheck data-icon="inline-start" />
+            작성 완료
+          </Button>
         </FieldGroup>
       </form>
 
@@ -266,11 +280,16 @@ export function MailSignatureTool() {
             {done === "file" ? <Check data-icon="inline-start" /> : <Download data-icon="inline-start" />}
             HTML 파일
           </Button>
-          <Button variant="outline" size="sm" onClick={copyCode}>
-            {done === "code" ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-            {done === "code" ? "복사됨" : "HTML 코드 복사"}
-          </Button>
-          <Button size="sm" onClick={copyRich}>
+          <Button
+            ref={copyRef}
+            size="sm"
+            // 작성 완료 뒤에는 복사할 차례라는 걸 알리려고 테두리 빛을 준다(복사하면 사라진다)
+            className={ready && done !== "rich" ? "animate-pulse ring-3 ring-primary/50 motion-reduce:animate-none" : undefined}
+            onClick={async () => {
+              await copyRich()
+              setReady(false)
+            }}
+          >
             {done === "rich" ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
             {done === "rich" ? "복사됨" : "서명 복사"}
           </Button>
@@ -281,7 +300,7 @@ export function MailSignatureTool() {
         </div>
         <GuideSlider title="하이웍스에 서명 등록하기" steps={HIWORKS_GUIDE} />
         <p className="text-xs text-muted-foreground">
-          "서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸에 붙여 넣으세요. HTML 을 직접 넣는 곳이면 "HTML 코드 복사"를 쓰세요.
+          {'"서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸(하이웍스는 </> HTML 편집)에 붙여 넣으세요.'}
         </p>
       </div>
     </div>
