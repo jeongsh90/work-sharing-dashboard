@@ -27,6 +27,8 @@ export const LOCK_MS = 10 * 60 * 1000
 // 계정 전환 묶음: 이 계정들끼리는 헤더의 "계정 전환"으로 비밀번호 없이 오갈 수 있다(테스트·운영 확인용).
 // 건의게시판에 새 글이 올라오면 알림을 받을 계정
 export const FEEDBACK_NOTIFY = ['admin', '49634613@owenfood.com']
+// 건의게시판의 업데이트 예정 기능을 쓰고 고칠 수 있는 계정
+export const ROADMAP_EDITORS = ['admin', '49634613@owenfood.com']
 
 // 조직도에서 지금 사이트에 접속한 사람을 볼 수 있는 계정(정상훈 + 슈퍼관리자 둘)
 export const ONLINE_VIEWERS = ['49634613@owenfood.com', 'admin', 'owenfood']

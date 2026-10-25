@@ -14,6 +14,7 @@ export const CHANGELOG: Release[] = [
     version: '0.4.0',
     date: '2026-10-23',
     changes: [
+      '건의게시판: 업데이트 예정 기능을 admin·정상훈이 직접 쓰고 고치기',
       '메뉴 이름 변경: 툴게시판 → 디자인 툴',
       '작업자 화면에서 내 요청 메뉴 숨김',
       '작업자 화면에서 디자인 요청 메뉴 숨김',
@@ -87,14 +88,3 @@ export const APP_VERSION = CHANGELOG[0].version
 // 로그인 때 띄우는 업데이트 공지 팝업에 담을 변경 내역의 시작 날짜
 export const NOTICE_SINCE = '2026-10-22'
 
-// 건의게시판 오른쪽 "업데이트 예정 기능" 목록. 진행하면 status 를 바꾸고, 배포하면 CHANGELOG 로 옮긴다.
-export type RoadmapItem = { title: string; status: '예정' | '검토 중' | '진행 중' }
-
-export const ROADMAP: RoadmapItem[] = [
-  { title: '원본 파일이 올라오지 않으면 작업자에게 다시 알림', status: '예정' },
-  { title: '브라우저를 닫아도 받는 PC 알림(웹 푸시)', status: '검토 중' },
-  { title: '요청자에게 다른 부서 요청 가리기(열람 범위)', status: '검토 중' },
-  { title: '첫 로그인 때 비밀번호 바꾸기 안내', status: '예정' },
-  { title: '디자인팀 일정 주간 보기', status: '예정' },
-  { title: '알림 종류별 색 구분', status: '예정' },
-]

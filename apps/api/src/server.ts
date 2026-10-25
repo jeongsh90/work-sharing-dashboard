@@ -38,6 +38,7 @@ import {
   type Action,
 } from './requests.ts'
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
+import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import {
   approveUser,
   createSession,
@@ -451,6 +452,17 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       deleteSuggestion(user, id)
       return sendJson(res, 200, { ok: true })
     }
+  }
+
+  // ── 업데이트 예정 기능(건의게시판 오른쪽) ──
+  if (path === '/api/roadmap') {
+    if (method === 'GET') return sendJson(res, 200, listRoadmap(user))
+    if (method === 'POST') return sendJson(res, 201, createRoadmap(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/roadmap\/(\d+)$/))) {
+    const id = Number(m[1])
+    if (method === 'PATCH') return sendJson(res, 200, updateRoadmap(user, id, await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteRoadmap(user, id))
   }
 
   // ── 알림 ──

@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Pencil, SquarePen, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,7 +23,6 @@ import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { timeAgo } from "@/lib/requests"
 import { markSeen } from "@/lib/seen"
-import { ROADMAP, type RoadmapItem } from "@/lib/version"
 import { invalidate, useApi, useUserNames } from "@/lib/store"
 
 // 건의게시판. 누구나 쓰고, 관리자가 처리 상태와 답변을 남긴다(apps/api/src/suggestions.ts).
@@ -217,32 +224,159 @@ function SuggestionItem({ item, session }: { item: Suggestion; session: Session 
   )
 }
 
-const ROADMAP_STYLE: Record<RoadmapItem["status"], string> = {
+type RoadmapStatus = "예정" | "검토 중" | "진행 중"
+type RoadmapItem = { id: number; title: string; status: RoadmapStatus }
+const ROADMAP_STATUSES: RoadmapStatus[] = ["예정", "검토 중", "진행 중"]
+
+const ROADMAP_STYLE: Record<RoadmapStatus, string> = {
   예정: "bg-muted text-muted-foreground",
   "검토 중": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "진행 중": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
 }
 
-// 건의게시판 오른쪽: 업데이트 예정 기능(lib/version.ts 의 ROADMAP)
+// 업데이트 예정 기능 쓰기·고치기 창. item 이 없으면 새로 쓴다.
+function RoadmapDialog({ item, onClose }: { item: RoadmapItem | null; onClose: () => void }) {
+  const [title, setTitle] = useState(item?.title ?? "")
+  const [status, setStatus] = useState<RoadmapStatus>(item?.status ?? "예정")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (method: "POST" | "PATCH" | "DELETE") => {
+    if (method === "DELETE" && !window.confirm(`"${item?.title}" 항목을 지울까요?`)) return
+    setPending(true)
+    setError(null)
+    try {
+      const path = item ? `/roadmap/${item.id}` : "/roadmap"
+      await api(path, { method, body: method === "DELETE" ? undefined : { title, status } })
+      invalidate()
+      onClose()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "저장하지 못했습니다.")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{item ? "업데이트 예정 기능 수정" : "업데이트 예정 기능 추가"}</DialogTitle>
+          <DialogDescription>건의게시판 오른쪽 목록에 보입니다.</DialogDescription>
+        </DialogHeader>
+        <form
+          id="roadmap-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void run(item ? "PATCH" : "POST")
+          }}
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="roadmap-title">기능</FieldLabel>
+              <Input
+                id="roadmap-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="예: 디자인팀 일정 주간 보기"
+                maxLength={100}
+                autoFocus
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="roadmap-status">상태</FieldLabel>
+              <Select value={status} onValueChange={(v) => setStatus(v as RoadmapStatus)}>
+                <SelectTrigger id="roadmap-status" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROADMAP_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            {error && <FieldError>{error}</FieldError>}
+          </FieldGroup>
+        </form>
+        <DialogFooter className="sm:justify-between">
+          {item ? (
+            <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={pending} onClick={() => run("DELETE")}>
+              <Trash2 data-icon="inline-start" />
+              삭제
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              닫기
+            </Button>
+            <Button type="submit" form="roadmap-form" disabled={pending || !title.trim()}>
+              {pending ? "저장 중…" : "저장"}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// 건의게시판 오른쪽: 업데이트 예정 기능(서버 roadmap). admin·정상훈만 쓰고 고친다(서버 ROADMAP_EDITORS).
 function Roadmap() {
+  const { data } = useApi<{ canEdit: boolean; items: RoadmapItem[] }>("/roadmap", 300_000)
+  const [editing, setEditing] = useState<RoadmapItem | "new" | null>(null)
+  const canEdit = data?.canEdit ?? false
+
   return (
     <Card className="lg:sticky lg:top-20">
       <CardHeader>
         <CardTitle>업데이트 예정 기능</CardTitle>
         <CardDescription>건의와 운영 의견을 모아 순서대로 반영합니다.</CardDescription>
+        {canEdit && (
+          <CardAction>
+            <Button variant="ghost" size="icon-sm" aria-label="업데이트 예정 기능 추가" title="추가" onClick={() => setEditing("new")}>
+              <SquarePen />
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent>
-        <ul className="flex flex-col divide-y">
-          {ROADMAP.map((r) => (
-            <li key={r.title} className="flex items-start gap-2 py-2.5 text-sm first:pt-0 last:pb-0">
-              <Badge variant="secondary" className={`shrink-0 ${ROADMAP_STYLE[r.status]}`}>
-                {r.status}
-              </Badge>
-              <span className="min-w-0 break-words">{r.title}</span>
-            </li>
-          ))}
-        </ul>
+        {data && data.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">아직 적어 둔 예정 기능이 없습니다.</p>
+        ) : (
+          <ul className="flex flex-col divide-y">
+            {data?.items.map((r) => (
+              <li key={r.id} className="group flex items-start gap-2 py-2.5 text-sm first:pt-0 last:pb-0">
+                <Badge variant="secondary" className={`shrink-0 ${ROADMAP_STYLE[r.status]}`}>
+                  {r.status}
+                </Badge>
+                <span className="min-w-0 flex-1 break-words">{r.title}</span>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                    aria-label={`${r.title} 수정`}
+                    onClick={() => setEditing(r)}
+                  >
+                    <Pencil />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
+      {editing && (
+        <RoadmapDialog
+          key={editing === "new" ? "new" : editing.id}
+          item={editing === "new" ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </Card>
   )
 }
