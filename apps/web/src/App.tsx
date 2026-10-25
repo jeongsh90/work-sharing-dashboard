@@ -31,6 +31,7 @@ const OrgPage = lazy(() => import('@/components/org-page').then((m) => ({ defaul
 const SignupForm = lazy(() => import('@/components/signup-form').then((m) => ({ default: m.SignupForm })))
 const TeamPage = lazy(() => import('@/components/team-page').then((m) => ({ default: m.TeamPage })))
 const ToolsPage = lazy(() => import('@/components/tools-page').then((m) => ({ default: m.ToolsPage })))
+const WorklogPage = lazy(() => import('@/components/worklog-page').then((m) => ({ default: m.WorklogPage })))
 const VersionPage = lazy(() => import('@/components/version-page').then((m) => ({ default: m.VersionPage })))
 
 // 새 버전을 올리면 예전 화면 조각 파일이 사라진다. 그 조각을 못 받으면 새로 고쳐 새 버전을 받는다.
@@ -108,7 +109,7 @@ export default function App() {
   }
 
   // 역할에 없는 메뉴 주소로 들어오면 홈을 보여 준다.
-  const allowed = new Set(menuFor(session.role).flatMap((g) => g.items.map((i) => i.id)))
+  const allowed = new Set(menuFor(session).flatMap((g) => g.items.map((i) => i.id)))
   const page = route.page === 'request-detail' || allowed.has(route.page) ? route.page : 'home'
   const pageKey = page === 'request-detail' ? `request-${route.id}` : page
 
@@ -148,6 +149,8 @@ export default function App() {
         return <OrgPage />
       case 'tools':
         return <ToolsPage />
+      case 'worklog':
+        return <WorklogPage />
       default:
         return <Placeholder />
     }

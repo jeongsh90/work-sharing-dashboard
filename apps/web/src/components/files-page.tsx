@@ -12,6 +12,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
@@ -20,7 +28,7 @@ import { downloadFile, formatBytes } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type FileInfo, type RequestSummaryDto } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
-import { useApi } from "@/lib/store"
+import { useApi, useUserNames } from "@/lib/store"
 
 type ArchiveItem = RequestSummaryDto & { files: FileInfo[] }
 
@@ -86,11 +94,16 @@ function inRange(at: number | null, range: DateRange | undefined) {
   return at >= from && at < to
 }
 
+// 한 화면에 보이는 카드 수. 넘으면 다음 장으로
+const PAGE_SIZE = 30
+
 export function FilesPage() {
   const { data, error } = useApi<ArchiveItem[]>("/archive", 60_000)
   // 제목 오른쪽: 완료일 기간 + 검색(요청 번호·제목·작업 종류·요청자·파일 이름)
   const [range, setRange] = useState<DateRange | undefined>()
   const [query, setQuery] = useState("")
+  const [page, setPage] = useState(1)
+  const userName = useUserNames()
   if (!data) return <PageState error={error} />
 
   const q = query.trim().toLowerCase()
@@ -98,11 +111,19 @@ export function FilesPage() {
     (item) =>
       inRange(item.completedAt, range) &&
       (!q ||
-        [item.code, item.title, item.workType, item.requesterName, ...item.files.map((f) => f.name)].some((v) =>
+        [item.code, item.title, item.workType, item.requesterName, ...item.designers.map(userName), ...item.files.map((f) => f.name)].some((v) =>
           v.toLowerCase().includes(q),
         )),
   )
   const filtered = !!range?.from || !!q
+  const pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE))
+  const current = Math.min(page, pageCount)
+  const visible = list.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE)
+  const go = (next: number) => (e: React.MouseEvent) => {
+    e.preventDefault()
+    setPage(Math.min(Math.max(next, 1), pageCount))
+    window.scrollTo({ top: 0 })
+  }
 
   return (
     <div className={PAGE_GRID}>
@@ -117,10 +138,26 @@ export function FilesPage() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-1">
               <div className="w-60">
-                <DateRangePicker id="files-range" value={range} onChange={setRange} placeholder="기간 검색" />
+                <DateRangePicker
+                  id="files-range"
+                  value={range}
+                  onChange={(r) => {
+                    setRange(r)
+                    setPage(1)
+                  }}
+                  placeholder="기간 검색"
+                />
               </div>
               {range?.from && (
-                <Button variant="ghost" size="icon-sm" aria-label="기간 지우기" onClick={() => setRange(undefined)}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="기간 지우기"
+                  onClick={() => {
+                    setRange(undefined)
+                    setPage(1)
+                  }}
+                >
                   <X />
                 </Button>
               )}
@@ -129,8 +166,11 @@ export function FilesPage() {
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="제목·요청자·파일 검색"
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  setPage(1)
+                }}
+                placeholder="제목·요청자·작업자·파일 검색"
                 aria-label="완료된 작업 검색"
                 className="pl-8"
               />
@@ -148,18 +188,29 @@ export function FilesPage() {
           </p>
         ) : (
           <ul className="grid grid-cols-12 gap-4 md:gap-6">
-            {list.map((item) => (
+            {visible.map((item) => (
               <li key={item.id} className="col-span-12 flex flex-col gap-3 rounded-xl border bg-card p-4 md:col-span-6 xl:col-span-4">
                 <div className="flex items-start gap-3">
                   <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left" onClick={() => openRequest(item.id)}>
                     <span className="text-xs text-muted-foreground">
-                      {item.code} · {item.workType} · {item.requesterName}
+                      {item.code} · {item.workType}
                     </span>
                     <span className="truncate font-medium hover:underline" title={item.title}>
                       {item.title}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      완료 {item.completedAt ? formatDateTime(new Date(item.completedAt)) : "-"}
+                    {/* 요청자·작업자를 이름표로 나눠 보여 준다 */}
+                    <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      <span className="flex items-center gap-1">
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">요청</span>
+                        <span>{item.requesterName}</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">작업</span>
+                        <span>{item.designers.length > 0 ? item.designers.map(userName).join(", ") : "-"}</span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        완료 {item.completedAt ? formatDateTime(new Date(item.completedAt)) : "-"}
+                      </span>
                     </span>
                   </button>
                   {item.files.length > 0 && <DownloadMenu files={item.files} />}
@@ -168,6 +219,25 @@ export function FilesPage() {
               </li>
             ))}
           </ul>
+        )}
+        {pageCount > 1 && (
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious href="#" text="이전" aria-label="이전 페이지" onClick={go(current - 1)} />
+              </PaginationItem>
+              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+                <PaginationItem key={n}>
+                  <PaginationLink href="#" isActive={n === current} onClick={go(n)}>
+                    {n}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+              <PaginationItem>
+                <PaginationNext href="#" text="다음" aria-label="다음 페이지" onClick={go(current + 1)} />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         )}
       </Section>
     </div>

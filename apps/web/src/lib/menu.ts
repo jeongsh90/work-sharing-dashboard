@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   ListChecks,
   MessageSquareText,
+  NotebookPen,
   Network,
   UserRound,
   Users,
@@ -16,8 +17,10 @@ import {
 } from "lucide-react"
 
 import type { Role } from "./auth"
+import { isDesignWorker } from "./store"
 
-export type MenuItem = { id: string; title: string; icon: LucideIcon; roles?: Role[] }
+// designTeam: 디자인팀 작업자(작업자 + 디자인팀 관리자)에게만 보인다
+export type MenuItem = { id: string; title: string; icon: LucideIcon; roles?: Role[]; designTeam?: boolean }
 
 const MANAGERS: Role[] = ["superadmin", "admin"]
 const TEAM: Role[] = [...MANAGERS, "designer"]
@@ -50,6 +53,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
     label: "개인",
     items: [
       { id: "notifications", title: "알림함", icon: Bell },
+      // 업무일지: 디자인팀 작업자(작업자 + 정상훈 등 디자인팀 관리자)
+      { id: "worklog", title: "업무일지", icon: NotebookPen, designTeam: true },
       { id: "me", title: "내 정보", icon: UserRound },
     ],
   },
@@ -63,8 +68,9 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
   },
 ]
 
-export function menuFor(role: Role) {
-  return MENU_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || i.roles.includes(role)) })).filter(
+export function menuFor(user: { role: Role; department: string }) {
+  const visible = (i: MenuItem) => (!i.roles || i.roles.includes(user.role)) && (!i.designTeam || isDesignWorker(user))
+  return MENU_GROUPS.map((g) => ({ ...g, items: g.items.filter(visible) })).filter(
     (g) => g.items.length > 0,
   )
 }

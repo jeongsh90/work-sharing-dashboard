@@ -106,7 +106,7 @@ export function AppSidebar({
         )}
       </SidebarHeader>
       <SidebarContent>
-        {menuFor(session.role).map((group) => (
+        {menuFor(session).map((group) => (
           <SidebarGroup key={group.label} className={group.bottom ? "mt-auto" : undefined}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>

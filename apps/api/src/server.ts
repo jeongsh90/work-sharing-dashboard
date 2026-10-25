@@ -41,6 +41,7 @@ import { isImageSize, resizedImage, RESIZABLE } from './images.ts'
 import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from './compress.ts'
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
+import { saveWorklogNote, worklog } from './worklog.ts'
 import {
   approveUser,
   createSession,
@@ -95,7 +96,7 @@ function applyCors(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Vary', 'Origin')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
     // Tailscale 에 연결된 PC 에서는 ts.net 주소가 내부망(100.x)으로 풀린다.
     // 공개 사이트(GitHub Pages)에서 오는 요청을 브라우저가 내부망 요청으로 보고 확인을 요구하므로 허용한다.
     if (req.headers['access-control-request-private-network'] === 'true') {
@@ -475,6 +476,14 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       deleteSuggestion(user, id)
       return sendJson(res, 200, { ok: true })
     }
+  }
+
+  // ── 업무일지(내 진행 기록 + 날마다 메모) ──
+  if (path === '/api/worklog' && method === 'GET') {
+    return sendJson(res, 200, worklog(user, url.searchParams.get('from'), url.searchParams.get('to')))
+  }
+  if ((m = path.match(/^\/api\/worklog\/notes\/(\d{4}-\d{2}-\d{2})$/)) && method === 'PUT') {
+    return sendJson(res, 200, saveWorklogNote(user, m[1], (await readJson(req)).body))
   }
 
   // ── 업데이트 예정 기능(건의게시판 오른쪽) ──

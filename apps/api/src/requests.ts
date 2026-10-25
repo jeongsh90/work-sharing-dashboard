@@ -65,7 +65,7 @@ type FileRow = {
   created_at: number
 }
 
-const code = (id: number) => `REQ-${String(id).padStart(4, '0')}`
+export const code = (id: number) => `REQ-${String(id).padStart(4, '0')}`
 
 function loadRequest(id: number) {
   const row = get<RequestRow>('SELECT * FROM requests WHERE id = :id', { id })
