@@ -11,6 +11,7 @@ import {
   LOCK_MS,
   MAX_FAILED_LOGINS,
   SWITCH_ACCOUNTS,
+  BACKUP_DIR,
   ONLINE_VIEWERS,
   DISK_PATH,
   PORT,
@@ -42,6 +43,7 @@ import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import { saveWorklogNote, worklog } from './worklog.ts'
+import { startBackupSchedule } from './backup.ts'
 import {
   approveUser,
   createSession,
@@ -562,6 +564,9 @@ const server = createServer(async (req, res) => {
     if (!res.headersSent) sendJson(res, 500, { error: '서버 오류가 발생했습니다.' })
   }
 })
+
+// 외장 하드 백업(BACKUP_DIR 이 있을 때만)
+if (BACKUP_DIR) startBackupSchedule()
 
 server.listen(PORT, () => {
   console.log(`WSD 서버: http://localhost:${PORT} (화면 ${WEB_DIR})`)

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.ts",
     "user:set": "node src/set-user.ts",
+    "backup": "node src/backup-now.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

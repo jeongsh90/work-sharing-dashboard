@@ -9,6 +9,11 @@ export const UPLOAD_DIR = join(DATA_DIR, 'uploads')
 // 예전 계정 파일. DB 를 처음 만들 때 한 번 옮겨 온다.
 export const USERS_FILE = join(DATA_DIR, 'users.json')
 
+// 외장 하드 백업 폴더(DB·올린 파일·소스). 테스트 서버(WSD_SERVER_DIR 지정)는 백업하지 않는다.
+export const BACKUP_DIR = process.env.WSD_BACKUP_DIR ?? (process.env.WSD_SERVER_DIR ? '' : 'E:/디자인작업요청시스템')
+// 날짜별 DB 백업을 며칠 남길지
+export const BACKUP_KEEP_DAYS = 90
+
 export const PORT = Number(process.env.PORT ?? 4173)
 
 export const COMPANY_EMAIL_DOMAIN = 'owenfood.com'
