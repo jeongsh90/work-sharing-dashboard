@@ -38,6 +38,7 @@ import {
   type Action,
 } from './requests.ts'
 import { isImageSize, resizedImage, RESIZABLE } from './images.ts'
+import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from './compress.ts'
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import {
@@ -81,9 +82,11 @@ const CONTENT_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
+// 응답마다 그 요청을 기억해 둔다(JSON 압축·ETag 에 요청 머리글이 필요하다)
+const requestOf = new WeakMap<ServerResponse, IncomingMessage>()
+
 function sendJson(res: ServerResponse, status: number, body: unknown) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-  res.end(JSON.stringify(body))
+  sendCompressedJson(requestOf.get(res), res, status, body)
 }
 
 function applyCors(req: IncomingMessage, res: ServerResponse) {
@@ -511,17 +514,26 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   }
 
   try {
-    const data = await readFile(target)
+    const [data, info] = await Promise.all([readFile(target), stat(target)])
     const type = CONTENT_TYPES[extname(target)] ?? 'application/octet-stream'
     const cache = target.includes(`${sep}assets${sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache'
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache })
-    res.end(data)
+    // 글자 파일(JS·CSS·HTML 등)은 압축해서 보낸다
+    const encoding = isCompressible(type) ? pickEncoding(req) : null
+    const body = compressStatic(target, info.mtimeMs, data, encoding)
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Cache-Control': cache,
+      'Content-Length': body.length,
+      ...(encoding ? { 'Content-Encoding': encoding, Vary: 'Accept-Encoding' } : {}),
+    })
+    res.end(body)
   } catch {
     sendJson(res, 404, { error: '화면 파일이 없습니다. apps/web 에서 npm run deploy:server 를 실행해 주세요.' })
   }
 }
 
 const server = createServer(async (req, res) => {
+  requestOf.set(res, req)
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (!url.pathname.startsWith('/api/')) return await serveStatic(req, res)

@@ -1,16 +1,14 @@
 import { useMemo, useState } from "react"
-import { ChevronRight, UsersRound } from "lucide-react"
+import { UsersRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
-import { StatCards } from "@/components/home/stat-cards"
 import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
 import { PageState } from "@/components/page-state"
 import { updateStoredUser, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { setTeamPresence, type Presence } from "@/lib/presence"
-import { navigate } from "@/lib/router"
 import { useDesigners, useRequests } from "@/lib/store"
 
 export function Section({
@@ -35,15 +33,6 @@ export function Section({
       </div>
       {children}
     </section>
-  )
-}
-
-function MoreButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <Button variant="ghost" size="sm" className="text-muted-foreground" aria-label={label} onClick={onClick}>
-      자세히 보기
-      <ChevronRight data-icon="inline-end" />
-    </Button>
   )
 }
 
@@ -74,12 +63,7 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
 
   return (
     <div className={PAGE_GRID}>
-      <Section
-        title="금주 진행 현황"
-        action={<MoreButton label="금주 진행 현황 자세히 보기 (디자인팀 일정)" onClick={() => navigate("schedule")} />}
-      >
-        <StatCards requests={requests} />
-      </Section>
+      {/* 금주 진행 현황(StatCards)은 잠시 뺐다. 다시 넣을 때 stat-cards.tsx 를 쓴다 */}
       <Section
         title="디자인팀"
         aside={<span className="text-sm text-muted-foreground">{designers.length}명</span>}
