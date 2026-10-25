@@ -78,15 +78,31 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
         {requestButton && (
-          <Button
-            size="xl"
-            className="mt-1 w-full group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0"
-            aria-label="디자인 요청"
-            onClick={() => onNavigate("request")}
-          >
-            <FilePlus2 data-icon="inline-start" />
-            <span className="group-data-[collapsible=icon]:hidden">디자인 요청</span>
-          </Button>
+          <>
+            {/* 펼친 메뉴: 큰 버튼 */}
+            <Button
+              size="xl"
+              className="mt-1 w-full group-data-[collapsible=icon]:hidden"
+              onClick={() => onNavigate("request")}
+            >
+              <FilePlus2 data-icon="inline-start" />
+              디자인 요청
+            </Button>
+            {/* 접힌 메뉴: 아래 메뉴 아이콘과 같은 크기·위치의 아이콘 버튼(기본 버튼 색) */}
+            <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="디자인 요청"
+                  aria-label="디자인 요청"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+                  onClick={() => onNavigate("request")}
+                >
+                  <FilePlus2 />
+                  <span>디자인 요청</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </>
         )}
       </SidebarHeader>
       <SidebarContent>
