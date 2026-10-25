@@ -16,7 +16,7 @@ type Form = {
   phones: string[]
   fax: string
   email: string
-  address: string
+  addresses: string[] // 여러 개면 A. 줄을 하나씩
 }
 
 const EMPTY: Form = {
@@ -27,7 +27,7 @@ const EMPTY: Form = {
   phones: [""],
   fax: "",
   email: "",
-  address: "대전광역시 동구 계족로 167, 9층 셰프애찬",
+  addresses: ["대전광역시 동구 계족로 167, 9층 셰프애찬"],
 }
 
 const LOGO = "https://yorihaeyou.cafe24.com/mail/logo/logo.png"
@@ -45,6 +45,7 @@ function contactRow(label: string, value: string) {
 // 회사 서명 양식 그대로(메일 프로그램이 읽을 수 있게 표와 인라인 스타일만 쓴다)
 function signatureHtml(f: Form) {
   const phones = f.phones.map((p) => p.trim()).filter(Boolean)
+  const addresses = f.addresses.map((a) => a.trim()).filter(Boolean)
   const rows = [
     ...phones.map((p) => contactRow("M.", `<span>${esc(p)}</span>`)),
     f.fax.trim() ? contactRow("F.", `<span>${esc(f.fax.trim())}</span>`) : "",
@@ -52,7 +53,7 @@ function signatureHtml(f: Form) {
       "E.",
       `<a style="text-decoration: none; color: ${TEXT};" target="_blank" href="mailto:${esc(f.email.trim())}"><span>${esc(f.email.trim())}</span></a>`,
     ),
-    f.address.trim() ? contactRow("A.", `<span>${esc(f.address.trim())}</span>`) : "",
+    ...addresses.map((a) => contactRow("A.", `<span>${esc(a)}</span>`)),
   ].join("")
   const line = `<table style="border-collapse: collapse; border-spacing: 0px; vertical-align: text-bottom; width: 100%;" cellpadding="0"><tbody><tr style="height: 1px;"><td style="background: ${RED}; font-size: 0px; line-height: 0; padding: 0px;"><p style="margin: 0px;"><span>&nbsp;</span></p></td></tr></tbody></table>`
   const org = [f.department.trim(), f.team.trim()].filter(Boolean).map(esc).join(" / ")
@@ -89,11 +90,15 @@ export function MailSignatureTool() {
   const [done, setDone] = useState<string | null>(null)
   const html = signatureHtml(form)
 
-  const set = (key: keyof Omit<Form, "phones">) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const set = (key: keyof Omit<Form, "phones" | "addresses">) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
     setErrors((er) => ({ ...er, [key]: undefined }))
   }
-  const setPhone = (i: number, v: string) => setForm((f) => ({ ...f, phones: f.phones.map((p, j) => (j === i ? v : p)) }))
+  // 여러 개 입력하는 칸(휴대폰·주소)
+  const setAt = (key: "phones" | "addresses", i: number, v: string) =>
+    setForm((f) => ({ ...f, [key]: f[key].map((p, j) => (j === i ? v : p)) }))
+  const removeAt = (key: "phones" | "addresses", i: number) => setForm((f) => ({ ...f, [key]: f[key].filter((_, j) => j !== i) }))
+  const addOne = (key: "phones" | "addresses") => setForm((f) => ({ ...f, [key]: [...f[key], ""] }))
 
   // 필수 칸을 확인하고 통과하면 실행
   const guard = (work: () => Promise<void> | void, label: string) => async () => {
@@ -162,21 +167,21 @@ export function MailSignatureTool() {
             <div className="flex flex-col gap-2">
               {form.phones.map((p, i) => (
                 <div key={i} className="flex gap-2">
-                  <Input value={p} onChange={(e) => setPhone(i, e.target.value)} placeholder="예: 010-1234-5678" aria-label={`휴대폰 ${i + 1}`} inputMode="tel" />
+                  <Input value={p} onChange={(e) => setAt("phones", i, e.target.value)} placeholder="예: 010-1234-5678" aria-label={`휴대폰 ${i + 1}`} inputMode="tel" />
                   {form.phones.length > 1 && (
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       aria-label={`휴대폰 ${i + 1} 지우기`}
-                      onClick={() => setForm((f) => ({ ...f, phones: f.phones.filter((_, j) => j !== i) }))}
+                      onClick={() => removeAt("phones", i)}
                     >
                       <Trash2 />
                     </Button>
                   )}
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setForm((f) => ({ ...f, phones: [...f.phones, ""] }))}>
+              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => addOne("phones")}>
                 <Plus data-icon="inline-start" />
                 번호 추가
               </Button>
@@ -193,9 +198,24 @@ export function MailSignatureTool() {
             {errors.email && <FieldError>{errors.email}</FieldError>}
           </Field>
           <Field>
-            <FieldLabel htmlFor="sig-addr">주소</FieldLabel>
-            <Input id="sig-addr" value={form.address} onChange={set("address")} />
-            <FieldDescription>비우면 주소 줄이 빠집니다.</FieldDescription>
+            <FieldLabel>주소</FieldLabel>
+            <div className="flex flex-col gap-2">
+              {form.addresses.map((a, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input value={a} onChange={(e) => setAt("addresses", i, e.target.value)} placeholder="예: 대전광역시 동구 계족로 167, 9층 셰프애찬" aria-label={`주소 ${i + 1}`} />
+                  {form.addresses.length > 1 && (
+                    <Button type="button" variant="ghost" size="icon" aria-label={`주소 ${i + 1} 지우기`} onClick={() => removeAt("addresses", i)}>
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => addOne("addresses")}>
+                <Plus data-icon="inline-start" />
+                주소 추가
+              </Button>
+            </div>
+            <FieldDescription>비운 주소는 서명에서 빠집니다.</FieldDescription>
           </Field>
         </FieldGroup>
       </form>
