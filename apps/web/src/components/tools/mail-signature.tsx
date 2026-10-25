@@ -246,7 +246,7 @@ export function MailSignatureTool() {
         </div>
         {/* 서명은 흰 바탕 기준이라 다크 모드에서도 흰 판 위에 보여 준다 */}
         <div className="overflow-x-auto rounded-xl border bg-white p-6">
-          <div className="w-fit" dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="mx-auto w-fit" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
         <p className="text-xs text-muted-foreground">
           "서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸에 붙여 넣으세요. HTML 을 직접 넣는 곳이면 "HTML 코드 복사"를 쓰세요.
