@@ -8,14 +8,21 @@ import { UPLOAD_DIR } from './config.ts'
 // thumb: 목록·슬라이드 아래 작은 그림 칸(정사각 320px, 칸에 맞게 가운데를 잘라 채운다)
 // view: 이미지를 눌렀을 때 보는 크기(긴 쪽 2000px 안으로, 비율 유지)
 // wide: 세로로 긴 시안을 그대로 보는 곳(가로 1600px 안으로, 세로는 비율대로)
+// w640~w1920: 보여 줄 칸 너비에 맞춘 가로 크기(세로는 비율대로). 원본보다 키우지 않는다.
+const byWidth = (width: number) => (img: sharp.Sharp) => img.resize({ width, withoutEnlargement: true })
 const SIZES = {
   thumb: (img: sharp.Sharp) => img.resize(320, 320, { fit: 'cover', withoutEnlargement: true }),
   view: (img: sharp.Sharp) => img.resize(2000, 2000, { fit: 'inside', withoutEnlargement: true }),
-  wide: (img: sharp.Sharp) => img.resize({ width: 1600, withoutEnlargement: true }),
+  wide: byWidth(1600),
+  w640: byWidth(640),
+  w960: byWidth(960),
+  w1280: byWidth(1280),
+  w1600: byWidth(1600),
+  w1920: byWidth(1920),
 }
 export type ImageSize = keyof typeof SIZES
 
-export const isImageSize = (v: string): v is ImageSize => v in SIZES
+export const isImageSize = (v: string): v is ImageSize => Object.hasOwn(SIZES, v)
 
 // 움직이는 GIF·SVG 는 원본 그대로 보낸다.
 export const RESIZABLE = new Set(['image/jpeg', 'image/png', 'image/webp'])

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { AuthImage } from "@/components/requests/file-list"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
-import { api, ApiError, downloadFile } from "@/lib/api"
+import { api, ApiError, downloadFile, sizeForWidth, type ImageSize } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
 import { scrollToElement } from "@/lib/smooth-scroll"
@@ -52,6 +52,22 @@ export function ReviewBoard({
   // 전체 화면 보기(모달). 핀을 꽂을 수 없을 땐 이미지를 누르면, 꽂을 수 있을 땐 오른쪽 위 버튼으로 연다.
   const images = submission.files.filter((f) => f.mime.startsWith("image/"))
   const [viewing, setViewing] = useState<number | null>(null)
+  // 시안 이미지 칸 너비에 맞춘 크기로 받는다(칸보다 작은 이미지는 원래 크기). 창을 줄일 때는 다시 받지 않는다.
+  const columnRef = useRef<HTMLDivElement>(null)
+  const [imageSize, setImageSize] = useState<ImageSize | null>(null)
+  useEffect(() => {
+    const el = columnRef.current
+    if (!el) return
+    const rank = (v: ImageSize | null) => (v ? Number(v.slice(1)) : 0)
+    const update = () => {
+      const next = sizeForWidth(el.clientWidth)
+      setImageSize((cur) => (rank(next) > rank(cur) ? next : cur))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const select = (id: number, scrollTo: "image" | "thread") => {
     setSelected(id)
@@ -62,7 +78,7 @@ export function ReviewBoard({
 
   return (
     <div className="grid grid-cols-12 gap-4 md:gap-6">
-      <div className="col-span-12 flex min-w-0 flex-col gap-4 xl:col-span-8">
+      <div ref={columnRef} className="col-span-12 flex min-w-0 flex-col gap-4 xl:col-span-8">
         {canPin && (
           <p className="flex items-center gap-2 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
             <MapPin className="size-4 shrink-0" aria-hidden />
@@ -88,7 +104,9 @@ export function ReviewBoard({
                 })
               }}
             >
-              <AuthImage fileId={file.id} alt={file.name} size="wide" className="block h-auto max-w-full rounded-lg select-none" />
+              {imageSize && (
+                <AuthImage fileId={file.id} alt={file.name} size={imageSize} className="block h-auto max-w-full rounded-lg select-none" />
+              )}
               {images.includes(file) && (
                 <Button
                   type="button"
