@@ -93,7 +93,9 @@ export function FilesPage() {
                     <span className="text-xs text-muted-foreground">
                       {item.code} · {item.workType} · {item.requesterName}
                     </span>
-                    <span className="font-medium hover:underline">{item.title}</span>
+                    <span className="truncate font-medium hover:underline" title={item.title}>
+                      {item.title}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       완료 {item.completedAt ? formatDateTime(new Date(item.completedAt)) : "-"}
                     </span>
