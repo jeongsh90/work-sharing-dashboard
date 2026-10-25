@@ -224,14 +224,15 @@ function SuggestionItem({ item, session }: { item: Suggestion; session: Session 
   )
 }
 
-type RoadmapStatus = "예정" | "검토 중" | "진행 중"
+type RoadmapStatus = "예정" | "검토 중" | "진행 중" | "완료"
 type RoadmapItem = { id: number; title: string; status: RoadmapStatus }
-const ROADMAP_STATUSES: RoadmapStatus[] = ["예정", "검토 중", "진행 중"]
+const ROADMAP_STATUSES: RoadmapStatus[] = ["예정", "검토 중", "진행 중", "완료"]
 
 const ROADMAP_STYLE: Record<RoadmapStatus, string> = {
   예정: "bg-muted text-muted-foreground",
   "검토 중": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "진행 중": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  완료: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
 }
 
 // 업데이트 예정 기능 쓰기·고치기 창. item 이 없으면 새로 쓴다.
@@ -353,7 +354,8 @@ function Roadmap() {
                 <Badge variant="secondary" className={`shrink-0 ${ROADMAP_STYLE[r.status]}`}>
                   {r.status}
                 </Badge>
-                <span className="min-w-0 flex-1 break-words">{r.title}</span>
+                {/* 완료한 기능은 줄을 그어 흐리게 */}
+                <span className={`min-w-0 flex-1 break-words ${r.status === "완료" ? "text-muted-foreground line-through" : ""}`}>{r.title}</span>
                 {canEdit && (
                   <Button
                     variant="ghost"

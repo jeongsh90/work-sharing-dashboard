@@ -5,7 +5,7 @@ import type { PublicUser } from './users.ts'
 
 // 건의게시판 오른쪽 "업데이트 예정 기능" 목록. 정해 둔 계정(config.ts 의 ROADMAP_EDITORS)만 쓰고 고친다.
 
-export const ROADMAP_STATUSES = ['예정', '검토 중', '진행 중'] as const
+export const ROADMAP_STATUSES = ['예정', '검토 중', '진행 중', '완료'] as const
 type RoadmapStatus = (typeof ROADMAP_STATUSES)[number]
 
 db.exec(`

@@ -9,6 +9,8 @@ function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'requests' && parts[1]) return { page: 'request-detail', id: parts[1] }
   if (parts[0] === 'requests' && !parts[1]) return { page: 'inbox' }
+  // 디자인 툴의 앱 하나(#/tools/mail-signature). 로그인 없이 볼 때 앱 화면 주소로 쓴다
+  if (parts[0] === 'tools' && parts[1]) return { page: 'tools', id: parts[1] }
   return { page: parts[0] || 'home' }
 }
 
