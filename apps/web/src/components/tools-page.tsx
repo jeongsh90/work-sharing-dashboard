@@ -6,7 +6,6 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { Input } from "@/components/ui/input"
 import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PAGE_GRID } from "@/lib/layout"
-import { navigate } from "@/lib/router"
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
 // 누르면 전체 화면 창이 열린다. 도구를 만들면 TOOLS 에 하나씩 추가하고 body 에 화면을 넣는다.
@@ -65,33 +64,6 @@ function ToolBody({ tool }: { tool: Tool }) {
         <p className="text-sm text-muted-foreground">곧 이곳에서 {tool.name} 기능을 쓸 수 있습니다.</p>
       </div>
     )
-  )
-}
-
-// 로그인 없이 여는 디자인 툴(#/tools). 메뉴·헤더·닫기(X) 없이 목록과 앱만 보인다.
-// 앱은 창 대신 자기 주소(#/tools/앱)로 전체 화면에 열고, 목록으로는 브라우저 뒤로 가기로 돌아간다.
-export function PublicToolsPage({ openId }: { openId?: string }) {
-  const tool = openId ? TOOLS.find((t) => t.id === openId) : undefined
-  if (tool) {
-    return (
-      <div className="flex min-h-svh flex-col bg-background">
-        <div className="flex items-center gap-3 border-b px-4 py-3">
-          <AppIcon tool={tool} className="size-9" />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate font-semibold">{tool.name}</h1>
-            <p className="truncate text-xs text-muted-foreground">{tool.description}</p>
-          </div>
-        </div>
-        <div className="flex-1">
-          <ToolBody tool={tool} />
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div className="min-h-svh bg-background">
-      <ToolsList onOpen={(t) => navigate(`tools/${t.id}`)} />
-    </div>
   )
 }
 
