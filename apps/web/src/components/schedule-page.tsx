@@ -78,7 +78,7 @@ export function SchedulePage() {
   const designers = useDesigners()
   const userName = useUserNames()
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
-  const [includeDone, setIncludeDone] = useState(false)
+  const [includeDone, setIncludeDone] = useState(true) // 완료 포함: 기본으로 켠다
   const [who, setWho] = useState("all")
   const [today] = useState(() => startOfDay(new Date()))
 
