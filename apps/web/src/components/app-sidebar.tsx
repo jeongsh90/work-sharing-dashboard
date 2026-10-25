@@ -1,5 +1,7 @@
 import { FilePlus2 } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
+
 import type { Session } from "@/lib/auth"
 import { menuFor } from "@/lib/menu"
 import { useSeen } from "@/lib/seen"
@@ -50,6 +52,8 @@ export function AppSidebar({
   onSwitched: OnSwitched
 }) {
   const fresh = useFreshMenus(session.id)
+  // 요청자·관리자: "디자인 요청"은 메뉴 목록 대신 로고 아래 큰 버튼으로 둔다(작업자는 메뉴 그대로)
+  const requestButton = session.role === "requester" || session.role === "admin" || session.role === "superadmin"
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -73,6 +77,17 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {requestButton && (
+          <Button
+            size="xl"
+            className="mt-1 w-full group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0"
+            aria-label="디자인 요청"
+            onClick={() => onNavigate("request")}
+          >
+            <FilePlus2 data-icon="inline-start" />
+            <span className="group-data-[collapsible=icon]:hidden">디자인 요청</span>
+          </Button>
+        )}
       </SidebarHeader>
       <SidebarContent>
         {menuFor(session.role).map((group) => (
@@ -80,7 +95,7 @@ export function AppSidebar({
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
+                {group.items.filter((item) => !(requestButton && item.id === "request")).map((item) => (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       isActive={item.id === activeId}
