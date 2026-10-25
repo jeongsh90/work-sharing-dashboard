@@ -33,7 +33,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       // 디자인 요청: 요청자·관리자만(작업자 화면에는 없다). 화면에서는 사이드메뉴 로고 아래 큰 버튼으로 보인다.
       { id: "request", title: "디자인 요청", icon: FilePlus2, roles: ["requester", ...MANAGERS] },
       { id: "inbox", title: "받은 요청함", icon: Inbox, roles: TEAM },
-      { id: "my-requests", title: "내 요청", icon: ListChecks },
+      // 내 요청: 요청을 보내는 요청자·관리자만(작업자는 요청을 보내지 않는다)
+      { id: "my-requests", title: "내 요청", icon: ListChecks, roles: ["requester", ...MANAGERS] },
       { id: "schedule", title: "디자인팀 일정", icon: CalendarDays },
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
       { id: "org", title: "조직도", icon: Network },
