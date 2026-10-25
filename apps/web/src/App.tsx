@@ -30,6 +30,7 @@ const SchedulePage = lazy(() => import('@/components/schedule-page').then((m) =>
 const OrgPage = lazy(() => import('@/components/org-page').then((m) => ({ default: m.OrgPage })))
 const SignupForm = lazy(() => import('@/components/signup-form').then((m) => ({ default: m.SignupForm })))
 const TeamPage = lazy(() => import('@/components/team-page').then((m) => ({ default: m.TeamPage })))
+const ToolsPage = lazy(() => import('@/components/tools-page').then((m) => ({ default: m.ToolsPage })))
 const VersionPage = lazy(() => import('@/components/version-page').then((m) => ({ default: m.VersionPage })))
 
 // 새 버전을 올리면 예전 화면 조각 파일이 사라진다. 그 조각을 못 받으면 새로 고쳐 새 버전을 받는다.
@@ -145,6 +146,8 @@ export default function App() {
         return <SchedulePage />
       case 'org':
         return <OrgPage />
+      case 'tools':
+        return <ToolsPage />
       default:
         return <Placeholder />
     }
