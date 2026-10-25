@@ -73,6 +73,13 @@ function signatureHtml(f: Form) {
 </tbody></table>`
 }
 
+// 필수 칸 표시(별표). 색은 테마 변수(destructive)를 쓴다
+const Required = () => (
+  <span className="text-destructive" aria-label="필수">
+    *
+  </span>
+)
+
 // 필수: 부서·팀·이름·메일
 function validate(f: Form) {
   const e: Partial<Record<keyof Form, string>> = {}
@@ -142,17 +149,17 @@ export function MailSignatureTool() {
         <FieldGroup>
           <div className="grid grid-cols-2 gap-4">
             <Field data-invalid={!!errors.department}>
-              <FieldLabel htmlFor="sig-dept">부서 *</FieldLabel>
+              <FieldLabel htmlFor="sig-dept">부서 <Required /></FieldLabel>
               <Input id="sig-dept" value={form.department} onChange={set("department")} placeholder="예: Future strategy" aria-invalid={!!errors.department} />
               {errors.department && <FieldError>{errors.department}</FieldError>}
             </Field>
             <Field data-invalid={!!errors.team}>
-              <FieldLabel htmlFor="sig-team">팀 *</FieldLabel>
+              <FieldLabel htmlFor="sig-team">팀 <Required /></FieldLabel>
               <Input id="sig-team" value={form.team} onChange={set("team")} placeholder="예: CS팀" aria-invalid={!!errors.team} />
               {errors.team && <FieldError>{errors.team}</FieldError>}
             </Field>
             <Field data-invalid={!!errors.name}>
-              <FieldLabel htmlFor="sig-name">이름 *</FieldLabel>
+              <FieldLabel htmlFor="sig-name">이름 <Required /></FieldLabel>
               <Input id="sig-name" value={form.name} onChange={set("name")} placeholder="예: 김선영" aria-invalid={!!errors.name} />
               {errors.name && <FieldError>{errors.name}</FieldError>}
             </Field>
@@ -193,7 +200,7 @@ export function MailSignatureTool() {
             <Input id="sig-fax" value={form.fax} onChange={set("fax")} placeholder="예: 042-123-4567" inputMode="tel" />
           </Field>
           <Field data-invalid={!!errors.email}>
-            <FieldLabel htmlFor="sig-email">메일 *</FieldLabel>
+            <FieldLabel htmlFor="sig-email">메일 <Required /></FieldLabel>
             <Input id="sig-email" type="email" value={form.email} onChange={set("email")} placeholder="예: 12345678@owenfood.com" aria-invalid={!!errors.email} />
             {errors.email && <FieldError>{errors.email}</FieldError>}
           </Field>
