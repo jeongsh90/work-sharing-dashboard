@@ -6,7 +6,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { Input } from "@/components/ui/input"
 import { PAGE_GRID } from "@/lib/layout"
 
-// 툴게시판: 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
+// 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
 // 누르면 전체 화면 창이 열린다. 도구를 만들면 TOOLS 에 하나씩 추가하고 body 에 화면을 넣는다.
 
 type Tool = {
@@ -56,7 +56,7 @@ export function ToolsPage() {
       <section className="col-span-12 flex flex-col gap-6">
         {/* 상단: 제목 + 검색 */}
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-semibold">툴게시판</h2>
+          <h2 className="text-base font-semibold">디자인 툴</h2>
           <span className="text-sm text-muted-foreground tabular-nums">{TOOLS.length}개</span>
           <div className="relative ml-auto w-full sm:w-64">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
