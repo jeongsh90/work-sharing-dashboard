@@ -160,12 +160,12 @@ export function MailSignatureTool() {
             </Field>
             <Field data-invalid={!!errors.name}>
               <FieldLabel htmlFor="sig-name">이름 <Required /></FieldLabel>
-              <Input id="sig-name" value={form.name} onChange={set("name")} placeholder="예: 김선영" aria-invalid={!!errors.name} />
+              <Input id="sig-name" value={form.name} onChange={set("name")} placeholder="예: 홍길동" aria-invalid={!!errors.name} />
               {errors.name && <FieldError>{errors.name}</FieldError>}
             </Field>
             <Field>
               <FieldLabel htmlFor="sig-rank">직급</FieldLabel>
-              <Input id="sig-rank" value={form.rank} onChange={set("rank")} placeholder="예: 주임" />
+              <Input id="sig-rank" value={form.rank} onChange={set("rank")} placeholder="예: 과장" />
             </Field>
           </div>
 
