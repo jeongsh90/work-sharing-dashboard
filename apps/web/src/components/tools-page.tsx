@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { FileCheck2, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, FileCheck2, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PurchaseCertTool } from "@/components/tools/purchase-cert"
+import { ProductNoticeTool } from "@/components/tools/product-notice"
 import { PAGE_GRID } from "@/lib/layout"
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
@@ -28,6 +29,14 @@ const TOOLS: Tool[] = [
     icon: FileCheck2,
     color: "from-emerald-400 to-teal-600",
     body: <PurchaseCertTool />,
+  },
+  {
+    id: "product-notice",
+    name: "상품정보고시",
+    description: "고시 항목·주의사항·영양정보로 상세페이지 고시 이미지를 만드는 도구",
+    icon: ClipboardList,
+    color: "from-amber-400 to-orange-600",
+    body: <ProductNoticeTool />,
   },
   {
     id: "detail-page",

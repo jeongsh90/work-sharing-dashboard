@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { DateRangePicker } from "@/components/date-range-picker"
 import { apiFetch, ApiError } from "@/lib/api"
+import { FONT, loadFonts } from "@/lib/canvas-text"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 
 // 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
@@ -29,7 +30,6 @@ const ORANGE = "#ff4d00"
 const INK = "#111111"
 const SUB = "#555555"
 const PAPER = { x: 120, y: 392 + 80, w: 620, h: 877 } // 이미지 영역(392부터 1037) 가운데, 위아래 80
-const FONT = '"Noto Sans KR"'
 
 // 표를 못 찾았을 때 수매일자 말풍선 기본 위치(사양 7-6 기준값)
 const DEFAULT_LAYOUT: Pick<Layout, "highlight" | "tag" | "dateBox"> = {
@@ -40,26 +40,6 @@ const DEFAULT_LAYOUT: Pick<Layout, "highlight" | "tag" | "dateBox"> = {
 
 // PDF 를 올리기 전에는 강조(형광펜·말풍선)를 그리지 않는다
 const NO_MARKS: Pick<Layout, "highlight" | "tag" | "dateBox"> = { highlight: null, tag: null, dateBox: null }
-
-// 글꼴(Noto Sans KR 500·700)을 한 번만 불러온다
-let fontsReady: Promise<void> | null = null
-function loadFonts() {
-  if (!fontsReady) {
-    const link = document.createElement("link")
-    link.rel = "stylesheet"
-    link.href = "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700&display=block"
-    document.head.appendChild(link)
-    fontsReady = new Promise<void>((resolve) => {
-      link.onload = () =>
-        Promise.all([document.fonts.load(`700 72px ${FONT}`, "안심"), document.fonts.load(`500 30px ${FONT}`, "유통")]).then(
-          () => resolve(),
-          () => resolve(),
-        )
-      link.onerror = () => resolve()
-    })
-  }
-  return fontsReady
-}
 
 const loadImage = (src: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
