@@ -263,7 +263,7 @@ export function ProductNoticeTool() {
                   onChange={(e) => setRow(r.id, { value: e.target.value })}
                   placeholder="내용"
                   aria-label={`${r.label || "항목"} 내용`}
-                  className="min-h-9 py-1.5"
+                  className="min-h-9 py-1.5 break-keep"
                   rows={1}
                 />
                 <Button
@@ -290,7 +290,7 @@ export function ProductNoticeTool() {
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             placeholder={"한 줄에 하나씩 적어 주세요. 앞에 ※ 는 자동으로 붙습니다.\n예: 개봉한 제품은 변질될 우려가 있으므로 가급적 빨리 드시기 바랍니다."}
-            className="min-h-28"
+            className="min-h-28 break-keep"
           />
           <FieldDescription>비워 두면 이미지에 나오지 않습니다.</FieldDescription>
         </Field>
@@ -335,7 +335,7 @@ export function ProductNoticeTool() {
 
         <Field>
           <FieldLabel htmlFor="nutri-note">영양정보 안내</FieldLabel>
-          <Textarea id="nutri-note" value={form.nutriNote} onChange={(e) => setForm((f) => ({ ...f, nutriNote: e.target.value }))} className="min-h-20" />
+          <Textarea id="nutri-note" value={form.nutriNote} onChange={(e) => setForm((f) => ({ ...f, nutriNote: e.target.value }))} className="min-h-20 break-keep" />
           <FieldDescription>비워 두면 이미지에 나오지 않습니다.</FieldDescription>
         </Field>
 

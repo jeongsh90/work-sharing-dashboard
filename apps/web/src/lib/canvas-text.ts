@@ -32,7 +32,7 @@ export function applyFont(ctx: CanvasRenderingContext2D, s: TextStyle) {
 // 줄바꿈 조각: space = 앞에 띄어쓰기가 있었는지(쪼갠 조각끼리는 붙여 쓴다)
 type Piece = { t: string; space: boolean }
 
-// 낱말 단위 줄바꿈(한국어 keep-all). 낱말 하나가 칸보다 길면 쉼표 뒤에서, 그래도 길면 글자 단위로 끊어
+// 낱말 단위 줄바꿈(word-break: keep-all 과 같다: 띄어쓰기에서만 줄을 바꾼다). 낱말 하나가 칸보다 길면 쉼표 뒤에서, 그래도 길면 글자 단위로 끊어
 // 칸 밖으로 넘치지 않게 한다. 글자는 바꾸지 않는다(띄어쓰기도 원문 그대로). 줄바꿈 문자는 새 줄.
 export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const width = (s: string) => ctx.measureText(s).width
