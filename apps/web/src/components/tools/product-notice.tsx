@@ -15,7 +15,7 @@ import { invalidate } from "@/lib/store"
 // 사양: docs/tools/상품정보고시_툴_사양.md (Figma 셰프애찬 235:291). 글은 입력한 그대로 쓴다(법적 표기).
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다.
 
-type Row = { id: number; label: string; value: string }
+type Row = { id: number; label: string; value: string; fixed?: boolean } // fixed: 제품명(맨 위 고정, 옮기거나 지울 수 없음)
 type NutriRow = { id: number; name: string; amount: string; ratio: string }
 
 const W = 860
@@ -55,7 +55,7 @@ type Form = {
 }
 
 const initialForm = (): Form => ({
-  rows: NOTICE_LABELS.map((label) => ({ id: id(), label, value: "" })),
+  rows: NOTICE_LABELS.map((label) => ({ id: id(), label, value: "", fixed: label === "제품명" })),
   notes: "",
   nutriTitle: "영양정보 (100g당)",
   nutri: NUTRI_NAMES.map((name) => ({ id: id(), name, amount: "", ratio: "" })),
@@ -243,7 +243,10 @@ export function ProductNoticeTool() {
   const loadForm = (f: Form) =>
     setForm({
       ...f,
-      rows: f.rows.map((r) => ({ ...r, id: id() })),
+      // 제품명 줄은 맨 위 고정(예전 기록도 맞춘다)
+      rows: [...f.rows]
+        .map((r) => ({ ...r, id: id(), fixed: r.label === "제품명" }))
+        .sort((a, b) => Number(b.fixed) - Number(a.fixed)),
       nutri: f.nutri.map((n) => ({ ...n, id: id() })),
     })
 
@@ -285,9 +288,27 @@ export function ProductNoticeTool() {
         <Field>
           <FieldLabel>고시 항목</FieldLabel>
           <div className="flex flex-col gap-2">
+            {/* 제품명: 맨 위 고정(끌기·지우기·제목 고치기 없음) */}
+            {form.rows
+              .filter((r) => r.fixed)
+              .map((r) => (
+                <div key={r.id} className="flex items-start gap-2">
+                  <span className="w-5 shrink-0" aria-hidden />
+                  <Input value={r.label} readOnly aria-label="항목 제목" className="w-28 shrink-0 bg-muted" />
+                  <Textarea
+                    value={r.value}
+                    onChange={(e) => setRow(r.id, { value: e.target.value })}
+                    placeholder="내용"
+                    aria-label={`${r.label} 내용`}
+                    className="min-h-9 py-1.5 break-keep"
+                    rows={1}
+                  />
+                  <span className="size-9 shrink-0" aria-hidden />
+                </div>
+              ))}
             <SortableList
-              items={form.rows}
-              onReorder={(rows) => setForm((f) => ({ ...f, rows }))}
+              items={form.rows.filter((r) => !r.fixed)}
+              onReorder={(rest) => setForm((f) => ({ ...f, rows: [...f.rows.filter((r) => r.fixed), ...rest] }))}
               className="flex flex-col gap-2"
               renderItem={(r, handle) => (
               <div className="flex items-start gap-2">
