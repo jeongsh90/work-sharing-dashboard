@@ -16,6 +16,7 @@ import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { EVENT_LABEL, STATUS_LABEL, type RequestStatus } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
+import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 import { invalidate, useApi } from "@/lib/store"
 
 // 업무일지(디자인팀 작업자): 이 시스템에서 내가 한 일(진행 기록)이 날짜별로 자동으로 적히고,
@@ -241,6 +242,27 @@ function EntryList({ entries, editable }: { entries: Entry[]; editable: boolean 
   )
 }
 
+// 동작별 색: 그 동작으로 바뀌는 상태의 색(상태 배지와 같은 계열)
+const EVENT_STATUS: Record<string, RequestStatus> = {
+  assign: "waiting",
+  take: "waiting",
+  reassign: "waiting",
+  "request-info": "needs-info",
+  resubmit: "requested",
+  start: "in-progress",
+  submit: "review",
+  reject: "revising",
+  approve: "source-pending",
+  "upload-source": "done",
+  complete: "done",
+  cancel: "canceled",
+  undo: "requested",
+}
+const eventColor = (type: string) => {
+  const st = EVENT_STATUS[type]
+  return st ? `${STATUS_BG[st]} ${STATUS_TEXT[st]}` : ""
+}
+
 // 기간 요약(요청 수·기록 수·동작별 건수)
 function Summary({ log }: { log: Worklog }) {
   const requestCount = new Set(log.events.map((e) => e.requestId)).size
@@ -253,7 +275,7 @@ function Summary({ log }: { log: Worklog }) {
         요청 {requestCount}건 · 기록 {log.events.length}건
       </span>
       {byType.map(([type, n]) => (
-        <Badge key={type} variant="secondary" className="tabular-nums">
+        <Badge key={type} variant="secondary" className={`tabular-nums ${eventColor(type)}`}>
           {EVENT_LABEL[type] ?? type} {n}
         </Badge>
       ))}
