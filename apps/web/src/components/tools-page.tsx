@@ -131,7 +131,7 @@ function ToolsList({ onOpen }: { onOpen: (t: Tool) => void }) {
                   <span className="relative transition-transform group-hover:scale-105 group-active:scale-95">
                     <AppIcon tool={t} />
                     {!t.body && (
-                      <span className="absolute -top-1.5 -right-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-2 ring-background">
+                      <span className="absolute -top-1.5 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-medium text-white ring-2 ring-background">
                         준비 중
                       </span>
                     )}
