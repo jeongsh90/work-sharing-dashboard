@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { ToolHistory } from "@/components/tools/tool-history"
+import { api } from "@/lib/api"
 import { applyFont, loadFonts, wrapText, type TextStyle } from "@/lib/canvas-text"
+import { invalidate } from "@/lib/store"
 
 // 디자인 툴 > 상품정보고시: 고시 항목·주의사항·영양정보를 입력하면 상세페이지용 이미지(가로 860)를 만든다.
 // 사양: docs/tools/상품정보고시_툴_사양.md (Figma 셰프애찬 235:291). 글은 입력한 그대로 쓴다(법적 표기).
@@ -224,7 +227,27 @@ export function ProductNoticeTool() {
   const setNutri = (nid: number, patch: Partial<NutriRow>) =>
     setForm((f) => ({ ...f, nutri: f.nutri.map((n) => (n.id === nid ? { ...n, ...patch } : n)) }))
 
+  // 다운로드하면 히스토리에 남긴다(제목 = 제품명, 이미지·입력 내용)
+  const saveHistory = (name: string) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const title = contentOf(form).rows.find((r) => r.label === "제품명")?.value || "제목 없음"
+    api("/tools/product-notice/history", { body: { title, fileName: name, form, image: canvas.toDataURL("image/jpeg", 0.92) } }).then(
+      () => invalidate(),
+      () => {},
+    )
+  }
+
+  // 히스토리에서 불러오기: 입력 칸을 그때 내용으로 채운다
+  const loadForm = (f: Form) =>
+    setForm({
+      ...f,
+      rows: f.rows.map((r) => ({ ...r, id: id() })),
+      nutri: f.nutri.map((n) => ({ ...n, id: id() })),
+    })
+
   const download = () => {
+    saveHistory(fileName)
     canvasRef.current?.toBlob(
       (blob) => {
         if (!blob) return
@@ -352,9 +375,14 @@ export function ProductNoticeTool() {
             {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
             {copied ? "복사됨" : "이미지 alt 복사"}
           </Button>
-          <p className="text-xs text-muted-foreground">이미지 가로 860 JPG. 파일 이름은 내려받을 때마다 r.jpg, r2.jpg, r3.jpg 순서로 붙습니다.</p>
+          <p className="text-xs text-muted-foreground">
+            이미지 가로 860 JPG. 파일 이름은 내려받을 때마다 r.jpg, r2.jpg, r3.jpg 순서로 붙고, 아래 히스토리에 남습니다.
+          </p>
         </div>
       </div>
+
+      {/* 아래: 만든 이미지 히스토리(제품명·썸네일·다운로드·검색) */}
+      <ToolHistory<Form> tool="product-notice" onLoad={loadForm} />
     </div>
   )
 }

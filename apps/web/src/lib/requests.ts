@@ -258,6 +258,7 @@ export type RequestAction =
   | 'comment'
   | 'resolve'
   | 'undo'
+  | 'ask-requester'
 
 // 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 그 사이즈의 요청 내용. 높이가 null 이면 자유(제한 없음)
 export type RequestItem = { label: string; width: number | null; height: number | null; body: string }
@@ -292,4 +293,5 @@ export const EVENT_LABEL: Record<string, string> = {
   'upload-source': '원본 업로드',
   cancel: '요청 취소',
   undo: '작업 취소',
+  'ask-requester': '요청자 확인 요청',
 }

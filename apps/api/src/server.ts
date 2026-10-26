@@ -46,6 +46,7 @@ import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry
 import { startBackupSchedule } from './backup.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
+import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import {
   approveUser,
   createSession,
@@ -109,12 +110,12 @@ function applyCors(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJson(req: IncomingMessage, limit = 200_000): Promise<Record<string, unknown>> {
   let size = 0
   const chunks: Buffer[] = []
   for await (const chunk of req) {
     size += (chunk as Buffer).length
-    if (size > 200_000) throw new HttpError(413, '보낸 내용이 너무 큽니다.')
+    if (size > limit) throw new HttpError(413, '보낸 내용이 너무 큽니다.')
     chunks.push(chunk as Buffer)
   }
   try {
@@ -205,7 +206,9 @@ async function handleFile(
 ) {
   const file = findFile(id)
   // 어디에도 붙지 않은 파일은 올린 사람만 볼 수 있다. 프로필 사진은 로그인한 누구나 볼 수 있다.
-  if (!file || (file.request_id === null && file.kind !== 'avatar' && file.uploader_id !== user.id)) {
+  // 디자인 툴 히스토리 이미지(kind 'tool')는 디자인팀 누구나 본다
+  const toolFile = file?.kind === 'tool' && canSeeToolFile(user)
+  if (!file || (file.request_id === null && file.kind !== 'avatar' && !toolFile && file.uploader_id !== user.id)) {
     throw new HttpError(404, '파일을 찾을 수 없습니다.')
   }
   // 화면용 줄인 이미지(썸네일·크게 보기). 내려받기는 늘 원본
@@ -493,6 +496,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       chunks.push(chunk as Buffer)
     }
     return sendJson(res, 200, await analyzePurchaseCert(Buffer.concat(chunks)))
+  }
+
+  // ── 디자인 툴 히스토리(만든 이미지 남기기·찾기·지우기) ──
+  if ((m = path.match(/^\/api\/tools\/([a-z-]+)\/history$/))) {
+    if (method === 'GET') return sendJson(res, 200, listToolHistory(user, m[1], url.searchParams.get('q') ?? ''))
+    if (method === 'POST') return sendJson(res, 201, await addToolHistory(user, m[1], await readJson(req, 30 * 1024 * 1024)))
+  }
+  if ((m = path.match(/^\/api\/tools\/history\/(\d+)$/)) && method === 'DELETE') {
+    return sendJson(res, 200, deleteToolHistory(user, Number(m[1])))
   }
 
   // ── 공휴일(달력 표시용). ?year=2026 ──

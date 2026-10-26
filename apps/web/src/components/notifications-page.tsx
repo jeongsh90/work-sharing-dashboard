@@ -44,6 +44,7 @@ function kindOf(full: string): { icon: LucideIcon; error?: boolean } {
   if (message.includes("새 디자인 요청")) return { icon: FilePlus2 }
   // 작업 취소(되돌리기) 알림은 "취소" 낱말이 들어 있어도 빨갛게 하지 않는다
   if (message.includes("되돌려")) return { icon: RotateCcw }
+  if (message.includes("요청자 확인")) return { icon: Bell }
   if (message.includes("반려")) return { icon: Undo2, error: true }
   if (message.includes("취소")) return { icon: CircleX, error: true }
   if (message.includes("원본")) return { icon: FileUp }

@@ -99,6 +99,7 @@ export type Action =
   | 'comment'
   | 'resolve'
   | 'undo'
+  | 'ask-requester'
 
 // 작업 취소(되돌리기) 대상: 아직 되돌리지 않은 마지막 상태 변경. 지금 상태로 바꾼 기록이어야 한다.
 type UndoTarget = { id: number; type: string; actor_id: string; from_status: Status; to_status: Status }
@@ -165,6 +166,8 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     pin: s === 'review' && (owner || manager || assignee || designer),
     comment: s !== 'canceled' && (owner || manager || assignee || designer),
     resolve: assignee || manager,
+    // 요청자 확인 필요: 상태는 그대로 두고 요청자에게 확인해 달라는 알림만 보낸다(담당 작업자·관리자)
+    'ask-requester': active && !owner && (assignee || manager),
     // 작업 취소: 마지막 단계를 되돌린다. 관리자 또는 그 단계를 한 사람만
     undo: (() => {
       const t = undoTarget(req)
@@ -672,6 +675,11 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         setStatus(req, 'done')
         logEvent(id, user.id, action, req.status, 'done', note ? `원본 ${count}개 · ${note}` : `원본 ${count}개`)
         notify([req.requester_id], user.id, id, `작업 원본 파일이 등록되었습니다: ${req.title}`)
+        return
+      }
+      case 'ask-requester': {
+        logEvent(id, user.id, action, req.status, req.status, note)
+        notify([req.requester_id], user.id, id, `요청자 확인이 필요합니다${note ? ` (${note.slice(0, 60)})` : ''}: ${req.title}`)
         return
       }
       case 'undo': {

@@ -55,6 +55,15 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
     },
   },
   start: { label: "작업 시작" },
+  "ask-requester": {
+    label: "요청자 확인 필요",
+    dialog: {
+      title: "요청자 확인 필요",
+      description: "요청자에게 이 요청을 확인해 달라는 알림을 보냅니다. 상태는 바뀌지 않습니다.",
+      confirm: "알림 보내기",
+      note: { label: "확인할 내용", placeholder: "예: 시안 확인 부탁드립니다 / 라벨 문구를 알려 주세요(선택)" },
+    },
+  },
   submit: {
     label: "컨펌 요청",
     dialog: {
@@ -158,6 +167,7 @@ const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
   reject: "border-orange-500 text-orange-700 hover:bg-orange-500/10 hover:text-orange-700 dark:border-orange-500/70 dark:text-orange-300 dark:hover:bg-orange-500/15 dark:hover:text-orange-300",
   complete: "border-emerald-500 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:border-emerald-500/70 dark:text-emerald-300 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300",
   "upload-source": "border-lime-600 text-lime-700 hover:bg-lime-500/10 hover:text-lime-700 dark:border-lime-500/70 dark:text-lime-300 dark:hover:bg-lime-500/15 dark:hover:text-lime-300",
+  "ask-requester": "border-pink-500 text-pink-700 hover:bg-pink-500/10 hover:text-pink-700 dark:border-pink-500/70 dark:text-pink-300 dark:hover:bg-pink-500/15 dark:hover:text-pink-300",
   "request-info": "border-amber-500 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:border-amber-500/70 dark:text-amber-300 dark:hover:bg-amber-500/15 dark:hover:text-amber-300",
   resubmit: "border-slate-500 text-slate-700 hover:bg-slate-500/10 hover:text-slate-700 dark:border-slate-500/70 dark:text-slate-300 dark:hover:bg-slate-500/15 dark:hover:text-slate-300",
   // 취소는 되돌릴 수 없으므로 빨간색
@@ -165,7 +175,7 @@ const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
 }
 
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
-const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "upload-source", "complete", "resubmit", "assign", "reassign", "request-info", "cancel"]
+const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "upload-source", "complete", "resubmit", "assign", "reassign", "request-info", "ask-requester", "cancel"]
 
 export function ActionPanel({
   detail,
