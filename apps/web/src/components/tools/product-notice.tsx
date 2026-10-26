@@ -211,6 +211,9 @@ export function ProductNoticeTool() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [form, setForm] = useState<Form>(initialForm)
   const [copied, setCopied] = useState(false)
+  // 내려받을 때마다 이름을 r.jpg → r2.jpg → r3.jpg 처럼 늘린다(한 화면에서 여러 상품을 만들 때)
+  const [downloads, setDownloads] = useState(0)
+  const fileName = downloads === 0 ? "r.jpg" : `r${downloads + 1}.jpg`
 
   useEffect(() => {
     if (canvasRef.current) void draw(canvasRef.current, form)
@@ -227,9 +230,10 @@ export function ProductNoticeTool() {
         if (!blob) return
         const a = document.createElement("a")
         a.href = URL.createObjectURL(blob)
-        a.download = "r.jpg"
+        a.download = fileName
         a.click()
         URL.revokeObjectURL(a.href)
+        setDownloads((n) => n + 1)
       },
       "image/jpeg",
       0.92,
@@ -342,13 +346,13 @@ export function ProductNoticeTool() {
         <div className="flex flex-col gap-2">
           <Button size="lg" onClick={download}>
             <Download data-icon="inline-start" />
-            r.jpg 다운로드
+            {fileName} 다운로드
           </Button>
           <Button variant="outline" onClick={copyAlt}>
             {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
             {copied ? "복사됨" : "이미지 alt 복사"}
           </Button>
-          <p className="text-xs text-muted-foreground">이미지 가로 860 JPG. 파일 이름은 업로드할 때 순번(NN_r.jpg)으로 바꿔 주세요.</p>
+          <p className="text-xs text-muted-foreground">이미지 가로 860 JPG. 파일 이름은 내려받을 때마다 r.jpg, r2.jpg, r3.jpg 순서로 붙습니다.</p>
         </div>
       </div>
     </div>
