@@ -6,6 +6,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { ToolHistory } from "@/components/tools/tool-history"
+import { SortableList } from "@/components/sortable-list"
 import { api } from "@/lib/api"
 import { applyFont, loadFonts, wrapText, type TextStyle } from "@/lib/canvas-text"
 import { invalidate } from "@/lib/store"
@@ -284,8 +285,13 @@ export function ProductNoticeTool() {
         <Field>
           <FieldLabel>고시 항목</FieldLabel>
           <div className="flex flex-col gap-2">
-            {form.rows.map((r) => (
-              <div key={r.id} className="flex items-start gap-2">
+            <SortableList
+              items={form.rows}
+              onReorder={(rows) => setForm((f) => ({ ...f, rows }))}
+              className="flex flex-col gap-2"
+              renderItem={(r, handle) => (
+              <div className="flex items-start gap-2">
+                {handle}
                 <Input value={r.label} onChange={(e) => setRow(r.id, { label: e.target.value })} placeholder="제목" aria-label="항목 제목" className="w-28 shrink-0" />
                 <Textarea
                   value={r.value}
@@ -304,8 +310,9 @@ export function ProductNoticeTool() {
                   <Trash2 />
                 </Button>
               </div>
-            ))}
-            <Button variant="outline" size="sm" className="self-start" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { id: id(), label: "", value: "" }] }))}>
+              )}
+            />
+            <Button size="sm" className="self-start" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { id: id(), label: "", value: "" }] }))}>
               <Plus data-icon="inline-start" />
               항목 추가
             </Button>
@@ -329,13 +336,19 @@ export function ProductNoticeTool() {
           <FieldLabel htmlFor="nutri-title">영양정보</FieldLabel>
           <Input id="nutri-title" value={form.nutriTitle} onChange={(e) => setForm((f) => ({ ...f, nutriTitle: e.target.value }))} placeholder="예: 영양정보 (100g당)" />
           <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-[1fr_1fr_1fr_2.25rem] gap-2 text-xs text-muted-foreground">
+            <div className="grid grid-cols-[1.25rem_1fr_1fr_1fr_2.25rem] gap-2 text-xs text-muted-foreground">
+              <span />
               <span>성분</span>
               <span>함량</span>
               <span>1일 기준치 비율</span>
             </div>
-            {form.nutri.map((n) => (
-              <div key={n.id} className="grid grid-cols-[1fr_1fr_1fr_2.25rem] items-center gap-2">
+            <SortableList
+              items={form.nutri}
+              onReorder={(nutri) => setForm((f) => ({ ...f, nutri }))}
+              className="flex flex-col gap-2"
+              renderItem={(n, handle) => (
+              <div className="grid grid-cols-[1.25rem_1fr_1fr_1fr_2.25rem] items-center gap-2">
+                {handle}
                 <Input value={n.name} onChange={(e) => setNutri(n.id, { name: e.target.value })} placeholder="성분" aria-label="성분" />
                 <Input value={n.amount} onChange={(e) => setNutri(n.id, { amount: e.target.value })} placeholder="예: 160kcal" aria-label={`${n.name || "성분"} 함량`} />
                 <Input value={n.ratio} onChange={(e) => setNutri(n.id, { ratio: e.target.value })} placeholder="예: 95% (없으면 비움)" aria-label={`${n.name || "성분"} 비율`} />
@@ -348,9 +361,9 @@ export function ProductNoticeTool() {
                   <Trash2 />
                 </Button>
               </div>
-            ))}
+              )}
+            />
             <Button
-              variant="outline"
               size="sm"
               className="self-start"
               onClick={() => setForm((f) => ({ ...f, nutri: [...f.nutri, { id: id(), name: "", amount: "", ratio: "" }] }))}
