@@ -7,10 +7,9 @@ interface CrowdCanvasProps {
   src: string;
   rows?: number;
   cols?: number;
-  scale?: number; // 사람 그림 크기 배율(1 = 원본)
 }
 
-const CrowdCanvas = ({ src, rows = 15, cols = 7, scale = 1 }: CrowdCanvasProps) => {
+const CrowdCanvas = ({ src, rows = 15, cols = 7 }: CrowdCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -135,8 +134,8 @@ const CrowdCanvas = ({ src, rows = 15, cols = 7, scale = 1 }: CrowdCanvasProps) 
         walk: null,
         setRect: (rect: number[]) => {
           peep.rect = rect;
-          peep.width = rect[2] * scale;
-          peep.height = rect[3] * scale;
+          peep.width = rect[2];
+          peep.height = rect[3];
           peep.drawArgs = [peep.image, ...rect, 0, 0, peep.width, peep.height];
         },
         render: (ctx: CanvasRenderingContext2D) => {
