@@ -1,6 +1,6 @@
 import { all, db, run } from './db.ts'
 import { code, HttpError } from './requests.ts'
-import type { PublicUser } from './users.ts'
+import { isManager, listUsers, type PublicUser } from './users.ts'
 
 // 업무일지: 내가 이 시스템에서 한 일(진행 기록)을 날짜별로 모아 보여 주고, 날마다 직접 적는 메모를 더한다.
 // 날짜는 서버(사무실 PC) 시간대 기준 'YYYY-MM-DD'.
@@ -23,8 +23,8 @@ function dayStart(day: unknown, label: string) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime()
 }
 
-// from ~ to(둘 다 그날 포함) 사이 내 진행 기록과 메모
-export function worklog(user: PublicUser, from: string | null, to: string | null) {
+// from ~ to(둘 다 그날 포함) 사이 그 사람의 진행 기록과 메모
+export function worklog(user: Pick<PublicUser, 'id'>, from: string | null, to: string | null) {
   const start = dayStart(from, '시작')
   const endDay = dayStart(to, '끝')
   const end = new Date(endDay).setDate(new Date(endDay).getDate() + 1)
@@ -80,4 +80,16 @@ export function saveWorklogNote(user: PublicUser, day: string, body: unknown) {
     { me: user.id, day, body: text, now },
   )
   return { day, body: text, updatedAt: now }
+}
+
+// 디자인팀 작업자(작업자 + 디자인팀 관리자)
+const isDesignWorker = (u: PublicUser) =>
+  u.role === 'designer' || (isManager(u) && u.department.replace(/\s+/g, '') === '디자인팀')
+
+// 팀 업무일지(관리자): 디자인팀 작업자마다 그 기간의 기록·메모. 고치지 않고 보기만 한다.
+export function teamWorklog(viewer: PublicUser, from: string | null, to: string | null) {
+  if (!isManager(viewer)) throw new HttpError(403, '팀 업무일지는 관리자만 볼 수 있습니다.')
+  return listUsers()
+    .filter((u) => u.active && u.approved && isDesignWorker(u))
+    .map((u) => ({ user: { id: u.id, name: u.name, rank: u.rank, avatarId: u.avatarId }, ...worklog(u, from, to) }))
 }

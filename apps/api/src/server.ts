@@ -42,7 +42,7 @@ import { isImageSize, resizedImage, RESIZABLE } from './images.ts'
 import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from './compress.ts'
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
-import { saveWorklogNote, worklog } from './worklog.ts'
+import { saveWorklogNote, teamWorklog, worklog } from './worklog.ts'
 import { startBackupSchedule } from './backup.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
@@ -501,6 +501,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
 
   // ── 업무일지(내 진행 기록 + 날마다 메모) ──
+  if (path === '/api/worklog/team' && method === 'GET') {
+    return sendJson(res, 200, teamWorklog(user, url.searchParams.get('from'), url.searchParams.get('to')))
+  }
   if (path === '/api/worklog' && method === 'GET') {
     return sendJson(res, 200, worklog(user, url.searchParams.get('from'), url.searchParams.get('to')))
   }

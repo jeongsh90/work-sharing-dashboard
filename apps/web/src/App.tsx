@@ -150,7 +150,7 @@ export default function App() {
       case 'tools':
         return <ToolsPage />
       case 'worklog':
-        return <WorklogPage />
+        return <WorklogPage session={session} />
       default:
         return <Placeholder />
     }

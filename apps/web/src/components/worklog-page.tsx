@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Section } from "@/components/home/home-page"
+import { UserAvatar } from "@/components/user-avatar"
 import { PageState } from "@/components/page-state"
 import { api, ApiError } from "@/lib/api"
+import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { EVENT_LABEL, STATUS_LABEL, type RequestStatus } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
@@ -29,6 +31,7 @@ type LogEvent = {
 }
 type Note = { day: string; body: string; updatedAt: number }
 type Worklog = { events: LogEvent[]; notes: Note[] }
+type TeamMember = Worklog & { user: { id: string; name: string; rank: string; avatarId: string | null } }
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -85,9 +88,9 @@ function daysOf(mode: Mode, from: Date, to: Date, log: Worklog) {
   return days
 }
 
-// 보고용 글(복사)
-function reportText(title: string, days: ReturnType<typeof daysOf>) {
-  const lines = [`[업무일지] ${title}`]
+// 보고용 글(복사). 팀 보기에서는 사람마다 이어 붙인다.
+function reportText(title: string, days: ReturnType<typeof daysOf>, who?: string) {
+  const lines = [who ? `[업무일지] ${who} · ${title}` : `[업무일지] ${title}`]
   for (const d of days) {
     if (d.events.length === 0 && !d.note) continue
     lines.push("", `■ ${dayTitle(d.date)}`)
@@ -143,26 +146,114 @@ function NoteEditor({ day, value }: { day: string; value: string }) {
   )
 }
 
-export function WorklogPage() {
+// 기간 요약(요청 수·기록 수·동작별 건수)
+function Summary({ log }: { log: Worklog }) {
+  const requestCount = new Set(log.events.map((e) => e.requestId)).size
+  const byType = Object.entries(
+    log.events.reduce<Record<string, number>>((acc, e) => ({ ...acc, [e.type]: (acc[e.type] ?? 0) + 1 }), {}),
+  ).sort((a, b) => b[1] - a[1])
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="font-medium">
+        요청 {requestCount}건 · 기록 {log.events.length}건
+      </span>
+      {byType.map(([type, n]) => (
+        <Badge key={type} variant="secondary" className="tabular-nums">
+          {EVENT_LABEL[type] ?? type} {n}
+        </Badge>
+      ))}
+      {log.events.length === 0 && <span className="text-muted-foreground">이 기간에 자동으로 기록된 작업이 없습니다.</span>}
+    </div>
+  )
+}
+
+// 그날 자동 기록 목록(누르면 요청 상세)
+function EventList({ events }: { events: LogEvent[] }) {
+  return (
+    <ul className="flex flex-col divide-y rounded-lg border">
+      {events.map((e, i) => (
+        <li key={`${e.at}-${i}`}>
+          <button
+            type="button"
+            className="flex w-full items-start gap-3 px-3 py-2 text-left text-sm hover:bg-accent/50"
+            onClick={() => openRequest(e.requestId)}
+          >
+            <span className="shrink-0 text-muted-foreground tabular-nums">{time(e.at)}</span>
+            <span className="min-w-0 flex-1">
+              <span className="font-medium">{e.title}</span>
+              <span className="ml-1.5 text-xs text-muted-foreground">{e.code}</span>
+              <span className="block text-muted-foreground">{eventText(e)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// 팀 업무일지(관리자): 디자인팀 작업자마다 기록이 있는 날만 보여 준다. 메모는 보기만 한다.
+function TeamView({ members, from, to }: { members: TeamMember[]; from: Date; to: Date }) {
+  if (members.length === 0) return <p className="text-sm text-muted-foreground">디자인팀 작업자가 없습니다.</p>
+  return (
+    <div className="flex flex-col gap-4">
+      {members.map((m) => {
+        const days = daysOf("month", from, to, m).filter((d) => d.events.length > 0 || d.note)
+        return (
+          <article key={m.user.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+            <header className="flex flex-wrap items-center gap-3">
+              <UserAvatar name={m.user.name} avatarId={m.user.avatarId} className="size-9" />
+              <div className="min-w-0">
+                <h3 className="font-semibold">
+                  {m.user.name}
+                  {m.user.rank && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{m.user.rank}</span>}
+                </h3>
+              </div>
+              <div className="ml-auto">
+                <Summary log={m} />
+              </div>
+            </header>
+            {days.length === 0 ? (
+              <p className="text-sm text-muted-foreground">이 기간에 기록·메모가 없습니다.</p>
+            ) : (
+              days.map((d) => (
+                <section key={d.key} className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium">{dayTitle(d.date)}</h4>
+                  {d.events.length > 0 && <EventList events={d.events} />}
+                  {d.note && <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm whitespace-pre-wrap">{d.note}</p>}
+                </section>
+              ))
+            )}
+          </article>
+        )
+      })}
+    </div>
+  )
+}
+
+export function WorklogPage({ session }: { session: Session }) {
+  // 관리자는 팀 업무일지(디자인팀 전원)도 본다
+  const canTeam = isManager(session)
+  const [view, setView] = useState<"mine" | "team">("mine")
   const [mode, setMode] = useState<Mode>("day")
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()))
   const [copied, setCopied] = useState(false)
   const [todayKey] = useState(() => dayKey(new Date()))
   const { from, to } = rangeOf(mode, anchor)
-  const { data, error } = useApi<Worklog>(`/worklog?from=${dayKey(from)}&to=${dayKey(to)}`, 60_000)
+  const range = `from=${dayKey(from)}&to=${dayKey(to)}`
+  const team = view === "team" && canTeam
+  const { data, error } = useApi<Worklog>(team ? null : `/worklog?${range}`, 60_000)
+  const { data: teamData, error: teamError } = useApi<TeamMember[]>(team ? `/worklog/team?${range}` : null, 60_000)
 
   const title = rangeLabel(mode, from, to)
   const days = data ? daysOf(mode, from, to, data) : []
-  const requestCount = data ? new Set(data.events.map((e) => e.requestId)).size : 0
-  // 기간 요약: 동작별 건수(많은 순)
-  const byType = data
-    ? Object.entries(
-        data.events.reduce<Record<string, number>>((acc, e) => ({ ...acc, [e.type]: (acc[e.type] ?? 0) + 1 }), {}),
-      ).sort((a, b) => b[1] - a[1])
-    : []
 
   const copy = async () => {
-    await navigator.clipboard.writeText(reportText(title, days))
+    const text = team
+      ? (teamData ?? [])
+          .map((m) => reportText(title, daysOf("month", from, to, m).filter((d) => d.events.length > 0 || d.note), m.user.name))
+          .join("\n\n")
+      : reportText(title, days)
+    await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }
@@ -175,6 +266,14 @@ export function WorklogPage() {
         className="col-span-12 xl:col-span-10"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {canTeam && (
+              <Tabs value={view} onValueChange={(v) => setView(v as "mine" | "team")}>
+                <TabsList>
+                  <TabsTrigger value="mine">내 업무일지</TabsTrigger>
+                  <TabsTrigger value="team">팀 업무일지</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
             <Tabs
               value={mode}
               onValueChange={(v) => {
@@ -199,28 +298,22 @@ export function WorklogPage() {
                 <ChevronRight />
               </Button>
             </div>
-            <Button size="sm" disabled={!data} onClick={copy}>
+            <Button size="sm" disabled={team ? !teamData : !data} onClick={copy}>
               {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
               {copied ? "복사됨" : "보고용 복사"}
             </Button>
           </div>
         }
       >
-        {!data ? (
+        {team ? (
+          teamData ? <TeamView members={teamData} from={from} to={to} /> : <PageState error={teamError} />
+        ) : !data ? (
           <PageState error={error} />
         ) : (
           <div className="flex flex-col gap-4">
             {/* 기간 요약 */}
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm">
-              <span className="font-medium">
-                요청 {requestCount}건 · 기록 {data.events.length}건
-              </span>
-              {byType.map(([type, n]) => (
-                <Badge key={type} variant="secondary" className="tabular-nums">
-                  {EVENT_LABEL[type] ?? type} {n}
-                </Badge>
-              ))}
-              {data.events.length === 0 && <span className="text-muted-foreground">이 기간에 자동으로 기록된 작업이 없습니다.</span>}
+            <div className="rounded-xl border bg-card px-4 py-3">
+              <Summary log={data} />
             </div>
 
             {days.map((d) => (
@@ -232,24 +325,7 @@ export function WorklogPage() {
                 </header>
                 {/* 자동 기록: 이 시스템에서 내가 한 일 */}
                 {d.events.length > 0 ? (
-                  <ul className="flex flex-col divide-y rounded-lg border">
-                    {d.events.map((e, i) => (
-                      <li key={`${e.at}-${i}`}>
-                        <button
-                          type="button"
-                          className="flex w-full items-start gap-3 px-3 py-2 text-left text-sm hover:bg-accent/50"
-                          onClick={() => openRequest(e.requestId)}
-                        >
-                          <span className="shrink-0 text-muted-foreground tabular-nums">{time(e.at)}</span>
-                          <span className="min-w-0 flex-1">
-                            <span className="font-medium">{e.title}</span>
-                            <span className="ml-1.5 text-xs text-muted-foreground">{e.code}</span>
-                            <span className="block text-muted-foreground">{eventText(e)}</span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <EventList events={d.events} />
                 ) : (
                   <p className="text-sm text-muted-foreground">자동 기록 없음</p>
                 )}
