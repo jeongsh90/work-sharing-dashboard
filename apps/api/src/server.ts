@@ -42,7 +42,7 @@ import { isImageSize, resizedImage, RESIZABLE } from './images.ts'
 import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from './compress.ts'
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
-import { saveWorklogNote, teamWorklog, worklog } from './worklog.ts'
+import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry, worklog } from './worklog.ts'
 import { startBackupSchedule } from './backup.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
@@ -507,8 +507,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (path === '/api/worklog' && method === 'GET') {
     return sendJson(res, 200, worklog(user, url.searchParams.get('from'), url.searchParams.get('to')))
   }
-  if ((m = path.match(/^\/api\/worklog\/notes\/(\d{4}-\d{2}-\d{2})$/)) && method === 'PUT') {
-    return sendJson(res, 200, saveWorklogNote(user, m[1], (await readJson(req)).body))
+  if (path === '/api/worklog/entries' && method === 'POST') {
+    return sendJson(res, 201, createWorklogEntry(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/worklog\/entries\/(\d+)$/))) {
+    const id = Number(m[1])
+    if (method === 'PATCH') return sendJson(res, 200, updateWorklogEntry(user, id, await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteWorklogEntry(user, id))
   }
 
   // ── 업데이트 예정 기능(건의게시판 오른쪽) ──

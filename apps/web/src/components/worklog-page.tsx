@@ -1,10 +1,13 @@
 import { useState } from "react"
-import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { DateRangePicker } from "@/components/date-range-picker"
 import { Section } from "@/components/home/home-page"
 import { UserAvatar } from "@/components/user-avatar"
 import { PageState } from "@/components/page-state"
@@ -29,8 +32,11 @@ type LogEvent = {
   code: string
   title: string
 }
-type Note = { day: string; body: string; updatedAt: number }
-type Worklog = { events: LogEvent[]; notes: Note[] }
+// 직접 쓰는 항목: 작성일·작성시간·카테고리·내용
+type Entry = { id: number; day: string; time: string; category: string; body: string; updatedAt: number }
+type Worklog = { events: LogEvent[]; entries: Entry[] }
+
+const CATEGORIES = ["디자인 작업", "수정 대응", "회의", "자료 조사", "교육", "메모", "기타"]
 type TeamMember = Worklog & { user: { id: string; name: string; rank: string; avatarId: string | null } }
 
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -74,75 +80,164 @@ const time = (at: number) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-// 날짜별로 묶는다. 일·주는 모든 날, 월은 기록이나 메모가 있는 날(과 오늘)만
+// 날짜별로 묶는다. 일·주는 모든 날, 월은 기록이나 직접 쓴 항목이 있는 날(과 오늘)만
 function daysOf(mode: Mode, from: Date, to: Date, log: Worklog) {
   const today = dayKey(new Date())
-  const days: { date: Date; key: string; events: LogEvent[]; note: string }[] = []
+  const days: { date: Date; key: string; events: LogEvent[]; entries: Entry[] }[] = []
   for (let d = from; d <= to; d = addDays(d, 1)) {
     const key = dayKey(d)
     const events = log.events.filter((e) => dayKey(new Date(e.at)) === key)
-    const note = log.notes.find((n) => n.day === key)?.body ?? ""
-    if (mode === "month" && events.length === 0 && !note && key !== today) continue
-    days.push({ date: d, key, events, note })
+    const entries = log.entries.filter((n) => n.day === key)
+    if (mode === "month" && events.length === 0 && entries.length === 0 && key !== today) continue
+    days.push({ date: d, key, events, entries })
   }
   return days
 }
+
+const hasContent = (d: { events: LogEvent[]; entries: Entry[] }) => d.events.length > 0 || d.entries.length > 0
+const entryLine = (n: Entry) => `${n.time ? `${n.time} ` : ""}${n.category ? `[${n.category}] ` : ""}${n.body}`
 
 // 보고용 글(복사). 팀 보기에서는 사람마다 이어 붙인다.
 function reportText(title: string, days: ReturnType<typeof daysOf>, who?: string) {
   const lines = [who ? `[업무일지] ${who} · ${title}` : `[업무일지] ${title}`]
   for (const d of days) {
-    if (d.events.length === 0 && !d.note) continue
+    if (!hasContent(d)) continue
     lines.push("", `■ ${dayTitle(d.date)}`)
     for (const e of d.events) lines.push(`- ${time(e.at)} ${e.code} ${e.title} · ${eventText(e)}`)
-    if (d.note) lines.push(...d.note.split("\n").map((l) => `  ${l}`))
+    for (const n of d.entries) lines.push(`- ${entryLine(n)}`.replace(/\n/g, "\n  "))
   }
   return lines.join("\n")
 }
 
-// 그날 메모: 쓰고 저장(칸을 벗어나면 저장). 서버 값이 바뀌면 key 로 새로 그린다
-function NoteEditor({ day, value }: { day: string; value: string }) {
-  const [text, setText] = useState(value)
-  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle")
+const fromKey = (k: string) => new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10)))
+const nowTime = () => {
+  const d = new Date()
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// 직접 쓰는 항목 입력: 작성일(기본 오늘)·작성시간(기본 지금)·카테고리·내용. entry 가 있으면 수정
+function EntryEditor({ entry, defaultDay, onDone }: { entry?: Entry; defaultDay: string; onDone?: () => void }) {
+  const [day, setDay] = useState(entry?.day ?? defaultDay)
+  const [at, setAt] = useState(entry?.time ?? nowTime())
+  const [category, setCategory] = useState(entry?.category || CATEGORIES[0])
+  const [body, setBody] = useState(entry?.body ?? "")
+  const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const dirty = text.trim() !== value.trim()
 
   const save = async () => {
-    if (!dirty) return
-    setState("saving")
+    if (!body.trim()) {
+      setError("내용을 입력해 주세요.")
+      return
+    }
+    setPending(true)
     setError(null)
     try {
-      await api(`/worklog/notes/${day}`, { method: "PUT", body: { body: text } })
-      setState("saved")
+      const payload = { day, time: at, category, body }
+      if (entry) await api(`/worklog/entries/${entry.id}`, { method: "PATCH", body: payload })
+      else await api("/worklog/entries", { body: payload })
       invalidate()
+      if (!entry) {
+        setBody("")
+        setAt(nowTime())
+      }
+      onDone?.()
     } catch (e) {
-      setState("error")
       setError(e instanceof ApiError ? e.message : "저장하지 못했습니다.")
+    } finally {
+      setPending(false)
     }
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-12 gap-2">
+        <div className="col-span-12 sm:col-span-5">
+          <DateRangePicker
+            single
+            value={{ from: fromKey(day), to: undefined }}
+            onChange={(r) => r?.from && setDay(dayKey(r.from))}
+            placeholder="작성일"
+          />
+        </div>
+        <Input type="time" value={at} onChange={(e) => setAt(e.target.value)} aria-label="작성시간" className="col-span-6 sm:col-span-3" />
+        <div className="col-span-6 sm:col-span-4">
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-full" aria-label="카테고리">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
       <Textarea
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          setState("idle")
-        }}
-        onBlur={save}
-        placeholder="오늘 한 일, 회의, 다음 할 일 등을 직접 적어 주세요."
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="한 일, 회의, 다음 할 일 등을 적어 주세요."
         className="min-h-20"
-        aria-label={`${day} 업무 메모`}
+        aria-label="업무 내용"
       />
-      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-        {state === "saving" && <span>저장 중…</span>}
-        {state === "saved" && !dirty && <span>저장했습니다</span>}
-        {error && <span className="text-destructive">{error}</span>}
-        <Button size="sm" variant="outline" disabled={!dirty || state === "saving"} onClick={save}>
-          저장
+      <div className="flex items-center justify-end gap-2">
+        {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
+        {onDone && entry && (
+          <Button size="sm" variant="ghost" onClick={onDone}>
+            취소
+          </Button>
+        )}
+        <Button size="sm" disabled={pending} onClick={save}>
+          {entry ? null : <Plus data-icon="inline-start" />}
+          {pending ? "저장 중…" : "저장"}
         </Button>
       </div>
     </div>
+  )
+}
+
+// 직접 쓴 항목 목록. editable 이면 줄마다 수정·삭제
+function EntryList({ entries, editable }: { entries: Entry[]; editable: boolean }) {
+  const [editing, setEditing] = useState<number | null>(null)
+  const remove = async (n: Entry) => {
+    if (!window.confirm("이 항목을 지울까요?")) return
+    await api(`/worklog/entries/${n.id}`, { method: "DELETE" })
+    invalidate()
+  }
+  return (
+    <ul className="flex flex-col divide-y rounded-lg border">
+      {entries.map((n) =>
+        editing === n.id ? (
+          <li key={n.id} className="p-3">
+            <EntryEditor entry={n} defaultDay={n.day} onDone={() => setEditing(null)} />
+          </li>
+        ) : (
+          <li key={n.id} className="group flex items-start gap-3 px-3 py-2 text-sm">
+            <span className="w-11 shrink-0 text-muted-foreground tabular-nums">{n.time || "-"}</span>
+            <span className="min-w-0 flex-1">
+              {n.category && (
+                <Badge variant="secondary" className="mr-1.5 align-middle">
+                  {n.category}
+                </Badge>
+              )}
+              <span className="whitespace-pre-wrap">{n.body}</span>
+            </span>
+            {editable && (
+              <span className="flex shrink-0 gap-1 opacity-60 group-hover:opacity-100">
+                <Button variant="ghost" size="icon-xs" aria-label="수정" onClick={() => setEditing(n.id)}>
+                  <Pencil />
+                </Button>
+                <Button variant="ghost" size="icon-xs" className="text-destructive hover:text-destructive" aria-label="삭제" onClick={() => remove(n)}>
+                  <Trash2 />
+                </Button>
+              </span>
+            )}
+          </li>
+        ),
+      )}
+    </ul>
   )
 }
 
@@ -197,7 +292,7 @@ function TeamView({ members, from, to }: { members: TeamMember[]; from: Date; to
   return (
     <div className="flex flex-col gap-4">
       {members.map((m) => {
-        const days = daysOf("month", from, to, m).filter((d) => d.events.length > 0 || d.note)
+        const days = daysOf("month", from, to, m).filter(hasContent)
         return (
           <article key={m.user.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4">
             <header className="flex flex-wrap items-center gap-3">
@@ -219,7 +314,7 @@ function TeamView({ members, from, to }: { members: TeamMember[]; from: Date; to
                 <section key={d.key} className="flex flex-col gap-2">
                   <h4 className="text-sm font-medium">{dayTitle(d.date)}</h4>
                   {d.events.length > 0 && <EventList events={d.events} />}
-                  {d.note && <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm whitespace-pre-wrap">{d.note}</p>}
+                  {d.entries.length > 0 && <EntryList entries={d.entries} editable={false} />}
                 </section>
               ))
             )}
@@ -250,7 +345,7 @@ export function WorklogPage({ session }: { session: Session }) {
   const copy = async () => {
     const text = team
       ? (teamData ?? [])
-          .map((m) => reportText(title, daysOf("month", from, to, m).filter((d) => d.events.length > 0 || d.note), m.user.name))
+          .map((m) => reportText(title, daysOf("month", from, to, m).filter(hasContent), m.user.name))
           .join("\n\n")
       : reportText(title, days)
     await navigator.clipboard.writeText(text)
@@ -316,12 +411,20 @@ export function WorklogPage({ session }: { session: Session }) {
               <Summary log={data} />
             </div>
 
+            {/* 새 항목 쓰기(작성일 기본 = 오늘, 일간 보기면 그날) */}
+            <div className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+              <h3 className="font-semibold">업무 쓰기</h3>
+              <EntryEditor key={mode === "day" ? dayKey(anchor) : todayKey} defaultDay={mode === "day" ? dayKey(anchor) : todayKey} />
+            </div>
+
             {days.map((d) => (
               <article key={d.key} className="flex flex-col gap-3 rounded-xl border bg-card p-4">
                 <header className="flex items-center gap-2">
                   <h3 className="font-semibold">{dayTitle(d.date)}</h3>
                   {d.key === todayKey && <Badge>오늘</Badge>}
-                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">기록 {d.events.length}건</span>
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    자동 기록 {d.events.length}건 · 직접 쓴 항목 {d.entries.length}건
+                  </span>
                 </header>
                 {/* 자동 기록: 이 시스템에서 내가 한 일 */}
                 {d.events.length > 0 ? (
@@ -329,8 +432,8 @@ export function WorklogPage({ session }: { session: Session }) {
                 ) : (
                   <p className="text-sm text-muted-foreground">자동 기록 없음</p>
                 )}
-                {/* 직접 쓰는 메모 */}
-                <NoteEditor key={`${d.key}:${d.note}`} day={d.key} value={d.note} />
+                {/* 직접 쓴 항목(수정·삭제) */}
+                {d.entries.length > 0 && <EntryList entries={d.entries} editable />}
               </article>
             ))}
           </div>
