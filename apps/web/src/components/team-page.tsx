@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Section } from "@/components/home/home-page"
 import { UserAvatar } from "@/components/user-avatar"
 import { PageState } from "@/components/page-state"
+import { confirmDialog } from "@/components/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
 import { COMPANY_EMAIL_DOMAIN, ROLE_LABEL, type Role, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
@@ -102,7 +103,11 @@ function PendingSignups({ users }: { users: UserInfo[] }) {
   const [error, setError] = useState<string | null>(null)
 
   const decide = async (u: UserInfo, action: "approve" | "reject") => {
-    if (action === "reject" && !window.confirm(`${u.name}(${u.id}) 가입 신청을 거절할까요? 신청 정보는 지워집니다.`)) return
+    if (
+      action === "reject" &&
+      !(await confirmDialog({ title: `${u.name}(${u.id}) 가입 신청을 거절할까요?`, description: "신청 정보는 지워집니다.", confirmText: "거절", destructive: true }))
+    )
+      return
     setBusy(u.id)
     setError(null)
     try {

@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
+import { confirmDialog } from "@/components/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
@@ -164,7 +165,10 @@ function SuggestionItem({ item, session }: { item: Suggestion; session: Session 
             size="icon-sm"
             aria-label={`${item.title} 삭제`}
             disabled={pending}
-            onClick={() => window.confirm("이 건의글을 지울까요?") && run(() => api(`/suggestions/${item.id}`, { method: "DELETE" }))}
+            onClick={async () => {
+              if (await confirmDialog({ title: "이 건의글을 지울까요?", confirmText: "삭제", destructive: true }))
+                run(() => api(`/suggestions/${item.id}`, { method: "DELETE" }))
+            }}
           >
             <Trash2 />
           </Button>
@@ -243,7 +247,7 @@ function RoadmapDialog({ item, onClose }: { item: RoadmapItem | null; onClose: (
   const [error, setError] = useState<string | null>(null)
 
   const run = async (method: "POST" | "PATCH" | "DELETE") => {
-    if (method === "DELETE" && !window.confirm(`"${item?.title}" 항목을 지울까요?`)) return
+    if (method === "DELETE" && !(await confirmDialog({ title: `"${item?.title}" 항목을 지울까요?`, confirmText: "삭제", destructive: true }))) return
     setPending(true)
     setError(null)
     try {

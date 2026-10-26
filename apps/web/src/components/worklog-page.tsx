@@ -4,17 +4,29 @@ import { Check, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Trash2 } from "lu
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { DateRangePicker } from "@/components/date-range-picker"
+import { TimePicker } from "@/components/time-picker"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { confirmDialog } from "@/components/confirm-dialog"
 import { Section } from "@/components/home/home-page"
 import { UserAvatar } from "@/components/user-avatar"
 import { PageState } from "@/components/page-state"
 import { api, ApiError } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
-import { EVENT_LABEL, STATUS_LABEL, type RequestStatus } from "@/lib/requests"
+import { EVENT_LABEL, STATUS_LABEL, WORK_TYPES, type RequestStatus } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
 import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 import { invalidate, useApi } from "@/lib/store"
@@ -37,7 +49,10 @@ type LogEvent = {
 type Entry = { id: number; day: string; time: string; category: string; body: string; updatedAt: number }
 type Worklog = { events: LogEvent[]; entries: Entry[] }
 
-const CATEGORIES = ["디자인 작업", "수정 대응", "회의", "자료 조사", "교육", "메모", "기타"]
+// 카테고리: 업무 종류 + 요청서의 작업 종류(WORK_TYPES). 기타는 맨 끝
+const WORK_CATEGORIES = ["디자인 작업", "수정 대응", "회의", "자료 조사", "교육", "메모"]
+const TYPE_CATEGORIES = WORK_TYPES.filter((t) => t !== "기타" && !WORK_CATEGORIES.includes(t))
+const CATEGORIES = [...WORK_CATEGORIES, ...TYPE_CATEGORIES, "기타"]
 type TeamMember = Worklog & { user: { id: string; name: string; rank: string; avatarId: string | null } }
 
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -96,7 +111,7 @@ function daysOf(mode: Mode, from: Date, to: Date, log: Worklog) {
 }
 
 const hasContent = (d: { events: LogEvent[]; entries: Entry[] }) => d.events.length > 0 || d.entries.length > 0
-const entryLine = (n: Entry) => `${n.time ? `${n.time} ` : ""}${n.category ? `[${n.category}] ` : ""}${n.body}`
+const entryLine = (n: Entry) => `${n.time ? `${n.time} ` : "종일 "}${n.category ? `[${n.category}] ` : ""}${n.body}`
 
 // 보고용 글(복사). 팀 보기에서는 사람마다 이어 붙인다.
 function reportText(title: string, days: ReturnType<typeof daysOf>, who?: string) {
@@ -119,7 +134,9 @@ const nowTime = () => {
 // 직접 쓰는 항목 입력: 작성일(기본 오늘)·작성시간(기본 지금)·카테고리·내용. entry 가 있으면 수정
 function EntryEditor({ entry, defaultDay, onDone }: { entry?: Entry; defaultDay: string; onDone?: () => void }) {
   const [day, setDay] = useState(entry?.day ?? defaultDay)
-  const [at, setAt] = useState(entry?.time ?? nowTime())
+  const [at, setAt] = useState(entry?.time || nowTime())
+  // 종일: 시각 없이 그날 전체(저장할 때 시각을 비운다)
+  const [allDay, setAllDay] = useState(!!entry && !entry.time)
   const [category, setCategory] = useState(entry?.category || CATEGORIES[0])
   const [body, setBody] = useState(entry?.body ?? "")
   const [pending, setPending] = useState(false)
@@ -133,7 +150,7 @@ function EntryEditor({ entry, defaultDay, onDone }: { entry?: Entry; defaultDay:
     setPending(true)
     setError(null)
     try {
-      const payload = { day, time: at, category, body }
+      const payload = { day, time: allDay ? "" : at, category, body }
       if (entry) await api(`/worklog/entries/${entry.id}`, { method: "PATCH", body: payload })
       else await api("/worklog/entries", { body: payload })
       invalidate()
@@ -152,7 +169,7 @@ function EntryEditor({ entry, defaultDay, onDone }: { entry?: Entry; defaultDay:
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-12 gap-2">
-        <div className="col-span-12 sm:col-span-5">
+        <div className="col-span-12 sm:col-span-4">
           <DateRangePicker
             single
             value={{ from: fromKey(day), to: undefined }}
@@ -160,18 +177,40 @@ function EntryEditor({ entry, defaultDay, onDone }: { entry?: Entry; defaultDay:
             placeholder="작성일"
           />
         </div>
-        <Input type="time" value={at} onChange={(e) => setAt(e.target.value)} aria-label="작성시간" className="col-span-6 sm:col-span-3" />
-        <div className="col-span-6 sm:col-span-4">
+        <div className="col-span-12 flex items-center gap-3 sm:col-span-4">
+          <TimePicker value={at} onChange={setAt} disabled={allDay} className="min-w-0 flex-1" />
+          <Label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm font-normal">
+            <Checkbox checked={allDay} onCheckedChange={(v) => setAllDay(v === true)} />
+            종일
+          </Label>
+        </div>
+        <div className="col-span-12 sm:col-span-4">
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-full" aria-label="카테고리">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
+            <SelectContent className="max-h-80">
+              <SelectGroup>
+                <SelectLabel>업무</SelectLabel>
+                {WORK_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>작업 종류</SelectLabel>
+                {TYPE_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectItem value="기타">기타</SelectItem>
+              {/* 예전에 쓴 카테고리가 목록에 없으면 그대로 보이게 */}
+              {!CATEGORIES.includes(category) && <SelectItem value={category}>{category}</SelectItem>}
             </SelectContent>
           </Select>
         </div>
@@ -203,7 +242,7 @@ function EntryEditor({ entry, defaultDay, onDone }: { entry?: Entry; defaultDay:
 function EntryList({ entries, editable }: { entries: Entry[]; editable: boolean }) {
   const [editing, setEditing] = useState<number | null>(null)
   const remove = async (n: Entry) => {
-    if (!window.confirm("이 항목을 지울까요?")) return
+    if (!(await confirmDialog({ title: "이 항목을 지울까요?", description: n.body.slice(0, 80), confirmText: "삭제", destructive: true }))) return
     await api(`/worklog/entries/${n.id}`, { method: "DELETE" })
     invalidate()
   }
@@ -216,7 +255,7 @@ function EntryList({ entries, editable }: { entries: Entry[]; editable: boolean 
           </li>
         ) : (
           <li key={n.id} className="group flex items-start gap-3 px-3 py-2 text-sm">
-            <span className="w-11 shrink-0 text-muted-foreground tabular-nums">{n.time || "-"}</span>
+            <span className="w-11 shrink-0 text-muted-foreground tabular-nums">{n.time || "종일"}</span>
             <span className="min-w-0 flex-1">
               {n.category && (
                 <Badge variant="secondary" className="mr-1.5 align-middle">
