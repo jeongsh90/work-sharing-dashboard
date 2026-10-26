@@ -308,8 +308,8 @@ export function PurchaseCertTool() {
         />
       </div>
 
-      {/* 오른쪽: 파일 첨부 · 수매일자 · 다운로드 */}
-      <div className="col-span-12 flex flex-col gap-5 lg:col-span-4">
+      {/* 오른쪽: 파일 첨부 · 수매일자 · 다운로드(넓은 화면에서는 스크롤해도 따라온다) */}
+      <div className="col-span-12 flex flex-col gap-5 lg:sticky lg:top-6 lg:col-span-4 lg:self-start">
         <Field>
           <FieldLabel>수매확인서 PDF</FieldLabel>
           <button
