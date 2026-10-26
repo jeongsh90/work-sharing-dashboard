@@ -297,7 +297,7 @@ export function PurchaseCertTool() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl grid-cols-12 gap-6 p-4 md:p-6">
+    <div className="grid w-full grid-cols-12 gap-6 p-4 md:p-6">
       {/* 왼쪽: 수매확인서(내려받는 이미지 그대로) */}
       <div className="col-span-12 flex justify-center lg:col-span-7">
         <canvas
