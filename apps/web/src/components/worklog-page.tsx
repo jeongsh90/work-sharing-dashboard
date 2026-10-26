@@ -380,7 +380,7 @@ export function WorklogPage({ session }: { session: Session }) {
       <Section
         title="업무일지"
         aside={<span className="text-sm text-muted-foreground">{title}</span>}
-        className="col-span-12 xl:col-span-10"
+        className="col-span-12 xl:col-span-10 xl:col-start-2"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             {canTeam && (

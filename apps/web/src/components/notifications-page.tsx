@@ -127,7 +127,7 @@ export function NotificationsPage() {
       <Section
         title="알림"
         aside={<span className="text-sm text-muted-foreground tabular-nums">{items.length}건</span>}
-        className="col-span-12 lg:col-span-8 xl:col-span-6"
+        className="col-span-12 lg:col-span-8 lg:col-start-3 xl:col-span-6 xl:col-start-4"
       >
         <DesktopNotifyToggle compact />
         {items.length === 0 ? (
