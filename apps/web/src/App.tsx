@@ -31,6 +31,7 @@ const OrgPage = lazy(() => import('@/components/org-page').then((m) => ({ defaul
 const SignupForm = lazy(() => import('@/components/signup-form').then((m) => ({ default: m.SignupForm })))
 const TeamPage = lazy(() => import('@/components/team-page').then((m) => ({ default: m.TeamPage })))
 const ToolsPage = lazy(() => import('@/components/tools-page').then((m) => ({ default: m.ToolsPage })))
+const LoginBackground = lazy(() => import('@/components/login-background'))
 const WorklogPage = lazy(() => import('@/components/worklog-page').then((m) => ({ default: m.WorklogPage })))
 const VersionPage = lazy(() => import('@/components/version-page').then((m) => ({ default: m.VersionPage })))
 
@@ -93,8 +94,12 @@ export default function App() {
 
   if (!session) {
     return (
-      <div className="flex min-h-svh flex-col items-center justify-center bg-muted p-6 md:p-10">
-        <div className="w-full max-w-sm md:max-w-4xl">
+      <div className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-muted p-6 md:p-10">
+        {/* 배경 그림(gsap 을 쓰므로 따로 불러온다) */}
+        <Suspense fallback={null}>
+          <LoginBackground />
+        </Suspense>
+        <div className="relative z-10 w-full max-w-sm md:max-w-4xl">
           {/* 로그인 전에는 회원가입(#/signup)과 로그인만 있다. */}
           {route.page === 'signup' ? (
             <Suspense fallback={<PageState />}>
