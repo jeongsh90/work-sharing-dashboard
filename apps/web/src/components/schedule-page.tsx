@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react"
+import { createContext, useContext, useMemo, useState } from "react"
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Plus, Settings2, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DateRangePicker } from "@/components/date-range-picker"
 import { confirmDialog } from "@/components/confirm-dialog"
@@ -41,7 +42,10 @@ type SchedulePlans = {
   fileName: string
   months: Record<string, { legend: { mark: string; name: string }[]; notes: PlanLine[] }>
   days: Record<string, PlanLine[]>
+  owners?: PlanOwner[]
 }
+// 담당자 목록(추가·삭제·색 지정). key 가 줄의 marks 값이다(엑셀 색 도형 또는 새로 만든 id)
+type PlanOwner = { key: string; name: string; color: string }
 // 엑셀 화면에서 보이는 색에 맞춘다
 const MARK_COLOR: Record<string, string> = {
   "🟨": "#f5a33c",
@@ -54,12 +58,115 @@ const MARK_COLOR: Record<string, string> = {
   "🟧": "#f97316",
   "🟫": "#8b5a2b",
 }
+// 담당자 색으로 고를 수 있는 색
+const OWNER_PALETTE = ["#f5a33c", "#d9c9ef", "#3d7fd6", "#e0405a", "#3a3a3a", "#8b5cd6", "#3fb26b", "#f97316", "#8b5a2b", "#ec4899", "#06b6d4", "#eab308", "#14b8a6", "#64748b", "#84cc16", "#ef4444"]
 const monthKey = (d: Date) => dateKey(d).slice(0, 7)
 
-function PlanMark({ mark }: { mark: string }) {
-  // ⬛(팀)은 어두운 화면에서 묻히지 않게 밝게
-  if (mark === "⬛") return <span className="mt-[3px] size-2.5 shrink-0 rounded-[2px] bg-neutral-700 dark:bg-neutral-400" aria-hidden />
-  return <span className="mt-[3px] size-2.5 shrink-0 rounded-[2px] ring-1 ring-black/10 dark:ring-white/25" style={{ backgroundColor: MARK_COLOR[mark] ?? "#999" }} aria-hidden />
+// 담당자 목록이 아직 저장되지 않았으면 엑셀 안내(달마다, 나중 달 이름 우선)로 만든다
+function defaultOwners(plans: SchedulePlans): PlanOwner[] {
+  const names = new Map<string, string>()
+  for (const k of Object.keys(plans.months).sort().reverse()) for (const g of plans.months[k].legend) if (!names.has(g.mark)) names.set(g.mark, g.name)
+  return [...names].map(([key, name]) => ({ key, name, color: MARK_COLOR[key] ?? "#999999" }))
+}
+
+const OwnerColor = createContext<(key: string) => string>((key) => MARK_COLOR[key] ?? "#999")
+
+function PlanMark({ mark, color }: { mark?: string; color?: string }) {
+  const colorOf = useContext(OwnerColor)
+  const c = color ?? colorOf(mark ?? "")
+  // 짙은 회색(팀)은 어두운 화면에서 묻히지 않게 밝게
+  if (c === "#3a3a3a") return <span className="mt-[3px] size-2.5 shrink-0 rounded-[2px] bg-neutral-700 dark:bg-neutral-400" aria-hidden />
+  return <span className="mt-[3px] size-2.5 shrink-0 rounded-[2px] ring-1 ring-black/10 dark:ring-white/25" style={{ backgroundColor: c }} aria-hidden />
+}
+
+// 색 고르기(팔레트)
+function ColorPick({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="icon-sm" aria-label="담당자 색">
+          <span className="size-4 rounded-sm ring-1 ring-black/10 dark:ring-white/25" style={{ backgroundColor: value }} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2" align="start">
+        <div className="grid grid-cols-8 gap-1.5">
+          {OWNER_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-label={c}
+              onClick={() => onChange(c)}
+              className="flex size-6 items-center justify-center rounded ring-1 ring-black/10 transition-transform hover:scale-110 dark:ring-white/25"
+              style={{ backgroundColor: c }}
+            >
+              {value === c && <Check className="size-3.5 text-white mix-blend-difference" />}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// 담당자 관리: 이름·색 고치기, 추가, 삭제 → 통째로 저장
+function OwnerManager({ owners, onBack }: { owners: PlanOwner[]; onBack: () => void }) {
+  const [list, setList] = useState(owners)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const set = (i: number, patch: Partial<PlanOwner>) => setList(list.map((o, j) => (j === i ? { ...o, ...patch } : o)))
+  const add = () => {
+    const used = new Set(list.map((o) => o.color))
+    setList([...list, { key: `p${Date.now().toString(36)}`, name: "", color: OWNER_PALETTE.find((c) => !used.has(c)) ?? OWNER_PALETTE[0] }])
+  }
+  const remove = async (i: number) => {
+    if (!(await confirmDialog({ title: `담당자 '${list[i].name || "이름 없음"}'을 지울까요?`, description: "이미 등록된 일정 줄은 그대로 남고, 목록에서만 빠집니다.", confirmText: "삭제", destructive: true }))) return
+    setList(list.filter((_, j) => j !== i))
+  }
+  const save = async () => {
+    setPending(true)
+    setError(null)
+    try {
+      await api("/schedule-plans/owners", { method: "PUT", body: { owners: list.map((o) => ({ ...o, name: o.name.trim() })) } })
+      invalidate()
+      onBack()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "저장하지 못했습니다.")
+      setPending(false)
+    }
+  }
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>담당자 관리</DialogTitle>
+        <DialogDescription>색을 눌러 바꾸고, 이름을 고치거나 담당자를 추가·삭제합니다.</DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-2">
+        {list.map((o, i) => (
+          <div key={o.key} className="flex items-center gap-2">
+            <ColorPick value={o.color} onChange={(c) => set(i, { color: c })} />
+            <Input value={o.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="이름" maxLength={30} aria-label="담당자 이름" className="h-8" />
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`${o.name} 삭제`} className="text-muted-foreground hover:text-destructive" onClick={() => remove(i)}>
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+        <Button type="button" variant="outline" size="sm" className="self-center" onClick={add}>
+          <Plus data-icon="inline-start" />
+          담당자 추가
+        </Button>
+        {error && <FieldError>{error}</FieldError>}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onBack} disabled={pending}>
+          <ArrowLeft data-icon="inline-start" />
+          돌아가기
+        </Button>
+        <Button onClick={save} disabled={pending || list.some((o) => !o.name.trim())}>
+          {pending ? "저장 중…" : "담당자 저장"}
+        </Button>
+      </DialogFooter>
+    </>
+  )
 }
 
 const WEEKLY_COLOR = "#ff00ff"
@@ -70,7 +177,7 @@ function PlanText({ line, owners, onEdit }: { line: PlanLine; owners: string; on
   return (
     <Tag
       {...(onEdit ? { type: "button" as const, onClick: onEdit } : {})}
-      className={`flex min-w-0 items-start gap-1 text-left text-[11px] leading-[1.35] break-keep ${onEdit ? "-mx-1 rounded px-1 hover:bg-muted" : ""}`}
+      className={`flex min-w-0 items-start gap-1 text-left text-xs leading-[1.4] break-keep ${onEdit ? "-mx-1 rounded px-1 hover:bg-muted" : ""}`}
       title={owners ? `${line.text} · ${owners}${line.done ? " (완료)" : ""}` : line.text}
     >
       {line.marks.map((m, i) => (
@@ -89,14 +196,15 @@ function PlanText({ line, owners, onEdit }: { line: PlanLine; owners: string; on
 type Editing = { date: string; index: number; line: PlanLine } | { date: string; index: null; line: null }
 
 // 예정일정 한 줄 등록·고치기: 날짜 · 담당자(색 도형) · 내용 · 완료
-function PlanDialog({ editing, owners, onClose }: { editing: Editing; owners: (date: string) => { mark: string; name: string }[]; onClose: () => void }) {
+function PlanDialog({ editing, owners, nameOf, onClose }: { editing: Editing; owners: PlanOwner[]; nameOf: (date: string, key: string) => string; onClose: () => void }) {
   const [date, setDate] = useState(editing.date)
-  const [mark, setMark] = useState(editing.line?.marks.join("") || "none")
+  const [marks, setMarks] = useState<string[]>(editing.line?.marks ?? [])
+  const [managing, setManaging] = useState(false)
   const [text, setText] = useState(editing.line?.text ?? "")
   const [done, setDone] = useState(editing.line?.done ?? false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const options = owners(date)
+  const options = owners.filter((o) => !marks.includes(o.key))
   const fromKey = (k: string) => new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10)))
 
   const run = async (method: "POST" | "PATCH" | "DELETE") => {
@@ -104,7 +212,6 @@ function PlanDialog({ editing, owners, onClose }: { editing: Editing; owners: (d
     setPending(true)
     setError(null)
     try {
-      const marks = mark === "none" ? [] : [...mark.matchAll(/./gu)].map((m) => m[0])
       // 주간보고는 엑셀처럼 분홍 글자
       const payload = { date, marks, text, done, ...(editing.line?.color ? { color: editing.line.color } : !marks.length && text.trim().startsWith("주간보고") ? { color: WEEKLY_COLOR } : {}) }
       const path = editing.index === null ? "/schedule-plans/lines" : `/schedule-plans/lines/${editing.date}/${editing.index}`
@@ -120,6 +227,10 @@ function PlanDialog({ editing, owners, onClose }: { editing: Editing; owners: (d
   return (
     <Dialog open onOpenChange={(o) => !o && !pending && onClose()}>
       <DialogContent className="sm:max-w-md">
+        {managing ? (
+          <OwnerManager owners={owners} onBack={() => setManaging(false)} />
+        ) : (
+        <>
         <DialogHeader>
           <DialogTitle>{editing.line ? "예정일정 수정" : "예정일정 등록"}</DialogTitle>
           <DialogDescription>그날 칸에 한 줄로 보입니다. 앞 색 도형이 담당자입니다.</DialogDescription>
@@ -137,28 +248,39 @@ function PlanDialog({ editing, owners, onClose }: { editing: Editing; owners: (d
               <DateRangePicker single value={{ from: fromKey(date), to: undefined }} onChange={(r) => r?.from && setDate(dateKey(r.from))} placeholder="날짜" />
             </Field>
             <Field>
-              <FieldLabel htmlFor="plan-owner">담당자</FieldLabel>
-              <Select value={mark} onValueChange={setMark}>
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="plan-owner">담당자</FieldLabel>
+                <Button type="button" variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setManaging(true)}>
+                  <Settings2 data-icon="inline-start" />
+                  담당자 관리
+                </Button>
+              </div>
+              {/* 이 일정의 담당자: X 로 이 날짜에서 빼기 */}
+              {marks.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {marks.map((m) => (
+                    <span key={m} className="flex items-center gap-1.5 rounded-md border bg-muted/40 py-0.5 pr-0.5 pl-2 text-sm">
+                      <PlanMark mark={m} />
+                      {nameOf(date, m) || "담당자"}
+                      <Button type="button" variant="ghost" size="icon-xs" aria-label={`${nameOf(date, m)} 빼기`} onClick={() => setMarks(marks.filter((x) => x !== m))}>
+                        <X />
+                      </Button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Select value="" onValueChange={(v) => v && setMarks([...marks, v])}>
                 <SelectTrigger id="plan-owner" className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder={marks.length ? "담당자 더 추가" : "담당자 없음 (주간보고·회의 등) · 눌러서 추가"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">담당자 없음 (주간보고·회의 등)</SelectItem>
                   {options.map((o) => (
-                    <SelectItem key={o.mark} value={o.mark}>
-                      <PlanMark mark={o.mark} />
+                    <SelectItem key={o.key} value={o.key}>
+                      <PlanMark color={o.color} />
                       {o.name}
                     </SelectItem>
                   ))}
-                  {/* 여러 담당자 줄(엑셀)은 그대로 고를 수 있게 */}
-                  {mark !== "none" && !options.some((o) => o.mark === mark) && (
-                    <SelectItem value={mark}>
-                      {[...mark.matchAll(/./gu)].map((m, i) => (
-                        <PlanMark key={i} mark={m[0]} />
-                      ))}
-                      {[...mark.matchAll(/./gu)].map((m) => options.find((o) => o.mark === m[0])?.name ?? "").filter(Boolean).join(", ") || "지금 담당자"}
-                    </SelectItem>
-                  )}
+                  {!options.length && <div className="px-2 py-1.5 text-sm text-muted-foreground">더 고를 담당자가 없습니다.</div>}
                 </SelectContent>
               </Select>
             </Field>
@@ -191,6 +313,8 @@ function PlanDialog({ editing, owners, onClose }: { editing: Editing; owners: (d
             </Button>
           </div>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -275,30 +399,24 @@ export function SchedulePage({ session }: { session: Session }) {
   const whoName = who === "all" || who === "unassigned" ? null : userName(who)
   const planLines = (key: string) => {
     if (!showPlans || !plans) return []
-    const legend = plans.months[key.slice(0, 7)]?.legend ?? []
-    return (plans.days[key] ?? [])
-      .map((line, index) => ({ line, index }))
+    const lines = (plans.days[key] ?? []).map((line, index) => ({ line, index }))
+    // 화요일은 주간보고 날: 엑셀·등록에 없어도 보인다(index -1 은 고칠 수 없는 자동 줄)
+    if (new Date(key).getDay() === 2 && !lines.some(({ line }) => isWeekly(line))) lines.unshift({ line: { marks: [], text: "주간보고", done: false, color: WEEKLY_COLOR }, index: -1 })
+    return lines
       .filter(({ line: l }) => includeDone || !l.done)
       .filter(({ line: l }) => {
         if (who === "all" || !l.marks.length) return true
         if (!whoName) return false
-        return l.marks.some((m) => legend.some((g) => g.mark === m && g.name.split(/\s*\/\s*/).some((n) => n.length >= 2 && whoName.includes(n))))
+        return l.marks.some((m) => nameOf(key, m).split(/\s*\/\s*/).some((n) => n.length >= 2 && whoName.includes(n)))
       })
   }
-  const ownersOf = (key: string, line: PlanLine) => {
-    const legend = plans?.months[key.slice(0, 7)]?.legend ?? []
-    return line.marks.map((m) => legend.find((g) => g.mark === m)?.name).filter(Boolean).join(", ")
-  }
-
-  // 담당자 고르기: 그 달 안내 → 없으면 다른 달 안내(가까운 달 이름)
-  const ownerOptions = (key: string) => {
-    const own = plans?.months[key.slice(0, 7)]?.legend ?? []
-    if (own.length) return own
-    const all = new Map<string, string>()
-    for (const k of Object.keys(plans?.months ?? {}).sort()) for (const g of plans!.months[k].legend) all.set(g.mark, g.name)
-    return [...all].map(([mark, name]) => ({ mark, name }))
-  }
-  const edit = (date: string, index: number, line: PlanLine) => (canEditPlans ? () => setEditing({ date, index, line }) : undefined)
+  // 담당자 이름: 그 달 엑셀 안내 → 담당자 목록. 색: 담당자 목록 → 엑셀 기본색
+  const ownerList = plans ? (plans.owners ?? defaultOwners(plans)) : []
+  const nameOf = (date: string, key: string) =>
+    plans?.months[date.slice(0, 7)]?.legend.find((g) => g.mark === key)?.name ?? ownerList.find((o) => o.key === key)?.name ?? ""
+  const colorOf = (key: string) => ownerList.find((o) => o.key === key)?.color ?? MARK_COLOR[key] ?? "#999"
+  const ownersOf = (key: string, line: PlanLine) => line.marks.map((m) => nameOf(key, m)).filter(Boolean).join(", ")
+  const edit = (date: string, index: number, line: PlanLine) => (canEditPlans && index >= 0 ? () => setEditing({ date, index, line }) : undefined)
 
   if (!requests) return <PageState error={error} />
 
@@ -309,9 +427,16 @@ export function SchedulePage({ session }: { session: Session }) {
     ? weeks.flat().filter((d) => d.getMonth() === month.getMonth()).reduce((n, d) => n + planLines(dateKey(d)).filter(({ line }) => !isWeekly(line)).length, 0)
     : items.filter((i) => i.start <= monthEnd && i.end >= monthStart).length
   const planMonth = showPlans ? plans?.months[monthKey(month)] : undefined
+  const monthLegend = (() => {
+    if (!showPlans || !plans) return []
+    const keys = [...(planMonth?.legend.map((g) => g.mark) ?? [])]
+    for (const [d, ls] of Object.entries(plans.days)) if (d.startsWith(monthKey(month))) for (const l of ls) for (const m of l.marks) if (!keys.includes(m)) keys.push(m)
+    return keys.map((k) => ({ key: k, name: nameOf(`${monthKey(month)}-01`, k) })).filter((g) => g.name)
+  })()
   const legend: RequestStatus[] = ["requested", "waiting", "in-progress", "review", "revising", "approved", ...(includeDone ? (["source-pending", "done"] as RequestStatus[]) : [])]
 
   return (
+    <OwnerColor.Provider value={colorOf}>
     <div className={PAGE_GRID}>
       <div className="col-span-12 flex flex-col gap-4">
         {/* 달 이동과 보기 조건 */}
@@ -379,12 +504,12 @@ export function SchedulePage({ session }: { session: Session }) {
               </li>
             ))}
           </ul>
-          {!!planMonth?.legend.length && (
+          {monthLegend.length > 0 && (
             <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <li className="font-medium text-foreground">예정일정 담당</li>
-              {planMonth.legend.map((g) => (
-                <li key={g.mark} className="flex items-start gap-1">
-                  <PlanMark mark={g.mark} />
+              {monthLegend.map((g) => (
+                <li key={g.key} className="flex items-start gap-1">
+                  <PlanMark mark={g.key} />
                   {g.name}
                 </li>
               ))}
@@ -439,7 +564,7 @@ export function SchedulePage({ session }: { session: Session }) {
                         </span>
                         {/* 공휴일 이름 */}
                         {holiday && (
-                          <span className={`min-w-0 truncate pt-1 text-[11px] text-destructive ${other ? "opacity-60" : ""}`} title={holiday}>
+                          <span className={`min-w-0 truncate pt-1 text-xs text-destructive ${other ? "opacity-60" : ""}`} title={holiday}>
                             {holiday}
                           </span>
                         )}
@@ -452,11 +577,11 @@ export function SchedulePage({ session }: { session: Session }) {
                             </span>
                           )
                           return onEdit ? (
-                            <button key={index} type="button" onClick={onEdit} className="relative z-10 shrink-0 rounded px-0.5 pt-1 text-[11px] font-semibold hover:bg-muted">
+                            <button key={`w${index}`} type="button" onClick={onEdit} className="relative z-10 shrink-0 rounded px-0.5 pt-1 text-xs font-semibold hover:bg-muted">
                               {label}
                             </button>
                           ) : (
-                            <span key={index} className="shrink-0 pt-1 text-[11px] font-semibold">
+                            <span key={`w${index}`} className="shrink-0 pt-1 text-xs font-semibold">
                               {label}
                             </span>
                           )
@@ -537,8 +662,9 @@ export function SchedulePage({ session }: { session: Session }) {
                 {includeDone ? "표시할 일정이 없습니다." : "진행 중인 프로젝트가 없습니다. 완료 포함을 켜면 끝난 작업도 볼 수 있습니다."}
               </p>
             )}
-        {editing && <PlanDialog key={`${editing.date}-${editing.index}`} editing={editing} owners={ownerOptions} onClose={() => setEditing(null)} />}
+        {editing && <PlanDialog key={`${editing.date}-${editing.index}`} editing={editing} owners={ownerList} nameOf={nameOf} onClose={() => setEditing(null)} />}
       </div>
     </div>
+    </OwnerColor.Provider>
   )
 }

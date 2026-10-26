@@ -15,12 +15,15 @@ const FILE = join(DATA_DIR, 'schedule-plans.json')
 const MARK_RE = /[⬛⬜\u{1F7E5}-\u{1F7EB}]/gu // ⬛⬜ 🟥🟦🟧🟨🟩🟪🟫
 
 export type PlanLine = { marks: string[]; text: string; done: boolean; color?: string }
+export type PlanOwner = { key: string; name: string; color: string }
 export type SchedulePlans = {
   importedAt: number
   fileName: string
   sheet: string
   months: Record<string, { legend: { mark: string; name: string }[]; notes: PlanLine[] }> // 'yyyy-MM'
   days: Record<string, PlanLine[]> // 'yyyy-MM-dd'
+  // 담당자 목록(화면에서 추가·삭제·색 지정). key 는 줄의 marks 에 들어가는 값(엑셀 색 도형 또는 새로 만든 id)
+  owners?: PlanOwner[]
 }
 
 export async function schedulePlans(): Promise<SchedulePlans | null> {
@@ -236,10 +239,12 @@ function parseWorkbook(files: Map<string, string>, fileName: string): SchedulePl
 const canEditPlans = (u: PublicUser) => u.role === 'designer' || isManager(u)
 const KNOWN_MARKS = new Set(['⬛', '⬜', '🟥', '🟦', '🟧', '🟨', '🟩', '🟪', '🟫'])
 
-function lineFrom(body: Record<string, unknown>): PlanLine {
+// 담당자: 엑셀 색 도형 또는 담당자 목록에 있는 key 만
+function lineFrom(body: Record<string, unknown>, plans: SchedulePlans): PlanLine {
   const text = typeof body.text === 'string' ? body.text.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
   if (!text) throw new HttpError(400, '내용을 적어 주세요.')
-  const marks = Array.isArray(body.marks) ? body.marks.filter((m): m is string => typeof m === 'string' && KNOWN_MARKS.has(m)).slice(0, 4) : []
+  const keys = new Set([...KNOWN_MARKS, ...(plans.owners ?? []).map((o) => o.key)])
+  const marks = Array.isArray(body.marks) ? [...new Set(body.marks.filter((m): m is string => typeof m === 'string' && keys.has(m)))].slice(0, 8) : []
   const color = typeof body.color === 'string' && /^#[0-9a-f]{6}$/i.test(body.color) ? body.color.toLowerCase() : undefined
   return { marks, text, done: body.done === true, ...(color ? { color } : {}) }
 }
@@ -260,18 +265,17 @@ const checkDate = (d: unknown) => {
 
 export function addPlanLine(user: PublicUser, body: Record<string, unknown>) {
   const date = checkDate(body.date)
-  const line = lineFrom(body)
   return editPlans(user, (p) => {
-    ;(p.days[date] ??= []).push(line)
+    ;(p.days[date] ??= []).push(lineFrom(body, p))
   })
 }
 
 // index: 그날 목록에서의 순서. 날짜를 바꾸면 새 날짜 끝으로 옮긴다
 export function updatePlanLine(user: PublicUser, date: string, index: number, body: Record<string, unknown>) {
   checkDate(date)
-  const line = lineFrom(body)
   const to = body.date === undefined ? date : checkDate(body.date)
   return editPlans(user, (p) => {
+    const line = lineFrom(body, p)
     const list = p.days[date]
     if (!list?.[index]) throw new HttpError(404, '일정을 찾을 수 없습니다. 새로고침해 주세요.')
     if (to === date) list[index] = line
@@ -290,5 +294,26 @@ export function deletePlanLine(user: PublicUser, date: string, index: number) {
     if (!list?.[index]) throw new HttpError(404, '일정을 찾을 수 없습니다. 새로고침해 주세요.')
     list.splice(index, 1)
     if (!list.length) delete p.days[date]
+  })
+}
+
+// 담당자 목록 저장(통째로). 지운 담당자가 있던 줄은 그대로 두고 화면에서 기본 색으로 보인다
+export function saveOwners(user: PublicUser, body: Record<string, unknown>) {
+  const raw = Array.isArray(body.owners) ? body.owners : null
+  if (!raw) throw new HttpError(400, '담당자 목록이 올바르지 않습니다.')
+  const seen = new Set<string>()
+  const owners: PlanOwner[] = []
+  for (const o of raw.slice(0, 40) as Record<string, unknown>[]) {
+    const key = typeof o?.key === 'string' ? o.key.slice(0, 24) : ''
+    const name = typeof o?.name === 'string' ? o.name.replace(/\s+/g, ' ').trim().slice(0, 30) : ''
+    const color = typeof o?.color === 'string' && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color.toLowerCase() : ''
+    if (!key || seen.has(key)) continue
+    if (!name) throw new HttpError(400, '담당자 이름을 적어 주세요.')
+    if (!color) throw new HttpError(400, '담당자 색이 올바르지 않습니다.')
+    seen.add(key)
+    owners.push({ key, name, color })
+  }
+  return editPlans(user, (p) => {
+    p.owners = owners
   })
 }

@@ -46,7 +46,7 @@ import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry
 import { startBackupSchedule } from './backup.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
-import { addPlanLine, deletePlanLine, importSchedulePlans, schedulePlans, updatePlanLine } from './schedule-plans.ts'
+import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, schedulePlans, updatePlanLine } from './schedule-plans.ts'
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import {
   approveUser,
@@ -528,6 +528,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     }
   }
 
+  if (path === '/api/schedule-plans/owners' && method === 'PUT') return sendJson(res, 200, await saveOwners(user, await readJson(req)))
   if (path === '/api/schedule-plans/lines' && method === 'POST') return sendJson(res, 201, await addPlanLine(user, await readJson(req)))
   if ((m = path.match(/^\/api\/schedule-plans\/lines\/(\d{4}-\d{2}-\d{2})\/(\d+)$/))) {
     if (method === 'PATCH') return sendJson(res, 200, await updatePlanLine(user, m[1], Number(m[2]), await readJson(req)))
