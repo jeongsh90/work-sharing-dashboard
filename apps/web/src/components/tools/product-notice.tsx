@@ -333,7 +333,7 @@ export function ProductNoticeTool() {
               </div>
               )}
             />
-            <Button size="sm" className="self-start" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { id: id(), label: "", value: "" }] }))}>
+            <Button size="sm" className="self-center" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { id: id(), label: "", value: "" }] }))}>
               <Plus data-icon="inline-start" />
               항목 추가
             </Button>
@@ -386,7 +386,7 @@ export function ProductNoticeTool() {
             />
             <Button
               size="sm"
-              className="self-start"
+              className="self-center"
               onClick={() => setForm((f) => ({ ...f, nutri: [...f.nutri, { id: id(), name: "", amount: "", ratio: "" }] }))}
             >
               <Plus data-icon="inline-start" />
