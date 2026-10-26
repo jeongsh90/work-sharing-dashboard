@@ -31,12 +31,15 @@ const SUB = "#555555"
 const PAPER = { x: 120, y: 392 + 80, w: 620, h: 877 } // 이미지 영역(392부터 1037) 가운데, 위아래 80
 const FONT = '"Noto Sans KR"'
 
-// PDF 를 올리기 전 미리보기 위치(사양 7-6 기준값)
+// 표를 못 찾았을 때 수매일자 말풍선 기본 위치(사양 7-6 기준값)
 const DEFAULT_LAYOUT: Pick<Layout, "highlight" | "tag" | "dateBox"> = {
   highlight: { l: 79, t: 422, r: 146, b: 441 },
   tag: { left: 31, top: 455 },
   dateBox: { left: 11, top: 527 },
 }
+
+// PDF 를 올리기 전에는 강조(형광펜·말풍선)를 그리지 않는다
+const NO_MARKS: Pick<Layout, "highlight" | "tag" | "dateBox"> = { highlight: null, tag: null, dateBox: null }
 
 // 글꼴(Noto Sans KR 500·700)을 한 번만 불러온다
 let fontsReady: Promise<void> | null = null
@@ -247,7 +250,7 @@ export function PurchaseCertTool() {
 
   // 입력이 바뀔 때마다 다시 그린다
   useEffect(() => {
-    if (canvasRef.current) void draw(canvasRef.current, page, layout ?? DEFAULT_LAYOUT, toMMDD(date))
+    if (canvasRef.current) void draw(canvasRef.current, page, layout ?? NO_MARKS, toMMDD(date))
   }, [page, layout, date])
 
   const attach = async (file: File | undefined) => {
