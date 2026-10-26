@@ -299,7 +299,7 @@ export function PurchaseCertTool() {
   return (
     <div className="grid w-full grid-cols-12 gap-6 p-4 md:p-6">
       {/* 왼쪽: 수매확인서(내려받는 이미지 그대로) */}
-      <div className="col-span-12 flex justify-center lg:col-span-7">
+      <div className="col-span-12 flex justify-center lg:col-span-8">
         <canvas
           ref={canvasRef}
           className="h-auto w-full max-w-[460px] rounded-lg border bg-white shadow-sm"
@@ -308,7 +308,7 @@ export function PurchaseCertTool() {
       </div>
 
       {/* 오른쪽: 파일 첨부 · 수매일자 · 다운로드 */}
-      <div className="col-span-12 flex flex-col gap-5 lg:col-span-5">
+      <div className="col-span-12 flex flex-col gap-5 lg:col-span-4">
         <Field>
           <FieldLabel>수매확인서 PDF</FieldLabel>
           <button
