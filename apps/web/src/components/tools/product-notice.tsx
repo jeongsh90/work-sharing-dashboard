@@ -16,6 +16,11 @@ import { invalidate } from "@/lib/store"
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다.
 
 type Row = { id: number; label: string; value: string; fixed?: boolean } // fixed: 제품명(맨 위 고정, 옮기거나 지울 수 없음)
+// 1일 기준치 비율은 단위가 % 로 정해져 있어 숫자만 적으면 % 를 붙인다(이미 붙였거나 "-" 같은 글은 그대로)
+function withPercent(v: string) {
+  return /^\d+(\.\d+)?$/.test(v) ? `${v}%` : v
+}
+
 type NutriRow = { id: number; name: string; amount: string; ratio: string }
 
 const W = 860
@@ -75,7 +80,7 @@ function contentOf(f: Form) {
   const rows = f.rows.map((r) => ({ label: tidy(r.label), value: tidy(r.value) })).filter((r) => r.label || r.value)
   const notes = noteLines(f.notes)
   const nutri = f.nutri
-    .map((n) => ({ name: tidy(n.name), amount: tidy(n.amount), ratio: tidy(n.ratio) }))
+    .map((n) => ({ name: tidy(n.name), amount: tidy(n.amount), ratio: withPercent(tidy(n.ratio)) }))
     .filter((n) => n.amount || n.ratio)
   const nutriNote = noteLines(f.nutriNote)
   return { rows, notes, nutri, nutriNote, nutriTitle: tidy(f.nutriTitle) }
@@ -372,7 +377,10 @@ export function ProductNoticeTool() {
                 {handle}
                 <Input value={n.name} onChange={(e) => setNutri(n.id, { name: e.target.value })} placeholder="성분" aria-label="성분" />
                 <Input value={n.amount} onChange={(e) => setNutri(n.id, { amount: e.target.value })} placeholder="예: 160kcal" aria-label={`${n.name || "성분"} 함량`} />
-                <Input value={n.ratio} onChange={(e) => setNutri(n.id, { ratio: e.target.value })} placeholder="예: 95% (없으면 비움)" aria-label={`${n.name || "성분"} 비율`} />
+                <div className="relative">
+                  <Input value={n.ratio.replace(/%/g, "")} onChange={(e) => setNutri(n.id, { ratio: e.target.value.replace(/%/g, "") })} placeholder="예: 95 (없으면 비움)" aria-label={`${n.name || "성분"} 비율`} className="pr-8" />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">%</span>
+                </div>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -393,7 +401,7 @@ export function ProductNoticeTool() {
               성분 추가
             </Button>
           </div>
-          <FieldDescription>함량이나 비율을 적은 성분만 나옵니다. 하나도 없으면 영양정보 묶음 전체가 빠집니다.</FieldDescription>
+          <FieldDescription>비율은 숫자만 적으면 % 가 붙습니다. 함량이나 비율을 적은 성분만 나옵니다. 하나도 없으면 영양정보 묶음 전체가 빠집니다.</FieldDescription>
         </Field>
 
         <Field>

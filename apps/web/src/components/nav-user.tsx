@@ -1,4 +1,4 @@
-import { Bell, ChevronsUpDown, LogOut, UserRound } from "lucide-react"
+import { Bell, LogOut, Settings, UserRound } from "lucide-react"
 
 import { ROLE_LABEL, type Session } from "@/lib/auth"
 import { PRESENCE_DOT, PRESENCE_LABEL, savePresence, type Presence } from "@/lib/presence"
@@ -64,7 +64,7 @@ export function NavUser({
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <UserSummary session={session} />
-              <ChevronsUpDown className="ml-auto size-4" />
+              <Settings className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react'
 
 import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -18,22 +18,28 @@ import { navigate, useRoute } from '@/lib/router'
 import { recoverScroll, useSmoothScroll } from '@/lib/smooth-scroll'
 import { clearCache } from '@/lib/store'
 
-// 홈 말고는 화면을 열 때 받는다(첫 화면이 빨리 뜨게).
-const FeedbackPage = lazy(() => import('@/components/feedback-page').then((m) => ({ default: m.FeedbackPage })))
-const FilesPage = lazy(() => import('@/components/files-page').then((m) => ({ default: m.FilesPage })))
-const MePage = lazy(() => import('@/components/me-page').then((m) => ({ default: m.MePage })))
-const NotificationsPage = lazy(() => import('@/components/notifications-page').then((m) => ({ default: m.NotificationsPage })))
-const RequestDetailPage = lazy(() => import('@/components/requests/request-detail-page').then((m) => ({ default: m.RequestDetailPage })))
-const RequestFormPage = lazy(() => import('@/components/requests/request-form-page').then((m) => ({ default: m.RequestFormPage })))
-const RequestListPage = lazy(() => import('@/components/requests/request-list-page').then((m) => ({ default: m.RequestListPage })))
-const SchedulePage = lazy(() => import('@/components/schedule-page').then((m) => ({ default: m.SchedulePage })))
-const OrgPage = lazy(() => import('@/components/org-page').then((m) => ({ default: m.OrgPage })))
+// 홈 말고는 화면을 열 때 받는다(첫 화면이 빨리 뜨게). 로그인한 뒤 잠깐 쉬었다가 미리 받아 두어
+// 메뉴를 누를 때 네트워크를 기다리지 않게 한다(연결이 느리거나 PC 가 막 깨어났을 때 "불러오는 중"이 오래 남지 않게).
+const PAGE_LOADERS: (() => Promise<unknown>)[] = []
+function lazyPage<M, C extends ComponentType<any>>(load: () => Promise<M>, pick: (m: M) => C) {
+  PAGE_LOADERS.push(load)
+  return lazy(() => load().then((m) => ({ default: pick(m) })))
+}
+const FeedbackPage = lazyPage(() => import('@/components/feedback-page'), (m) => m.FeedbackPage)
+const FilesPage = lazyPage(() => import('@/components/files-page'), (m) => m.FilesPage)
+const MePage = lazyPage(() => import('@/components/me-page'), (m) => m.MePage)
+const NotificationsPage = lazyPage(() => import('@/components/notifications-page'), (m) => m.NotificationsPage)
+const RequestDetailPage = lazyPage(() => import('@/components/requests/request-detail-page'), (m) => m.RequestDetailPage)
+const RequestFormPage = lazyPage(() => import('@/components/requests/request-form-page'), (m) => m.RequestFormPage)
+const RequestListPage = lazyPage(() => import('@/components/requests/request-list-page'), (m) => m.RequestListPage)
+const SchedulePage = lazyPage(() => import('@/components/schedule-page'), (m) => m.SchedulePage)
+const OrgPage = lazyPage(() => import('@/components/org-page'), (m) => m.OrgPage)
 const SignupForm = lazy(() => import('@/components/signup-form').then((m) => ({ default: m.SignupForm })))
-const TeamPage = lazy(() => import('@/components/team-page').then((m) => ({ default: m.TeamPage })))
-const ToolsPage = lazy(() => import('@/components/tools-page').then((m) => ({ default: m.ToolsPage })))
+const TeamPage = lazyPage(() => import('@/components/team-page'), (m) => m.TeamPage)
+const ToolsPage = lazyPage(() => import('@/components/tools-page'), (m) => m.ToolsPage)
 const LoginBackground = lazy(() => import('@/components/login-background'))
-const WorklogPage = lazy(() => import('@/components/worklog-page').then((m) => ({ default: m.WorklogPage })))
-const VersionPage = lazy(() => import('@/components/version-page').then((m) => ({ default: m.VersionPage })))
+const WorklogPage = lazyPage(() => import('@/components/worklog-page'), (m) => m.WorklogPage)
+const VersionPage = lazyPage(() => import('@/components/version-page'), (m) => m.VersionPage)
 
 // 새 버전을 올리면 예전 화면 조각 파일이 사라진다. 그 조각을 못 받으면 새로 고쳐 새 버전을 받는다.
 window.addEventListener('vite:preloadError', () => window.location.reload())
@@ -98,6 +104,13 @@ export default function App() {
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
+
+  // 로그인해 있으면 첫 화면이 뜬 뒤 나머지 화면 조각을 미리 받아 둔다
+  useEffect(() => {
+    if (!session) return
+    const timer = setTimeout(() => PAGE_LOADERS.forEach((load) => load().catch(() => {})), 1500)
+    return () => clearTimeout(timer)
+  }, [session])
 
   // 알림함을 열면 알림을 확인한 것으로 본다.
   useEffect(() => {
