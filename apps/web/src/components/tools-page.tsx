@@ -8,6 +8,7 @@ import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PurchaseCertTool } from "@/components/tools/purchase-cert"
 import { ProductNoticeTool } from "@/components/tools/product-notice"
 import { PAGE_GRID } from "@/lib/layout"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
 // 누르면 전체 화면 창이 열린다. 도구를 만들면 TOOLS 에 하나씩 추가하고 body 에 화면을 넣는다.
@@ -169,9 +170,10 @@ function ToolDialog({ tool: open, onClose }: { tool: Tool | null; onClose: () =>
                   </Button>
                 </DialogClose>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
+              {/* 도구 화면 스크롤도 부드럽게 */}
+              <SmoothScrollArea className="min-h-0 flex-1 overflow-auto">
                 <ToolBody tool={open} />
-              </div>
+              </SmoothScrollArea>
             </>
           )}
         </DialogContent>

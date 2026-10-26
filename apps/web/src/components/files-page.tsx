@@ -29,6 +29,7 @@ import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type FileInfo, type RequestSummaryDto } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
 import { useApi, useUserNames } from "@/lib/store"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
 type ArchiveItem = RequestSummaryDto & { files: FileInfo[] }
 
@@ -60,7 +61,8 @@ function DownloadMenu({ files }: { files: FileInfo[] }) {
           다운로드
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-96 w-72 overflow-y-auto" data-lenis-prevent>
+      <DropdownMenuContent align="end" className="w-72 p-0" data-lenis-prevent>
+        <SmoothScrollArea className="max-h-96 overflow-y-auto p-1">
         <DropdownMenuItem onSelect={() => void downloadAll(files)}>
           <Download />
           <span className="font-medium">전체 다운로드</span>
@@ -79,6 +81,7 @@ function DownloadMenu({ files }: { files: FileInfo[] }) {
             ))}
           </DropdownMenuGroup>
         ))}
+        </SmoothScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -11,6 +11,7 @@ import type { Session } from "@/lib/auth"
 import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
 import { scrollToElement } from "@/lib/smooth-scroll"
 import { useUserNames } from "@/lib/store"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
 // 시안 이미지 위에 핀을 꽂고, 핀마다 댓글을 단다.
 // 핀 위치는 이미지 크기 대비 비율(0~1)로 저장해 화면 폭이 달라도 같은 자리에 보인다.
@@ -172,7 +173,8 @@ export function ReviewBoard({
               {canPin ? "아직 핀이 없습니다. 이미지를 눌러 첫 핀을 꽂아 보세요." : "이 시안에는 핀 댓글이 없습니다."}
             </p>
           ) : (
-            <ol className="flex max-h-[calc(100svh-10rem)] flex-col gap-2 overflow-y-auto pr-1" data-lenis-prevent>
+            <SmoothScrollArea className="max-h-[calc(100svh-10rem)] overflow-y-auto pr-1">
+            <ol className="flex flex-col gap-2">
               {pins.map((p) => (
                 <PinThread
                   key={p.id}
@@ -187,6 +189,7 @@ export function ReviewBoard({
                 />
               ))}
             </ol>
+            </SmoothScrollArea>
           )}
         </div>
       </aside>

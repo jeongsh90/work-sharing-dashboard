@@ -24,10 +24,10 @@ CREATE INDEX IF NOT EXISTS tool_history_tool ON tool_history(tool, created_at);
 `)
 
 const TOOLS = new Set(['product-notice'])
-const canUse = (u: PublicUser) => isManager(u) || u.role === 'designer'
+// 디자인 툴은 로그인한 누구나(요청자·작업자·관리자) 쓴다
+const canUse = (_u: PublicUser) => true
 
 function requireTool(user: PublicUser, tool: string) {
-  if (!canUse(user)) throw new HttpError(403, '디자인팀만 쓸 수 있습니다.')
   if (!TOOLS.has(tool)) throw new HttpError(404, '없는 도구입니다.')
 }
 

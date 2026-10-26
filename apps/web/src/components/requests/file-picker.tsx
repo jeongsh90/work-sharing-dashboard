@@ -3,6 +3,7 @@ import { FileText, Paperclip, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { formatBytes } from "@/lib/api"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
 // 파일 고르기: 끌어 놓거나 눌러서 고른다. 고른 파일은 보내기 버튼을 누를 때 uploadAll(lib/api)로 올린다.
 export function FilePicker({
@@ -66,14 +67,13 @@ export function FilePicker({
         <>
           <p className="text-xs text-muted-foreground tabular-nums">선택한 파일 {files.length}개</p>
           {/* 최대 6개(넓은 화면 2열 × 3줄, 좁은 화면 1열 × 6줄)까지 보이고 나머지는 이 안에서 스크롤 */}
-          <ul
-            className="grid max-h-[388px] grid-cols-1 content-start gap-2 overflow-y-auto pr-1 sm:max-h-[190px] sm:grid-cols-2"
-            data-lenis-prevent
-          >
+          <SmoothScrollArea className="max-h-[388px] overflow-y-auto pr-1 sm:max-h-[190px]">
+          <ul className="grid grid-cols-1 content-start gap-2 sm:grid-cols-2">
             {files.map((file, i) => (
               <PickedFile key={`${file.name}-${i}`} file={file} onRemove={() => onChange(files.filter((_, j) => j !== i))} />
             ))}
           </ul>
+          </SmoothScrollArea>
         </>
       )}
     </div>

@@ -487,7 +487,6 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   // ── 디자인 툴 > 수매확인서: PDF 를 받아 첫 장 이미지·강조 위치를 돌려준다(디자인팀·관리자) ──
   if (path === '/api/tools/purchase-cert' && method === 'POST') {
-    if (!(isManager(user) || user.role === 'designer')) throw new HttpError(403, '디자인팀만 쓸 수 있습니다.')
     const chunks: Buffer[] = []
     let size = 0
     for await (const chunk of req) {

@@ -41,8 +41,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "schedule", title: "디자인팀 일정", icon: CalendarDays },
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
       { id: "org", title: "조직도", icon: Network },
-      // 디자인팀 작업 도구 모음(디자인팀·관리자)
-      { id: "tools", title: "디자인 툴", icon: LayoutGrid, roles: TEAM },
+      // 디자인 툴: 요청자·작업자·관리자 모두
+      { id: "tools", title: "디자인 툴", icon: LayoutGrid },
     ],
   },
   {

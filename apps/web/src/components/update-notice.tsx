@@ -15,6 +15,7 @@ import type { Session } from "@/lib/auth"
 import { navigate } from "@/lib/router"
 import { markSeen, readSeen } from "@/lib/seen"
 import { APP_VERSION, CHANGELOG, NOTICE_SINCE } from "@/lib/version"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
 // 업데이트 공지 팝업: 로그인하면 화면 가운데에 NOTICE_SINCE 이후 변경 내역을 띄운다.
 // "다시 보지 않기"를 체크하고 닫으면 이 계정은 이번 버전 공지를 더 보지 않는다(다음 버전이 나오면 다시 뜬다).
@@ -38,7 +39,7 @@ export function UpdateNotice({ session }: { session: Session }) {
           <DialogTitle>업데이트 안내 · v{APP_VERSION}</DialogTitle>
           <DialogDescription>디자인 요청·작업 관리 시스템에 아래 기능이 추가·변경되었습니다.</DialogDescription>
         </DialogHeader>
-        <div className="-mx-1 flex max-h-[55svh] flex-col gap-4 overflow-y-auto px-1" data-lenis-prevent>
+        <SmoothScrollArea className="-mx-1 max-h-[55svh] overflow-y-auto px-1" contentClassName="flex flex-col gap-4">
           {releases.map((r) => (
             <section key={r.version} className="flex flex-col gap-1.5">
               <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -52,7 +53,7 @@ export function UpdateNotice({ session }: { session: Session }) {
               </ul>
             </section>
           ))}
-        </div>
+        </SmoothScrollArea>
         <DialogFooter className="items-center sm:justify-between">
           <Label className="flex cursor-pointer items-center gap-2 font-normal">
             <Checkbox checked={hide} onCheckedChange={(v) => setHide(v === true)} />

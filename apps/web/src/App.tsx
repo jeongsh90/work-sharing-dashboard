@@ -69,6 +69,24 @@ export default function App() {
   useNotificationSync(session?.id ?? null)
   // PC 알림 권한을 아직 묻지 않았으면 로그인 후 첫 클릭에 묻는다.
   useAskOnFirstClick(!!session)
+  // 3분마다 사이트를 새로 받는다(새 버전·데이터 반영). 글을 쓰는 중이거나 창(대화상자)이 열려 있으면
+  // 입력이 날아가지 않게 그때는 건너뛰고 1분 뒤 다시 확인한다.
+  useEffect(() => {
+    let last = Date.now()
+    const timer = setInterval(() => {
+      if (Date.now() - last < 3 * 60_000) return
+      const el = document.activeElement as HTMLElement | null
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      const overlayOpen = !!document.querySelector('[role=dialog][data-state=open], [role=alertdialog][data-state=open]')
+      if (typing || overlayOpen || document.visibilityState !== 'visible') {
+        last = Date.now() - 2 * 60_000
+        return
+      }
+      last = Date.now()
+      window.location.reload()
+    }, 30_000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     verifySession().then(setSession)

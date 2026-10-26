@@ -9,6 +9,7 @@ import { ToolHistory } from "@/components/tools/tool-history"
 import { api } from "@/lib/api"
 import { applyFont, loadFonts, wrapText, type TextStyle } from "@/lib/canvas-text"
 import { invalidate } from "@/lib/store"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
 // 디자인 툴 > 상품정보고시: 고시 항목·주의사항·영양정보를 입력하면 상세페이지용 이미지(가로 860)를 만든다.
 // 사양: docs/tools/상품정보고시_툴_사양.md (Figma 셰프애찬 235:291). 글은 입력한 그대로 쓴다(법적 표기).
@@ -279,7 +280,10 @@ export function ProductNoticeTool() {
       </div>
 
       {/* 오른쪽: 입력(넓은 화면에서는 스크롤해도 따라온다) */}
-      <div className="col-span-12 flex flex-col gap-6 lg:sticky lg:top-6 lg:col-span-5 lg:max-h-[calc(100svh-7rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
+      <SmoothScrollArea
+        className="col-span-12 lg:sticky lg:top-6 lg:col-span-5 lg:max-h-[calc(100svh-7rem)] lg:self-start lg:overflow-y-auto lg:pr-1"
+        contentClassName="flex flex-col gap-6"
+      >
         {/* 고시 항목 */}
         <Field>
           <FieldLabel>고시 항목</FieldLabel>
@@ -381,7 +385,7 @@ export function ProductNoticeTool() {
             이미지 가로 860 JPG. 파일 이름은 내려받을 때마다 r.jpg, r2.jpg, r3.jpg 순서로 붙고, 아래 히스토리에 남습니다.
           </p>
         </div>
-      </div>
+      </SmoothScrollArea>
 
       </div>
 
