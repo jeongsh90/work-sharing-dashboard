@@ -7,7 +7,7 @@ import { DateRangePicker } from "@/components/date-range-picker"
 import { apiFetch, ApiError } from "@/lib/api"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 
-// 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 의 2배 JPG)를 만든다.
+// 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
 // 사양: docs/tools/수매확인서_툴_사양.md (Figma 셰프애찬 461:212). 고칠 수 있는 건 수매일자뿐이다.
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다. PDF 분석(이미지·OCR·위치)은 서버가 한다(apps/api/src/purchase-cert.ts).
 
@@ -24,7 +24,7 @@ type Layout = {
 
 const W = 860
 const H = 1429
-const SCALE = 2
+const SCALE = 1 // 결과 이미지 = Figma 프레임 크기 그대로(가로 860)
 const ORANGE = "#ff4d00"
 const INK = "#111111"
 const SUB = "#555555"
@@ -129,6 +129,7 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
   canvas.width = W * SCALE
   canvas.height = H * SCALE
   ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0)
+  ctx.imageSmoothingQuality = "high" // PDF(2480px)를 종이(620)에 줄여 넣을 때 글자가 뭉개지지 않게
 
   // 바탕
   ctx.fillStyle = "#ffffff"
@@ -366,7 +367,7 @@ export function PurchaseCertTool() {
           <Download data-icon="inline-start" />
           {ready ? `${fileName} 다운로드` : "PDF 를 올리면 다운로드할 수 있습니다"}
         </Button>
-        <p className="text-xs text-muted-foreground">이미지 1720×2858(2배) JPG. 상세페이지 업로드는 알드라이브로 직접 합니다.</p>
+        <p className="text-xs text-muted-foreground">이미지 860×1429 JPG(Figma 프레임 크기). 상세페이지 업로드는 알드라이브로 직접 합니다.</p>
       </div>
     </div>
   )
