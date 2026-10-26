@@ -42,7 +42,7 @@ import {
   type RequestStatus,
 } from "@/lib/requests"
 import { api, ApiError } from "@/lib/api"
-import { loadSession } from "@/lib/auth"
+import { canEditAnytime, EDIT_ON_OPEN_KEY, loadSession } from "@/lib/auth"
 import { openRequest } from "@/lib/router"
 import { invalidate, useUserNames, useUsers } from "@/lib/store"
 
@@ -100,6 +100,9 @@ export function RequestTable({
   const avatarOf = new Map(users?.map((u) => [u.id, u.avatarId]))
   // 요청 삭제는 슈퍼관리자만(서버도 다시 확인한다)
   const canDelete = loadSession()?.role === "superadmin"
+  // 슈퍼관리자·본부장은 목록에서 바로 요청 수정(상태와 상관없이)
+  const me = loadSession()
+  const canEdit = !!me && canEditAnytime(me)
   const [deleting, setDeleting] = useState<DesignRequest | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deletePending, setDeletePending] = useState(false)
@@ -288,6 +291,20 @@ export function RequestTable({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={() => openRequest(r.id)}>요청 상세</DropdownMenuItem>
+                        {canEdit && (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              try {
+                                sessionStorage.setItem(EDIT_ON_OPEN_KEY, String(r.id))
+                              } catch {
+                                // 저장소를 못 쓰면 상세 화면에서 요청 수정을 누르면 된다
+                              }
+                              openRequest(r.id)
+                            }}
+                          >
+                            요청 수정
+                          </DropdownMenuItem>
+                        )}
                         {canDelete && (
                           <>
                             <DropdownMenuSeparator />

@@ -44,6 +44,7 @@ import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions }
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import { saveWorklogNote, worklog } from './worklog.ts'
 import { startBackupSchedule } from './backup.ts'
+import { analyzePurchaseCert } from './purchase-cert.ts'
 import {
   approveUser,
   createSession,
@@ -478,6 +479,19 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       deleteSuggestion(user, id)
       return sendJson(res, 200, { ok: true })
     }
+  }
+
+  // ── 디자인 툴 > 수매확인서: PDF 를 받아 첫 장 이미지·강조 위치를 돌려준다(디자인팀·관리자) ──
+  if (path === '/api/tools/purchase-cert' && method === 'POST') {
+    if (!(isManager(user) || user.role === 'designer')) throw new HttpError(403, '디자인팀만 쓸 수 있습니다.')
+    const chunks: Buffer[] = []
+    let size = 0
+    for await (const chunk of req) {
+      size += (chunk as Buffer).length
+      if (size > 30 * 1024 * 1024) throw new HttpError(413, 'PDF 는 30MB 까지 올릴 수 있습니다.')
+      chunks.push(chunk as Buffer)
+    }
+    return sendJson(res, 200, await analyzePurchaseCert(Buffer.concat(chunks)))
   }
 
   // ── 업무일지(내 진행 기록 + 날마다 메모) ──

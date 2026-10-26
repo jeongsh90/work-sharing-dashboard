@@ -24,6 +24,14 @@ export type Session = {
   avatarId?: string | null // 프로필 사진 파일 id
 }
 
+// 슈퍼관리자·본부장: 상태와 상관없이 요청 내용 수정(서버 canEditAnytime 과 같다)
+export function canEditAnytime(session: Pick<Session, 'role' | 'rank' | 'position'>) {
+  return session.role === 'superadmin' || /본부장/.test(`${session.rank} ${session.position}`)
+}
+
+// 목록에서 "요청 수정"을 누르면 상세 화면을 수정 모드로 연다(이 값으로 넘긴다)
+export const EDIT_ON_OPEN_KEY = 'wsd-edit-on-open'
+
 export function isManager(session: { role: Role }) {
   return session.role === 'superadmin' || session.role === 'admin'
 }

@@ -13,7 +13,7 @@ import { FileGallery } from "@/components/requests/file-list"
 import { RequestForm } from "@/components/requests/request-form-page"
 import { ReviewBoard } from "@/components/requests/review-board"
 import { Timeline } from "@/components/requests/timeline"
-import type { Session } from "@/lib/auth"
+import { EDIT_ON_OPEN_KEY, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type RequestDetailDto, type RequestStatus } from "@/lib/requests"
 import { STATUS_BEAM } from "@/lib/status-colors"
@@ -82,7 +82,16 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 export function RequestDetailPage({ id, session, onBack }: { id: string; session: Session; onBack: () => void }) {
   const { data: detail, error } = useApi<RequestDetailDto>(`/requests/${id}`, 15_000)
   const userName = useUserNames()
-  const [editing, setEditing] = useState(false)
+  // 목록의 "요청 수정"으로 들어오면 바로 수정 모드
+  const [editing, setEditing] = useState(() => {
+    try {
+      if (sessionStorage.getItem(EDIT_ON_OPEN_KEY) !== id) return false
+      sessionStorage.removeItem(EDIT_ON_OPEN_KEY)
+      return true
+    } catch {
+      return false
+    }
+  })
   const [round, setRound] = useState<number | null>(null)
   // 마감 지남 판단 기준 시각. 화면을 열 때 한 번 잡는다.
   const [now] = useState(() => Date.now())

@@ -133,6 +133,11 @@ export function undoInfo(req: RequestRow) {
   return t ? { label: UNDO_LABEL[t.type], to: t.from_status } : null
 }
 
+// 슈퍼관리자·본부장(직급·직책에 '본부장')은 요청 상태와 상관없이 요청 내용을 고칠 수 있다(완료된 요청 포함).
+export function canEditAnytime(user: PublicUser) {
+  return user.role === 'superadmin' || /본부장/.test(`${user.rank} ${user.position}`)
+}
+
 function availableActions(user: PublicUser, req: RequestRow, assignees: string[]): Action[] {
   const owner = req.requester_id === user.id
   const assignee = assignees.includes(user.id)
@@ -141,7 +146,7 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   const active = ACTIVE.includes(req.status)
   const s = req.status
   const can: Record<Action, boolean> = {
-    edit: active && ((owner && (s === 'requested' || s === 'needs-info')) || manager),
+    edit: (active && ((owner && (s === 'requested' || s === 'needs-info')) || manager)) || canEditAnytime(user),
     // 작업자 지정은 처음 한 번(아직 담당이 없을 때). 그 뒤에는 작업자 변경으로 넘긴다.
     assign: active && manager && assignees.length === 0,
     reassign:
