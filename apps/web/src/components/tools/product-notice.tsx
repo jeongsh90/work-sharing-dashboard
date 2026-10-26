@@ -278,7 +278,6 @@ export function ProductNoticeTool() {
         <canvas ref={canvasRef} className="h-auto w-full max-w-[860px] self-start rounded-lg border bg-white shadow-sm" aria-label="상품정보고시 미리보기" />
       </div>
 
-      {/* 오른쪽: 입력(넓은 화면에서는 스크롤해도 따라온다) */}
       {/* 오른쪽 입력: 화면보다 길어서 따로 스크롤하지 않고 페이지와 함께 내려간다(위아래가 잘리지 않게) */}
       <div className="col-span-12 flex flex-col gap-6 lg:col-span-5">
         {/* 고시 항목 */}
