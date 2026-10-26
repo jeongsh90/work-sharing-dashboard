@@ -3,7 +3,7 @@ import { AlertTriangle, Download, FileUp, LoaderCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { DateRangePicker } from "@/components/date-range-picker"
 import { apiFetch, ApiError } from "@/lib/api"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 
@@ -276,7 +276,7 @@ export function PurchaseCertTool() {
   }
 
   const ready = !!page && !!date
-  const fileName = `${date.replace(/-/g, "")}.jpg` // 예: 20261023.jpg
+  const fileName = "2026.jpg" // 다운로드 파일 이름은 늘 2026.jpg
 
   const download = () => {
     canvasRef.current?.toBlob(
@@ -345,7 +345,17 @@ export function PurchaseCertTool() {
 
         <Field>
           <FieldLabel htmlFor="cert-date">수매일자</FieldLabel>
-          <Input id="cert-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={!page} />
+          {/* shadcn 달력(한 날짜) */}
+          <DateRangePicker
+            id="cert-date"
+            single
+            value={date ? { from: new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))), to: undefined } : undefined}
+            onChange={(r) => {
+              const d = r?.from
+              if (d) setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
+            }}
+            placeholder="PDF 를 올리면 발행일로 채워집니다"
+          />
           <FieldDescription>PDF 의 발행일로 채워집니다. 문서에서 고칠 수 있는 곳은 수매일자뿐입니다.</FieldDescription>
         </Field>
 
