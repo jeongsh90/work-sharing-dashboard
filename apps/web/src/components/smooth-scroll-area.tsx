@@ -3,7 +3,7 @@ import { useRef, type ReactNode } from "react"
 import { useSmoothScroll } from "@/lib/smooth-scroll"
 
 // 안쪽에서 따로 스크롤되는 영역도 페이지처럼 부드럽게(Lenis). className 에 높이 제한과 overflow 를 준다.
-// 창(Dialog) 안에서도 쓴다: 바깥 페이지 스크롤은 data-lenis-prevent 로 막고, 이 영역은 자기 Lenis 로 움직인다.
+// 끝까지 스크롤하면 바깥 스크롤(페이지·창)이 이어서 움직인다(바깥 Lenis 의 allowNestedScroll). 창 자체는 DialogContent 의 data-lenis-prevent 로 뒤 페이지와 나눈다.
 export function SmoothScrollArea({
   className,
   contentClassName,
@@ -18,7 +18,7 @@ export function SmoothScrollArea({
   const ref = useRef<HTMLDivElement>(null)
   useSmoothScroll({ orientation, gestureOrientation: orientation === "horizontal" ? "both" : "vertical" }, ref)
   return (
-    <div ref={ref} className={className} data-lenis-prevent>
+    <div ref={ref} className={className}>
       <div className={contentClassName}>{children}</div>
     </div>
   )
