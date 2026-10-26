@@ -28,7 +28,7 @@ export function VersionPage({ session }: { session: Session }) {
 
   return (
     <div className={PAGE_GRID}>
-      <div className="col-span-12 flex flex-col gap-6 lg:col-span-8 xl:col-span-6">
+      <div className="col-span-12 flex flex-col gap-6 lg:col-span-8 lg:col-start-3 xl:col-span-6 xl:col-start-4">
         <Card>
           <CardHeader>
             <CardTitle>디자인 요청·작업 관리 시스템</CardTitle>
