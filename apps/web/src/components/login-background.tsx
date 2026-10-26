@@ -8,7 +8,7 @@ export default function LoginBackground() {
   return (
     <>
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <CrowdCanvas src={peeps} rows={15} cols={7} />
+        <CrowdCanvas src={peeps} rows={15} cols={7} scale={0.75} />
       </div>
       <p className="absolute right-3 bottom-2 z-10 rounded bg-background/70 px-1.5 text-[10px] text-muted-foreground">
         배경:{" "}
