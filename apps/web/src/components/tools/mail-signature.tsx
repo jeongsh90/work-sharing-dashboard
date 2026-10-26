@@ -63,12 +63,14 @@ function signatureHtml(f: Form) {
   const phones = f.phones.map((p) => p.trim()).filter(Boolean)
   const addresses = f.addresses.filter((a) => a.value.trim())
   const rows = [
-    ...phones.map((p) => contactRow("M.", `<span>${esc(p)}</span>`)),
+    ...phones.map((p, i) => contactRow(i === 0 ? "M." : `M${i + 1}.`, `<span>${esc(p)}</span>`)),
     f.fax.trim() ? contactRow("F.", `<span>${esc(f.fax.trim())}</span>`) : "",
-    contactRow(
-      "E.",
-      `<a style="text-decoration: none; color: ${TEXT};" target="_blank" href="mailto:${esc(f.email.trim())}"><span>${esc(f.email.trim())}</span></a>`,
-    ),
+    f.email.trim()
+      ? contactRow(
+          "E.",
+          `<a style="text-decoration: none; color: ${TEXT};" target="_blank" href="mailto:${esc(f.email.trim())}"><span>${esc(f.email.trim())}</span></a>`,
+        )
+      : "",
     ...addresses.map((a) => contactRow(esc(a.label.trim()), `<span>${esc(a.value.trim())}</span>`)),
   ].join("")
   const line = `<table style="border-collapse: collapse; border-spacing: 0px; vertical-align: text-bottom; width: 100%;" cellpadding="0"><tbody><tr style="height: 1px;"><td style="background: ${RED}; font-size: 0px; line-height: 0; padding: 0px;"><p style="margin: 0px;"><span>&nbsp;</span></p></td></tr></tbody></table>`
@@ -76,22 +78,24 @@ function signatureHtml(f: Form) {
   const rank = f.rank.trim() ? `<span style="font-size: 14px; font-weight: 700; letter-spacing: 1px;">&nbsp;${esc(f.rank.trim())}</span>` : ""
 
   return `<table style="background: rgb(255, 255, 255); border-collapse: separate; border-spacing: 0px; font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', Arial, sans-serif; vertical-align: text-bottom; width: 520px; border: 1px solid rgb(217, 217, 217);" cellpadding="0"><tbody>
-<tr><td style="font-size: 13px; color: ${TEXT}; line-height: 18px; padding: 24px 24px 0px 34px; letter-spacing: 0.5px;"><p style="margin: 0px;"><span>${org}</span></p></td></tr>
-<tr><td style="color: ${TEXT}; line-height: 34px; padding: 6px 24px 0px 34px;"><p style="margin: 0px;"><span style="font-size: 28px; font-weight: 700; letter-spacing: 12px;">${esc(f.name.trim())}</span>${rank}</p></td></tr>
+${org ? `<tr><td style="font-size: 13px; color: ${TEXT}; line-height: 18px; padding: 24px 24px 0px 34px; letter-spacing: 0.5px;"><p style="margin: 0px;"><span>${org}</span></p></td></tr>` : ""}
+<tr><td style="color: ${TEXT}; line-height: 34px; padding: ${org ? 6 : 24}px 24px 0px 34px;"><p style="margin: 0px;"><span style="font-size: 28px; font-weight: 700; letter-spacing: 12px;">${esc(f.name.trim())}</span>${rank}</p></td></tr>
 <tr style="height: 34px;"><td style="font-size: 0px; line-height: 0; padding: 0px;"><p style="margin: 0px;"><span>&nbsp;</span></p></td></tr>
 <tr><td style="padding: 0px;"><table style="border-collapse: collapse; border-spacing: 0px; vertical-align: text-bottom; width: 518px;" cellpadding="0"><tbody><tr>
 <td style="vertical-align: middle; padding: 0px; width: 330px;">${line}</td>
 <td style="vertical-align: middle; padding: 0px 10px; width: 150px;"><p style="margin: 0px;"><img style="vertical-align: bottom; width: 150px; height: 36px; border: none;" alt="셰프애찬" src="${LOGO}" width="150" height="36"></p></td>
 <td style="vertical-align: middle; padding: 0px;">${line}</td>
 </tr></tbody></table></td></tr>
-<tr><td style="font-size: 15px; font-weight: 700; line-height: 20px; padding: 18px 24px 0px 30px;"><p style="margin: 0px;"><a style="text-decoration: none; color: ${RED};" target="_blank" href="https://www.owenfood.com"><span>www.owenfood.com</span></a></p></td></tr>
-<tr><td style="padding: 4px 24px 24px 30px;"><table style="border-collapse: collapse; border-spacing: 0px; font-size: 13px; color: ${TEXT}; vertical-align: text-bottom; line-height: 20px;" cellpadding="0"><tbody>${rows}</tbody></table></td></tr>
+<tr><td style="font-size: 15px; font-weight: 700; line-height: 20px; padding: 18px 24px ${rows ? 0 : 24}px 30px;"><p style="margin: 0px;"><a style="text-decoration: none; color: ${RED};" target="_blank" href="https://www.owenfood.com"><span>www.owenfood.com</span></a></p></td></tr>
+${rows ? `<tr><td style="padding: 4px 24px 24px 30px;"><table style="border-collapse: collapse; border-spacing: 0px; font-size: 13px; color: ${TEXT}; vertical-align: text-bottom; line-height: 20px;" cellpadding="0"><tbody>${rows}</tbody></table></td></tr>` : ""}
 </tbody></table>`
 }
 
-// 미리보기 예시 값(입력 칸의 예시와 같다). 비어 있는 칸만 채운다.
+// 미리보기 예시 값(입력 칸의 예시와 같다). 이름을 넣기 전에만 빈 칸을 채워 완성된 모습을 보여 준다.
+// 이름을 넣으면 실제로 복사될 모습 그대로(비운 칸은 서명에서 빠진다).
 const SAMPLE = { team: "디자인 팀", name: "홍길동", rank: "과장", phone: "010-1234-5678", fax: "042-123-4567", email: "12345678@owenfood.com" }
 function withSamples(f: Form): Form {
+  if (f.name.trim()) return f
   const or = (v: string, sample: string) => (v.trim() ? v : sample)
   return {
     ...f,
@@ -111,14 +115,11 @@ const Required = () => (
   </span>
 )
 
-// 필수: 부서·팀·이름·메일
+// 필수: 이름뿐. 메일은 넣었을 때만 형식을 확인한다
 function validate(f: Form) {
   const e: Partial<Record<keyof Form, string>> = {}
-  if (!f.department.trim()) e.department = "부서를 입력해 주세요."
-  if (!f.team.trim()) e.team = "팀을 입력해 주세요."
   if (!f.name.trim()) e.name = "이름을 입력해 주세요."
-  if (!f.email.trim()) e.email = "메일 주소를 입력해 주세요."
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) e.email = "메일 주소 형식이 올바르지 않습니다."
+  if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) e.email = "메일 주소 형식이 올바르지 않습니다."
   return e
 }
 
@@ -141,7 +142,7 @@ export function MailSignatureTool() {
   const removeAt = (key: "phones" | "addresses", i: number) =>
     setForm((f) => (key === "phones" ? { ...f, phones: f.phones.filter((_, j) => j !== i) } : { ...f, addresses: f.addresses.filter((_, j) => j !== i) }))
   const addOne = (key: "phones" | "addresses") =>
-    setForm((f) => (key === "phones" ? { ...f, phones: [...f.phones, ""] } : { ...f, addresses: [...f.addresses, { label: "A.", value: "" }] }))
+    setForm((f) => (key === "phones" ? { ...f, phones: [...f.phones, ""] } : { ...f, addresses: [...f.addresses, { label: `A${f.addresses.length + 1}.`, value: "" }] }))
 
   // 필수 칸을 확인하고 통과하면 실행
   const guard = (work: () => Promise<void> | void, label: string) => async () => {
@@ -195,12 +196,12 @@ export function MailSignatureTool() {
         <FieldGroup>
           <div className="grid grid-cols-2 gap-4">
             <Field data-invalid={!!errors.department}>
-              <FieldLabel htmlFor="sig-dept">부서 <Required /></FieldLabel>
+              <FieldLabel htmlFor="sig-dept">부서</FieldLabel>
               <Input id="sig-dept" value={form.department} onChange={set("department")} placeholder="예: Future strategy" aria-invalid={!!errors.department} />
               {errors.department && <FieldError>{errors.department}</FieldError>}
             </Field>
             <Field data-invalid={!!errors.team}>
-              <FieldLabel htmlFor="sig-team">팀 <Required /></FieldLabel>
+              <FieldLabel htmlFor="sig-team">팀</FieldLabel>
               <Input id="sig-team" value={form.team} onChange={set("team")} placeholder="예: 디자인 팀" aria-invalid={!!errors.team} />
               {errors.team && <FieldError>{errors.team}</FieldError>}
             </Field>
@@ -219,7 +220,8 @@ export function MailSignatureTool() {
             <FieldLabel>휴대폰</FieldLabel>
             <div className="flex flex-col gap-2">
               {form.phones.map((p, i) => (
-                <div key={i} className="flex gap-2">
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-8 shrink-0 text-sm font-semibold text-muted-foreground">{i === 0 ? "M." : `M${i + 1}.`}</span>
                   <Input value={p} onChange={(e) => setPhone(i, e.target.value)} placeholder="예: 010-1234-5678" aria-label={`휴대폰 ${i + 1}`} inputMode="tel" />
                   {form.phones.length > 1 && (
                     <Button
@@ -234,7 +236,7 @@ export function MailSignatureTool() {
                   )}
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => addOne("phones")}>
+              <Button type="button" size="sm" className="self-start" onClick={() => addOne("phones")}>
                 <Plus data-icon="inline-start" />
                 번호 추가
               </Button>
@@ -246,7 +248,7 @@ export function MailSignatureTool() {
             <Input id="sig-fax" value={form.fax} onChange={set("fax")} placeholder="예: 042-123-4567" inputMode="tel" />
           </Field>
           <Field data-invalid={!!errors.email}>
-            <FieldLabel htmlFor="sig-email">메일 <Required /></FieldLabel>
+            <FieldLabel htmlFor="sig-email">메일</FieldLabel>
             <Input id="sig-email" type="email" value={form.email} onChange={set("email")} placeholder="예: 12345678@owenfood.com" aria-invalid={!!errors.email} />
             {errors.email && <FieldError>{errors.email}</FieldError>}
           </Field>
@@ -275,12 +277,12 @@ export function MailSignatureTool() {
                   )}
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => addOne("addresses")}>
+              <Button type="button" size="sm" className="self-start" onClick={() => addOne("addresses")}>
                 <Plus data-icon="inline-start" />
                 주소 추가
               </Button>
             </div>
-            <FieldDescription>왼쪽 칸은 줄 앞 제목입니다(기본 A., 예: 1공장). 비운 주소는 서명에서 빠집니다.</FieldDescription>
+            <FieldDescription>왼쪽 칸은 줄 앞 제목입니다(기본 A., 추가하면 A2.·A3., 예: 1공장). 이름 말고는 비워 두면 서명에서 빠집니다.</FieldDescription>
           </Field>
           <Button type="button" size="lg" className="w-full" onClick={complete}>
             <CircleCheck data-icon="inline-start" />
@@ -317,7 +319,7 @@ export function MailSignatureTool() {
         </div>
         <GuideSlider title="하이웍스에 서명 등록하기" steps={HIWORKS_GUIDE} />
         <p className="text-xs text-muted-foreground">
-          {'미리보기의 빈 칸은 예시 값으로 보이며, 복사할 때는 입력한 내용만 들어갑니다. "서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸(하이웍스는 </> HTML 편집)에 붙여 넣으세요.'}
+          {'이름을 넣기 전에는 미리보기가 예시 값으로 보이고, 이름을 넣으면 복사될 모습 그대로(비운 칸은 빠짐) 보입니다. "서명 복사"를 누른 뒤 메일 프로그램의 서명 설정 칸(하이웍스는 </> HTML 편집)에 붙여 넣으세요.'}
         </p>
       </div>
     </div>
