@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useHolidays } from "@/lib/holidays"
 
 export type { DateRange }
 
@@ -32,6 +33,11 @@ export function DateRangePicker({
   invalid?: boolean
 }) {
   const isMobile = useIsMobile()
+  // 공휴일은 빨간 글자로(올해·내년)
+  const year = (value?.from ?? new Date()).getFullYear()
+  const holidayMap = useHolidays(year, year + 1)
+  const holidayDates = [...holidayMap.keys()].map((k) => new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10))))
+  const holidayProps = { modifiers: { holiday: holidayDates }, modifiersClassNames: { holiday: "text-destructive font-semibold" } }
 
   return (
     <Popover>
@@ -63,6 +69,7 @@ export function DateRangePicker({
             onSelect={(d) => onChange(d ? { from: d, to: undefined } : undefined)}
             disabled={disabled}
             locale={ko}
+            {...holidayProps}
           />
         ) : (
           <Calendar
@@ -73,6 +80,7 @@ export function DateRangePicker({
             numberOfMonths={isMobile ? 1 : 2}
             disabled={disabled}
             locale={ko}
+            {...holidayProps}
           />
         )}
       </PopoverContent>

@@ -11,6 +11,7 @@ import { isActive, STATUS_LABEL, statusText, type DesignRequest, type RequestSta
 import { openRequest } from "@/lib/router"
 import { STATUS_BEAM } from "@/lib/status-colors"
 import { useDesigners, useRequests, useUserNames } from "@/lib/store"
+import { dateKey, useHolidays } from "@/lib/holidays"
 
 // 디자인팀 일정(달력). 프로젝트마다 작업 기간(시작일 ~ 마감일)을 한 달 달력 위에 가로 막대로 그린다.
 // 여러 날·여러 주에 걸친 일정은 주마다 이어지는 막대로 보인다. 막대를 누르면 요청 상세로 간다.
@@ -81,6 +82,8 @@ export function SchedulePage() {
   const [includeDone, setIncludeDone] = useState(true) // 완료 포함: 기본으로 켠다
   const [who, setWho] = useState("all")
   const [today] = useState(() => startOfDay(new Date()))
+  // 공휴일: 보이는 달 앞뒤 주까지(연말·연초면 두 해)
+  const holidays = useHolidays(new Date(month.getFullYear(), month.getMonth(), 0).getFullYear(), new Date(month.getFullYear(), month.getMonth() + 1, 1).getFullYear())
 
   const items = useMemo(
     () =>
@@ -173,15 +176,31 @@ export function SchedulePage() {
                   {week.map((day) => {
                     const other = day.getMonth() !== month.getMonth()
                     const isToday = sameDay(day, today)
+                    const holiday = holidays.get(dateKey(day))
                     return (
-                      <div key={day.getTime()} className={`border-r p-1.5 last:border-r-0 ${other ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""}`}>
+                      <div
+                        key={day.getTime()}
+                        className={`flex min-w-0 items-start gap-1 border-r p-1.5 last:border-r-0 ${other ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                      >
                         <span
-                          className={`inline-flex size-6 items-center justify-center rounded-full text-xs tabular-nums ${
-                            isToday ? "bg-primary font-semibold text-primary-foreground" : other ? "text-muted-foreground/60" : ""
+                          className={`inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs tabular-nums ${
+                            isToday
+                              ? "bg-primary font-semibold text-primary-foreground"
+                              : holiday
+                                ? `font-semibold text-destructive ${other ? "opacity-60" : ""}`
+                                : other
+                                  ? "text-muted-foreground/60"
+                                  : ""
                           }`}
                         >
                           {day.getDate()}
                         </span>
+                        {/* 공휴일 이름 */}
+                        {holiday && (
+                          <span className={`min-w-0 truncate pt-1 text-[11px] text-destructive ${other ? "opacity-60" : ""}`} title={holiday}>
+                            {holiday}
+                          </span>
+                        )}
                       </div>
                     )
                   })}

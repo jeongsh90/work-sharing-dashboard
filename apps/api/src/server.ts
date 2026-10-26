@@ -45,6 +45,7 @@ import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './road
 import { saveWorklogNote, worklog } from './worklog.ts'
 import { startBackupSchedule } from './backup.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
+import { holidays } from './holidays.ts'
 import {
   approveUser,
   createSession,
@@ -492,6 +493,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       chunks.push(chunk as Buffer)
     }
     return sendJson(res, 200, await analyzePurchaseCert(Buffer.concat(chunks)))
+  }
+
+  // ── 공휴일(달력 표시용). ?year=2026 ──
+  if (path === '/api/holidays' && method === 'GET') {
+    return sendJson(res, 200, await holidays(Number(url.searchParams.get('year'))))
   }
 
   // ── 업무일지(내 진행 기록 + 날마다 메모) ──
