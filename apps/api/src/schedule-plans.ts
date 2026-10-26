@@ -4,6 +4,7 @@ import { inflateRawSync } from 'node:zlib'
 
 import { DATA_DIR } from './config.ts'
 import { HttpError } from './requests.ts'
+import { isManager, type PublicUser } from './users.ts'
 
 // 디자인팀 예정일정: 팀이 쓰는 엑셀(디자인팀_일정.xlsx)의 'YYYY_일정' 시트(달마다 달력)를 읽어 data/schedule-plans.json 에 둔다.
 // 날짜 칸의 한 줄이 일정 하나다. 줄 앞 색 도형(🟨⬜🟦🟥⬛🟪🟩)은 담당자, 취소선은 끝난 일.
@@ -229,4 +230,65 @@ function parseWorkbook(files: Map<string, string>, fileName: string): SchedulePl
   })
 
   return { importedAt: Date.now(), fileName, sheet: sheet.name, months, days }
+}
+
+// ── 한 줄씩 등록·고치기·지우기(디자인팀·관리자). 날짜 칸에 엑셀처럼 한 줄로 붙는다 ──
+const canEditPlans = (u: PublicUser) => u.role === 'designer' || isManager(u)
+const KNOWN_MARKS = new Set(['⬛', '⬜', '🟥', '🟦', '🟧', '🟨', '🟩', '🟪', '🟫'])
+
+function lineFrom(body: Record<string, unknown>): PlanLine {
+  const text = typeof body.text === 'string' ? body.text.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+  if (!text) throw new HttpError(400, '내용을 적어 주세요.')
+  const marks = Array.isArray(body.marks) ? body.marks.filter((m): m is string => typeof m === 'string' && KNOWN_MARKS.has(m)).slice(0, 4) : []
+  const color = typeof body.color === 'string' && /^#[0-9a-f]{6}$/i.test(body.color) ? body.color.toLowerCase() : undefined
+  return { marks, text, done: body.done === true, ...(color ? { color } : {}) }
+}
+
+async function editPlans(user: PublicUser, fn: (p: SchedulePlans) => void) {
+  if (!canEditPlans(user)) throw new HttpError(403, '디자인팀이나 관리자만 일정을 등록할 수 있습니다.')
+  const plans = (await schedulePlans()) ?? { importedAt: Date.now(), fileName: '', sheet: '', months: {}, days: {} }
+  fn(plans)
+  await writeFile(FILE + '.tmp', JSON.stringify(plans))
+  await rename(FILE + '.tmp', FILE)
+  return { ok: true }
+}
+
+const checkDate = (d: unknown) => {
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, '날짜가 올바르지 않습니다.')
+  return d
+}
+
+export function addPlanLine(user: PublicUser, body: Record<string, unknown>) {
+  const date = checkDate(body.date)
+  const line = lineFrom(body)
+  return editPlans(user, (p) => {
+    ;(p.days[date] ??= []).push(line)
+  })
+}
+
+// index: 그날 목록에서의 순서. 날짜를 바꾸면 새 날짜 끝으로 옮긴다
+export function updatePlanLine(user: PublicUser, date: string, index: number, body: Record<string, unknown>) {
+  checkDate(date)
+  const line = lineFrom(body)
+  const to = body.date === undefined ? date : checkDate(body.date)
+  return editPlans(user, (p) => {
+    const list = p.days[date]
+    if (!list?.[index]) throw new HttpError(404, '일정을 찾을 수 없습니다. 새로고침해 주세요.')
+    if (to === date) list[index] = line
+    else {
+      list.splice(index, 1)
+      if (!list.length) delete p.days[date]
+      ;(p.days[to] ??= []).push(line)
+    }
+  })
+}
+
+export function deletePlanLine(user: PublicUser, date: string, index: number) {
+  checkDate(date)
+  return editPlans(user, (p) => {
+    const list = p.days[date]
+    if (!list?.[index]) throw new HttpError(404, '일정을 찾을 수 없습니다. 새로고침해 주세요.')
+    list.splice(index, 1)
+    if (!list.length) delete p.days[date]
+  })
 }
