@@ -46,6 +46,7 @@ import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry
 import { startBackupSchedule } from './backup.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
+import { importSchedulePlans, schedulePlans } from './schedule-plans.ts'
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import {
   approveUser,
@@ -509,6 +510,22 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   // ── 공휴일(달력 표시용). ?year=2026 ──
   if (path === '/api/holidays' && method === 'GET') {
     return sendJson(res, 200, await holidays(Number(url.searchParams.get('year'))))
+  }
+
+  // ── 디자인팀 예정일정(팀 엑셀 '2026_일정' 시트). 보기: 누구나 · 엑셀 올리기: 관리자 ──
+  if (path === '/api/schedule-plans') {
+    if (method === 'GET') return sendJson(res, 200, await schedulePlans())
+    if (method === 'POST') {
+      requireManager(user)
+      const chunks: Buffer[] = []
+      let size = 0
+      for await (const chunk of req) {
+        size += (chunk as Buffer).length
+        if (size > 30 * 1024 * 1024) throw new HttpError(413, '엑셀은 30MB 까지 올릴 수 있습니다.')
+        chunks.push(chunk as Buffer)
+      }
+      return sendJson(res, 200, await importSchedulePlans(Buffer.concat(chunks), (url.searchParams.get('name') ?? '').slice(0, 100)))
+    }
   }
 
   // ── 업무일지(내 진행 기록 + 날마다 메모) ──

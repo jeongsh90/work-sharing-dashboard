@@ -167,7 +167,7 @@ export default function App() {
       case 'version':
         return <VersionPage session={session} />
       case 'schedule':
-        return <SchedulePage />
+        return <SchedulePage session={session} />
       case 'org':
         return <OrgPage />
       case 'tools':
