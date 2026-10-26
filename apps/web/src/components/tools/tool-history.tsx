@@ -32,7 +32,7 @@ export function ToolHistory<F>({ tool, onLoad }: { tool: string; onLoad?: (form:
   }
 
   return (
-    <section className="col-span-12 flex flex-col gap-4 border-t pt-6">
+    <section className="flex flex-col gap-4 border-t pt-6">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="flex items-center gap-2 font-semibold">
           <History className="size-4" aria-hidden />

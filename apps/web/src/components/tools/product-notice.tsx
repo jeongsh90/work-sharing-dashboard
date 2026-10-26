@@ -270,7 +270,9 @@ export function ProductNoticeTool() {
   }
 
   return (
-    <div className="grid w-full grid-cols-12 gap-6 p-4 md:p-6">
+    <div className="flex w-full flex-col gap-6 p-4 md:p-6">
+      {/* 위: 미리보기 + 입력. 오른쪽 입력이 따라다니는 범위를 이 묶음 안으로 한정한다(아래 히스토리를 덮지 않게) */}
+      <div className="grid grid-cols-12 gap-6">
       {/* 왼쪽: 미리보기(내려받는 이미지 그대로) */}
       <div className="col-span-12 flex justify-center lg:col-span-7">
         <canvas ref={canvasRef} className="h-auto w-full max-w-[860px] self-start rounded-lg border bg-white shadow-sm" aria-label="상품정보고시 미리보기" />
@@ -379,6 +381,8 @@ export function ProductNoticeTool() {
             이미지 가로 860 JPG. 파일 이름은 내려받을 때마다 r.jpg, r2.jpg, r3.jpg 순서로 붙고, 아래 히스토리에 남습니다.
           </p>
         </div>
+      </div>
+
       </div>
 
       {/* 아래: 만든 이미지 히스토리(제품명·썸네일·다운로드·검색) */}
