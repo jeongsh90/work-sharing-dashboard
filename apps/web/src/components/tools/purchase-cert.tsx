@@ -302,7 +302,7 @@ export function PurchaseCertTool() {
       <div className="col-span-12 flex justify-center lg:col-span-8">
         <canvas
           ref={canvasRef}
-          className="h-auto w-full max-w-[460px] rounded-lg border bg-white shadow-sm"
+          className="h-auto w-full max-w-[860px] rounded-lg border bg-white shadow-sm"
           aria-label="수매확인서 미리보기"
         />
       </div>
