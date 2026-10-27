@@ -149,6 +149,8 @@ export default function App() {
   const allowed = new Set(menuFor(session).flatMap((g) => g.items.map((i) => i.id)))
   const page = route.page === 'request-detail' || allowed.has(route.page) ? route.page : 'home'
   const pageKey = page === 'request-detail' ? `request-${route.id}` : page
+  // 요청 상세는 아래 처리 버튼이 있어 오른쪽 아래 버튼 묶음을 숨긴다
+  const showDock = page !== 'request-detail'
 
   const content = (() => {
     switch (page) {
@@ -232,15 +234,12 @@ export default function App() {
           currentId={session.id}
           onSwitched={onSwitched}
         />
-        {/* 오른쪽 아래 버튼 묶음(컨펌 대기·받은 요청·내 현재 상태)이 내용 끝을 가리지 않게 아래 여백을 둔다 */}
-        <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${DOCK_PAD[dockItemCount(session)]} ${FADE_IN}`}>
+        {/* 오른쪽 아래 버튼 묶음(컨펌 대기·받은 요청·내 현재 상태)이 내용 끝을 가리지 않게 아래 여백을 둔다.
+            요청 상세에서는 아래 처리 버튼과 겹쳐 버튼 묶음을 숨긴다 */}
+        <div key={pageKey} data-page className={`flex min-w-0 flex-1 flex-col ${showDock ? DOCK_PAD[dockItemCount(session)] : ''} ${FADE_IN}`}>
           <Suspense fallback={<PageState />}>{content}</Suspense>
         </div>
-        <FloatingDock
-          session={session}
-          onSessionChange={setSession}
-          raised={page === 'request' || page === 'request-detail'}
-        />
+        {showDock && <FloatingDock session={session} onSessionChange={setSession} raised={page === 'request'} />}
       </SidebarInset>
     </SidebarProvider>
   )
