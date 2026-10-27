@@ -30,8 +30,8 @@ import { invalidate, isDesignWorker } from "@/lib/store"
 // 작업 기간: 날짜는 범위 선택(시작일 ~ 마감일), 마감 시각은 따로 고른다.
 const pad = (n: number) => String(n).padStart(2, "0")
 
-// 마감 시각 목록: 09:00 ~ 21:00, 30분 단위
-const DUE_TIMES = Array.from({ length: 25 }, (_, i) => `${pad(9 + Math.floor(i / 2))}:${i % 2 ? "30" : "00"}`)
+// 마감 시각 목록: 08:00 ~ 17:00(근무 시간), 30분 단위
+const DUE_TIMES = Array.from({ length: 19 }, (_, i) => `${pad(8 + Math.floor(i / 2))}:${i % 2 ? "30" : "00"}`)
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 
@@ -184,7 +184,7 @@ export function RequestForm({
       : defaultRange(),
   )
   const [dueTime, setDueTime] = useState(() => {
-    if (!initial || initial.ongoing) return "18:00"
+    if (!initial || initial.ongoing) return "17:00"
     const d = new Date(initial.dueAt)
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`
   })
