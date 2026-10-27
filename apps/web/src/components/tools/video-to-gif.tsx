@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Download, Film, Pause, Play, RotateCcw, Scissors, Upload, Wand2, X } from "lucide-react"
+import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, Scissors, Upload, Wand2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -50,6 +50,54 @@ function seek(video: HTMLVideoElement, t: number) {
     video.addEventListener("error", fail)
     video.currentTime = t
   })
+}
+
+// 예상 용량: 고른 구간에서 고르게 몇 장만 뽑아 지금 설정으로 GIF 를 만들어 보고, 한 장 평균 크기를 잰다.
+// 장마다 따로 압축되므로(앞 장과 차이만 남기지 않는다) 평균 × 전체 장수가 실제와 거의 같다.
+const SAMPLES = 6
+
+async function measurePerFrame(
+  url: string,
+  times: number[],
+  w: number,
+  h: number,
+  colors: number,
+  alive: () => boolean,
+): Promise<number | null> {
+  const video = document.createElement("video")
+  video.muted = true
+  video.preload = "auto"
+  video.src = url
+  const worker = new Worker(new URL("./gif-worker.ts", import.meta.url), { type: "module" })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve()
+      video.onerror = () => reject(new Error("load"))
+    })
+    const canvas = document.createElement("canvas")
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+    ctx.imageSmoothingQuality = "high"
+    const done = new Promise<ArrayBuffer>((resolve) => {
+      worker.onmessage = (e: MessageEvent<GifWorkerOut>) => e.data.type === "done" && resolve(e.data.bytes)
+    })
+    worker.postMessage({ type: "start", width: w, height: h, repeat: 0, colors, delay: 70 } satisfies GifWorkerIn)
+    for (const t of times) {
+      if (!alive()) return null
+      await seek(video, t)
+      ctx.drawImage(video, 0, 0, w, h)
+      const data = ctx.getImageData(0, 0, w, h).data.buffer
+      worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
+    }
+    worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
+    const bytes = await done
+    return alive() ? bytes.byteLength / times.length : null
+  } finally {
+    worker.terminate()
+    video.removeAttribute("src")
+    video.load()
+  }
 }
 
 export function VideoToGifTool() {
@@ -124,6 +172,30 @@ export function VideoToGifTool() {
   const frames = Math.max(1, Math.round(length * Number(fps)))
   const tooMany = frames > MAX_FRAMES
   const busy = progress !== null
+
+  // 설정을 바꾸면 잠깐 뒤(손을 멈춘 뒤) 한 장 평균 크기를 다시 잰다. 초당 장수·속도·반복은 장수만 바뀌어 다시 재지 않는다.
+  const [perFrame, setPerFrame] = useState<{ key: string; bytes: number } | null>(null)
+  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${colors}` : ""
+  useEffect(() => {
+    if (!source || busy || length <= 0) return
+    let alive = true
+    const timer = setTimeout(() => {
+      const times = Array.from({ length: SAMPLES }, (_, i) => Math.min(range[0] + ((i + 0.5) * length) / SAMPLES, source.duration - 0.001))
+      measurePerFrame(source.url, times, outW, outH, Number(colors), () => alive).then(
+        (bytes) => alive && bytes !== null && setPerFrame({ key: sampleKey, bytes }),
+        () => {},
+      )
+    }, 400)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+    // sampleKey 에 구간·크기·화질이 모두 들어 있다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sampleKey, busy])
+  const estimating = !perFrame || perFrame.key !== sampleKey
+  // 머리말·색표 몫(약 1KB)을 더한다
+  const estimate = perFrame ? Math.round(perFrame.bytes * frames + 1024) : null
 
   const convert = async () => {
     if (!source || tooMany || length <= 0) return
@@ -401,10 +473,34 @@ export function VideoToGifTool() {
               </div>
 
               <Field data-invalid={tooMany}>
-                <FieldDescription className="tabular-nums">
-                  결과: {outW}×{outH}px · {frames}장 · {fmt(length / Number(speed))}
-                  {outW < (Number(width) || 0) && " (원본보다 크게는 만들지 않습니다)"}
-                </FieldDescription>
+                {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
+                <div
+                  className={`flex items-center gap-3 rounded-lg border p-3 ${
+                    estimate !== null && estimate > 10 * 1024 * 1024 ? "border-amber-500/50 bg-amber-500/8" : "bg-muted/40"
+                  }`}
+                  aria-live="polite"
+                >
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-xs text-muted-foreground">예상 GIF 용량</span>
+                    <span className="flex items-center gap-2 text-lg font-semibold tabular-nums">
+                      {estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}
+                      {estimating && estimate !== null && (
+                        <LoaderCircle className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="다시 재는 중" />
+                      )}
+                    </span>
+                  </div>
+                  <span className="text-right text-xs text-muted-foreground tabular-nums">
+                    {outW}×{outH}px
+                    <br />
+                    {frames}장 · {fmt(length / Number(speed))}
+                  </span>
+                </div>
+                {estimate !== null && estimate > 10 * 1024 * 1024 && (
+                  <FieldDescription className="text-amber-700 dark:text-amber-300">
+                    10MB 가 넘습니다. 가로 크기·초당 장수·화질을 낮추거나 구간을 줄이면 가벼워집니다.
+                  </FieldDescription>
+                )}
+                {outW < (Number(width) || 0) && <FieldDescription>원본보다 크게는 만들지 않습니다.</FieldDescription>}
                 {tooMany && (
                   <FieldError>
                     장수가 너무 많습니다({frames}장, 최대 {MAX_FRAMES}장). 구간을 줄이거나 초당 장수를 낮춰 주세요.
