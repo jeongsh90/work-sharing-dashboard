@@ -5,6 +5,7 @@ import {
   FolderArchive,
   House,
   Inbox,
+  Library,
   Info,
   LayoutGrid,
   ListChecks,
@@ -40,6 +41,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "my-requests", title: "내 요청", icon: ListChecks, roles: ["requester", ...MANAGERS] },
       { id: "schedule", title: "디자인팀 일정", icon: CalendarDays },
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
+      // 디자인팀 자료실: 작업에 쓰는 자료(PSD·AI·FIG 등)를 올려 두고 함께 쓴다. 작업자·관리자
+      { id: "library", title: "디자인팀 자료실", icon: Library, roles: TEAM },
       { id: "org", title: "조직도", icon: Network },
       // 디자인 툴: 요청자·작업자·관리자 모두
       { id: "tools", title: "디자인 툴", icon: LayoutGrid },

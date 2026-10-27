@@ -87,6 +87,31 @@ export async function uploadFile(file: File): Promise<UploadedFile> {
   return body
 }
 
+// 큰 파일(PSD 등)을 올리며 진행률(0~1)을 알려 준다. fetch 는 올리는 진행률을 못 받아 XMLHttpRequest 를 쓴다.
+export function uploadFileWithProgress(file: File, onProgress: (ratio: number) => void): Promise<UploadedFile> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/api/uploads`)
+    const token = storedToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+    xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name))
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onload = () => {
+      let body: { error?: string } | null = null
+      try {
+        body = JSON.parse(xhr.responseText)
+      } catch {
+        body = null
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as UploadedFile)
+      else reject(new ApiError(xhr.status, body?.error ?? `파일을 올리지 못했습니다: ${file.name}`))
+    }
+    xhr.onerror = () => reject(new ApiError(0, `파일을 올리지 못했습니다: ${file.name}`))
+    xhr.send(file)
+  })
+}
+
 // 고른 파일을 차례로 올린다.
 export async function uploadAll(files: File[]): Promise<UploadedFile[]> {
   const uploaded: UploadedFile[] = []
@@ -160,6 +185,18 @@ export async function downloadFile(id: string, name: string) {
   a.href = url
   a.download = name
   a.click()
+}
+
+// 큰 파일 내려받기: 받아 둔 주소를 남겨 두지 않는다(PSD 처럼 큰 파일이 메모리에 계속 남지 않게)
+export async function downloadLargeFile(id: string, name: string) {
+  const res = await apiFetch(`/files/${id}?download`)
+  if (!res.ok) throw new ApiError(res.status, '파일을 내려받지 못했습니다.')
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export function formatBytes(size: number) {

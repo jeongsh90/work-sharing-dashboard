@@ -27,6 +27,7 @@ function lazyPage<M, C extends ComponentType<any>>(load: () => Promise<M>, pick:
 }
 const FeedbackPage = lazyPage(() => import('@/components/feedback-page'), (m) => m.FeedbackPage)
 const FilesPage = lazyPage(() => import('@/components/files-page'), (m) => m.FilesPage)
+const LibraryPage = lazyPage(() => import('@/components/library-page'), (m) => m.LibraryPage)
 const MePage = lazyPage(() => import('@/components/me-page'), (m) => m.MePage)
 const NotificationsPage = lazyPage(() => import('@/components/notifications-page'), (m) => m.NotificationsPage)
 const RequestDetailPage = lazyPage(() => import('@/components/requests/request-detail-page'), (m) => m.RequestDetailPage)
@@ -169,6 +170,8 @@ export default function App() {
         )
       case 'files':
         return <FilesPage />
+      case 'library':
+        return <LibraryPage session={session} />
       case 'notifications':
         return <NotificationsPage />
       case 'me':
