@@ -32,7 +32,11 @@ export type DesignRequest = {
   urgency: Urgency
   status: RequestStatus
   revision: number // 수정 차수. 수정 중일 때 표시
+  source: string // 대신 작성한 요청의 받은 경로(없으면 '')
 }
+
+// 대신 작성: 시스템 밖(말·전화 등)으로 받은 요청을 작업자·관리자가 요청서로 옮겨 적을 때 받은 경로
+export const REQUEST_SOURCES = ["구두", "전화", "메신저", "메일", "기타"] as const
 
 // 서버 응답(시각은 숫자)
 export type RequestSummaryDto = {
@@ -43,6 +47,8 @@ export type RequestSummaryDto = {
   department: string
   requesterId: string
   requesterName: string
+  source: string // 대신 작성한 요청을 받은 경로(구두·전화·메신저·메일·기타). 요청자가 직접 쓴 요청은 ''
+  createdBy: string | null // 요청서를 실제로 쓴 사람
   designers: string[]
   urgency: Urgency
   status: RequestStatus
@@ -65,6 +71,7 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     workType: dto.workType,
     requesterId: dto.requesterId,
     requester: dto.requesterName,
+    source: dto.source ?? "",
     department: dto.department,
     designers: dto.designers,
     createdAt: new Date(dto.createdAt),

@@ -195,6 +195,12 @@ addColumn('events', 'undone', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('users', 'show_on_home', 'INTEGER NOT NULL DEFAULT 1')
 // 계속 업무(마감 없음). 1 이면 due_at 에는 아주 먼 날짜(ONGOING_DUE)를 넣어 마감 정렬에서 맨 뒤로 간다.
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
+// 대신 작성: 구두·전화 등으로 받은 요청을 작업자·관리자가 요청서로 옮겨 적은 경우.
+// source 는 받은 경로(구두·전화·메신저·메일·기타, 시스템에서 직접 쓴 요청은 ''), created_by 는 실제로 쓴 사람.
+// requester_label 은 계정이 없는 요청자의 이름(이때 requester_id 는 쓴 사람)
+addColumn('requests', 'source', "TEXT NOT NULL DEFAULT ''")
+addColumn('requests', 'created_by', 'TEXT')
+addColumn('requests', 'requester_label', "TEXT NOT NULL DEFAULT ''")
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {

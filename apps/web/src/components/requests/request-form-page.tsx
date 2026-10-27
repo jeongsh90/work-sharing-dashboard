@@ -12,10 +12,12 @@ import { BottomBar } from "@/components/bottom-bar"
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { FilePicker } from "@/components/requests/file-picker"
 import { FileChip } from "@/components/requests/file-list"
+import { NO_ACCOUNT, PersonPicker } from "@/components/requests/person-picker"
 import { api, ApiError, uploadAll } from "@/lib/api"
-import type { Session } from "@/lib/auth"
+import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import {
+  REQUEST_SOURCES,
   WORK_TYPES,
   type FileInfo,
   type RequestDetailDto,
@@ -23,7 +25,7 @@ import {
   type Urgency,
 } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
-import { invalidate } from "@/lib/store"
+import { invalidate, isDesignWorker } from "@/lib/store"
 
 // 작업 기간: 날짜는 범위 선택(시작일 ~ 마감일), 마감 시각은 따로 고른다.
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -207,10 +209,25 @@ export function RequestForm({
   const [today] = useState(() => startOfDay(new Date()))
   // 보내기 막대는 화면 하단 고정(BottomBar, 폼 바깥에 그려진다)이라 form 속성으로 이 폼에 연결한다.
   const formId = useId()
+  // 대신 작성(새 요청만): 말·전화 등으로 받은 요청을 작업자·관리자가 옮겨 적는다. 작업자는 늘 대신 작성이다.
+  const designer = session.role === "designer"
+  const canProxy = !initial && (designer || isManager(session))
+  const [proxyOn, setProxyOn] = useState(designer)
+  const proxy = canProxy && proxyOn
+  const [requesterId, setRequesterId] = useState("")
+  const [requesterName, setRequesterName] = useState("")
+  const [source, setSource] = useState<string>("구두")
+  // 디자인팀(작업자·디자인팀 관리자)은 등록하면서 바로 담당을 맡을 수 있다(기본 켬)
+  const canTake = designer || isDesignWorker(session)
+  const [takeSelf, setTakeSelf] = useState(true)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     const next: Record<string, string> = {}
+    if (proxy) {
+      if (!requesterId) next.requester = "요청한 사람을 골라 주세요."
+      else if (requesterId === NO_ACCOUNT && !requesterName.trim()) next.requester = "요청한 사람의 이름을 적어 주세요."
+    }
     if (!title.trim()) next.title = "제목을 입력해 주세요."
     if (!workType) next.workType = "작업 종류를 골라 주세요."
     // 하루만 고르면 시작일과 마감일이 같다.
@@ -249,6 +266,11 @@ export function RequestForm({
         dueAt: ongoing ? undefined : dueAt!.getTime(),
         fileIds: uploaded.map((f) => f.id),
         keepFileIds: kept.map((f) => f.id),
+        ...(proxy && {
+          proxy:
+            requesterId === NO_ACCOUNT ? { requesterName: requesterName.trim(), source } : { requesterId, source },
+          takeSelf: canTake && takeSelf,
+        }),
       }
       const id = initial
         ? (await api<RequestDetailDto>(`/requests/${initial.id}`, { method: "PATCH", body })).id
@@ -271,6 +293,82 @@ export function RequestForm({
   return (
     <form id={formId} onSubmit={submit} noValidate>
       <FieldGroup>
+        {canProxy && (
+          <div className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+            {designer ? (
+              <div className="flex flex-col gap-0.5">
+                <p className="text-sm font-semibold">대신 작성</p>
+                <p className="text-xs text-muted-foreground">말·전화·메신저로 받은 요청을 요청서로 옮겨 적습니다. 요청한 사람에게 알림이 갑니다.</p>
+              </div>
+            ) : (
+              <Label className="flex cursor-pointer items-start gap-2 font-normal">
+                <Checkbox className="mt-0.5" checked={proxyOn} onCheckedChange={(v) => setProxyOn(v === true)} />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold">대신 작성</span>
+                  <span className="text-xs text-muted-foreground">말·전화·메신저로 받은 다른 사람의 요청을 요청서로 옮겨 적습니다.</span>
+                </span>
+              </Label>
+            )}
+            {proxy && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field data-invalid={invalid("requester")}>
+                  <FieldLabel htmlFor="req-requester">요청한 사람</FieldLabel>
+                  <PersonPicker
+                    id="req-requester"
+                    value={requesterId}
+                    invalid={!!errors.requester}
+                    onChange={(id, user) => {
+                      setRequesterId(id)
+                      clear("requester")
+                      // 요청 부서는 고른 사람의 부서로 채운다(고친 뒤에도 바꿀 수 있다)
+                      setDepartment(user?.department ?? "")
+                    }}
+                  />
+                  {requesterId === NO_ACCOUNT && (
+                    <Input
+                      value={requesterName}
+                      maxLength={30}
+                      onChange={(e) => {
+                        setRequesterName(e.target.value)
+                        clear("requester")
+                      }}
+                      placeholder="요청한 사람 이름 (예: 홍길동 과장)"
+                      aria-label="요청한 사람 이름"
+                      aria-invalid={invalid("requester")}
+                    />
+                  )}
+                  {errors.requester && <FieldError>{errors.requester}</FieldError>}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="req-source">받은 경로</FieldLabel>
+                  <Select value={source} onValueChange={setSource}>
+                    <SelectTrigger id="req-source" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REQUEST_SOURCES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s === "구두" ? "구두 (말로)" : s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {canTake && (
+                  <Label className="flex cursor-pointer items-center gap-2 text-sm font-normal sm:col-span-2">
+                    <Checkbox checked={takeSelf} onCheckedChange={(v) => setTakeSelf(v === true)} />
+                    내가 담당 (등록하면 바로 작업 대기로 넘어갑니다)
+                  </Label>
+                )}
+                {requesterId === NO_ACCOUNT && (
+                  <FieldDescription className="sm:col-span-2">
+                    계정이 없는 사람의 요청은 시안 컨펌도 작성한 사람이 대신 합니다.
+                  </FieldDescription>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <Field data-invalid={invalid("title")}>
           <FieldLabel htmlFor="req-title">제목</FieldLabel>
           <Input
@@ -411,7 +509,7 @@ export function RequestForm({
             </Button>
           )}
           <Button type="submit" form={formId} className="h-14 px-10 text-base" disabled={pending}>
-            {pending ? "보내는 중…" : initial ? "수정 내용 저장" : "요청 보내기"}
+            {pending ? "보내는 중…" : initial ? "수정 내용 저장" : proxy ? "요청서 등록" : "요청 보내기"}
           </Button>
         </div>
         {errors.form && <FieldError>{errors.form}</FieldError>}
@@ -421,12 +519,15 @@ export function RequestForm({
 }
 
 export function RequestFormPage({ session }: { session: Session }) {
+  const designer = session.role === "designer"
   return (
     <div className={PAGE_GRID}>
       <div className="col-span-12 flex flex-col gap-1 lg:col-span-8 lg:col-start-3 xl:col-span-6 xl:col-start-4">
-        <h2 className="text-base font-semibold">새 디자인 요청</h2>
+        <h2 className="text-base font-semibold">{designer ? "디자인 요청서 작성" : "새 디자인 요청"}</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          요청을 보내면 디자인팀에 알림이 가고, 담당 작업자가 정해지면 알림으로 알려 드립니다.
+          {designer
+            ? "시스템 밖(말·전화·메신저 등)으로 받은 요청을 요청서로 남깁니다. 요청한 사람이 계정이 있으면 그 사람의 요청으로 들어가 진행 상황과 시안 컨펌을 그 사람이 봅니다."
+            : "요청을 보내면 디자인팀에 알림이 가고, 담당 작업자가 정해지면 알림으로 알려 드립니다."}
         </p>
         <RequestForm session={session} onDone={(id) => openRequest(id)} />
       </div>

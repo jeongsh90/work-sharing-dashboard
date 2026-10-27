@@ -24,6 +24,8 @@ export type Status = (typeof STATUSES)[number]
 const ACTIVE: Status[] = ['requested', 'needs-info', 'waiting', 'in-progress', 'review', 'revising', 'approved']
 
 export const URGENCIES = ['normal', 'urgent', 'critical'] as const
+// 대신 작성한 요청을 받은 경로
+export const SOURCES = ['구두', '전화', '메신저', '메일', '기타'] as const
 
 export class HttpError extends Error {
   status: number
@@ -51,6 +53,9 @@ type RequestRow = {
   started_at: number | null
   approved_at: number | null
   completed_at: number | null
+  source: string
+  created_by: string | null
+  requester_label: string
 }
 
 type FileRow = {
@@ -147,7 +152,9 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   const active = ACTIVE.includes(req.status)
   const s = req.status
   const can: Record<Action, boolean> = {
-    edit: (active && ((owner && (s === 'requested' || s === 'needs-info')) || manager)) || canEditAnytime(user),
+    edit:
+      (active && ((owner && (s === 'requested' || s === 'needs-info')) || manager || (!!req.created_by && req.created_by === user.id))) ||
+      canEditAnytime(user),
     // 작업자 지정은 처음 한 번(아직 담당이 없을 때). 그 뒤에는 작업자 변경으로 넘긴다.
     assign: active && manager && assignees.length === 0,
     reassign:
@@ -326,7 +333,10 @@ function summary(row: RequestRow & { requester_name: string }) {
     workType: row.work_type,
     department: row.department,
     requesterId: row.requester_id,
-    requesterName: row.requester_name,
+    // 계정이 없는 요청자는 적어 둔 이름으로 보인다
+    requesterName: row.requester_label || row.requester_name,
+    source: row.source,
+    createdBy: row.created_by,
     designers: assigneesOf(row.id),
     urgency: row.urgency,
     status: row.status,
@@ -464,25 +474,81 @@ export function archive() {
 
 // ── 요청 만들기·고치기 ─────────────────────────────────
 
+// 대신 작성(작업자·관리자): body.proxy = { requesterId | requesterName, source }.
+// 요청자는 계정을 고르거나(그 사람의 요청으로 들어가 내 요청·컨펌을 그 사람이 한다), 계정이 없으면 이름만 적는다.
+// 작업자는 요청을 직접 보내지 않으므로 늘 대신 작성이다. takeSelf 면 쓴 사람이 바로 담당을 맡는다(작업 대기).
+function proxyOf(user: PublicUser, body: Record<string, unknown>) {
+  const raw = body.proxy && typeof body.proxy === 'object' ? (body.proxy as Record<string, unknown>) : null
+  const canProxy = user.role === 'designer' || isManager(user)
+  if (!raw) {
+    if (user.role === 'designer') throw new HttpError(400, '요청한 사람을 골라 주세요.')
+    return null
+  }
+  if (!canProxy) throw new HttpError(403, '대신 작성은 작업자·관리자만 할 수 있습니다.')
+  const source = SOURCES.includes(raw.source as never) ? (raw.source as string) : '구두'
+  if (typeof raw.requesterId === 'string' && raw.requesterId) {
+    const target = findUser(raw.requesterId)
+    if (!target || !target.active || !target.approved) throw new HttpError(400, '요청한 사람의 계정을 찾을 수 없습니다.')
+    return { source, requesterId: target.id, label: '', requester: target }
+  }
+  const label = text(raw.requesterName, '요청한 사람 이름', { required: true, max: 30 })
+  return { source, requesterId: user.id, label, requester: null }
+}
+
 export function createRequest(user: PublicUser, body: Record<string, unknown>) {
   const title = text(body.title, '제목', { required: true, max: 100 })
   const workType = text(body.workType, '작업 종류', { required: true, max: 40 })
   const itemList = items(body.items)
   const description = describe(itemList)
-  const department = text(body.department, '부서', { max: 40 }) || user.department
+  const proxy = proxyOf(user, body)
+  const department = text(body.department, '부서', { max: 40 }) || proxy?.requester?.department || (proxy ? '' : user.department)
   const { startAt, dueAt, ongoing } = period(body)
+  const takeSelf = !!proxy && body.takeSelf === true
   const now = Date.now()
   return transaction(() => {
     const result = run(
-      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, ongoing, created_at, updated_at)
-       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :ongoing, :now, :now)`,
-      { title, workType, description, department, requester: user.id, urgency: urgency(body.urgency), startAt, dueAt, ongoing, now },
+      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, ongoing, created_at, updated_at, source, created_by, requester_label)
+       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :ongoing, :now, :now, :source, :createdBy, :label)`,
+      {
+        title,
+        workType,
+        description,
+        department,
+        requester: proxy?.requesterId ?? user.id,
+        urgency: urgency(body.urgency),
+        startAt,
+        dueAt,
+        ongoing,
+        now,
+        source: proxy?.source ?? '',
+        createdBy: user.id,
+        label: proxy?.label ?? '',
+      },
     )
     const id = Number(result.lastInsertRowid)
     saveItems(id, itemList)
     claimFiles(user, body.fileIds, { requestId: id, kind: 'reference' })
-    logEvent(id, user.id, 'create', null, 'requested')
-    notify(managersAndDesigners(), user.id, id, `새 디자인 요청: ${title}`)
+    if (!proxy) {
+      logEvent(id, user.id, 'create', null, 'requested')
+      notify(managersAndDesigners(), user.id, id, `새 디자인 요청: ${title}`)
+      return id
+    }
+    const who = proxy.requester?.name ?? proxy.label
+    logEvent(id, user.id, 'create', null, 'requested', `${proxy.source} 요청 대신 작성 · 요청자 ${who}`)
+    if (takeSelf) {
+      run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, 0)', { id, uid: user.id })
+      setStatus({ id } as RequestRow, 'waiting')
+      logEvent(id, user.id, 'take', 'requested', 'waiting', `담당: ${user.name}`)
+    }
+    if (proxy.requester) {
+      notify([proxy.requester.id], user.id, id, `${user.name}님이 ${proxy.source}로 받은 요청을 요청서로 등록했습니다: ${title}`)
+    }
+    notify(
+      managersAndDesigners().filter((uid) => uid !== proxy.requester?.id),
+      user.id,
+      id,
+      `새 디자인 요청(${proxy.source} · ${who}${takeSelf ? ` · 담당 ${user.name}` : ''}): ${title}`,
+    )
     return id
   })
 }

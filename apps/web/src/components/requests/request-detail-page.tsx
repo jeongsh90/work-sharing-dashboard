@@ -229,6 +229,12 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           <Meta label="요청자">
             {detail.requesterName}
             {detail.department && <span className="text-muted-foreground"> · {detail.department}</span>}
+            {/* 대신 작성한 요청: 받은 경로와 쓴 사람 */}
+            {detail.source && (
+              <span className="mt-1 flex w-fit items-center rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+                {detail.source} 요청{detail.createdBy && ` · 작성 ${userName(detail.createdBy)}`}
+              </span>
+            )}
           </Meta>
           <Meta label="담당">
             {detail.designers.length === 0 ? (

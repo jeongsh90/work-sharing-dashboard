@@ -52,8 +52,8 @@ export function AppSidebar({
   onSwitched: OnSwitched
 }) {
   const fresh = useFreshMenus(session.id)
-  // 요청자·관리자: "디자인 요청"은 메뉴 목록 대신 로고 아래 큰 버튼으로 둔다(작업자는 메뉴 그대로)
-  const requestButton = session.role === "requester" || session.role === "admin" || session.role === "superadmin"
+  // "디자인 요청"은 메뉴 목록 대신 로고 아래 큰 버튼으로 둔다(작업자는 대신 작성)
+  const requestButton = true
 
   return (
     <Sidebar collapsible="icon" {...props}>

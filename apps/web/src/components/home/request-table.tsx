@@ -228,7 +228,10 @@ export function RequestTable({
                   </TableCell>
                   <TableCell>
                     <div>{r.requester}</div>
-                    <div className="text-xs text-muted-foreground">{r.department}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {r.department}
+                      {r.source && <span className="text-violet-600 dark:text-violet-300">{r.department ? " · " : ""}{r.source} 요청</span>}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {isUnassigned(r) ? (
