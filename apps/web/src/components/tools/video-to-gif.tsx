@@ -109,19 +109,46 @@ function FrameStrip({
   duration,
   range,
   time,
+  disabled,
+  onRange,
   onSeek,
 }: {
   thumbs: (string | null)[]
   duration: number
   range: [number, number]
   time: number
+  disabled?: boolean
+  onRange: (range: [number, number], commit: boolean) => void
   onSeek: (t: number) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const pct = (t: number) => `${(Math.min(Math.max(t / duration, 0), 1) * 100).toFixed(3)}%`
-  const at = (e: React.PointerEvent) => {
+  const timeAt = (e: React.PointerEvent) => {
     const r = ref.current!.getBoundingClientRect()
-    onSeek(Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * duration)
+    return Math.round(Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * duration * 10) / 10
+  }
+  const at = (e: React.PointerEvent) => onSeek(timeAt(e))
+  // 구간 테두리 왼쪽·오른쪽 손잡이를 끌어 구간을 바꾼다(최소 0.1초)
+  const edge = (side: 0 | 1) => {
+    const next = (e: React.PointerEvent): [number, number] => {
+      const t = timeAt(e)
+      return side === 0 ? [Math.min(t, range[1] - 0.1), range[1]] : [range[0], Math.max(t, range[0] + 0.1)]
+    }
+    return {
+      onPointerDown: (e: React.PointerEvent) => {
+        e.stopPropagation()
+        if (disabled) return
+        e.currentTarget.setPointerCapture(e.pointerId)
+      },
+      onPointerMove: (e: React.PointerEvent) => {
+        e.stopPropagation()
+        if (!disabled && e.buttons === 1) onRange(next(e), false)
+      },
+      onPointerUp: (e: React.PointerEvent) => {
+        e.stopPropagation()
+        if (!disabled) onRange(next(e), true)
+      },
+    }
   }
   return (
     <div
@@ -157,9 +184,24 @@ function FrameStrip({
       <div className="pointer-events-none absolute inset-y-0 left-0 bg-black/60" style={{ width: pct(range[0]) }} />
       <div className="pointer-events-none absolute inset-y-0 right-0 bg-black/60" style={{ left: pct(range[1]) }} />
       <div
-        className="pointer-events-none absolute inset-y-0 rounded-sm border-2 border-primary"
+        className="pointer-events-none absolute inset-y-0 rounded-sm border-y-2 border-primary"
         style={{ left: pct(range[0]), width: `calc(${pct(range[1])} - ${pct(range[0])})` }}
       />
+      {([0, 1] as const).map((side) => (
+        <div
+          key={side}
+          {...edge(side)}
+          role="slider"
+          aria-label={side === 0 ? "구간 시작" : "구간 끝"}
+          aria-valuemin={0}
+          aria-valuemax={Math.round(duration * 10) / 10}
+          aria-valuenow={range[side]}
+          className={`absolute inset-y-0 z-10 flex w-3 cursor-ew-resize items-center justify-center bg-primary ${side === 0 ? "rounded-l-md" : "-translate-x-full rounded-r-md"}`}
+          style={{ left: pct(range[side]) }}
+        >
+          <span className="h-5 w-0.5 rounded-full bg-primary-foreground/70" />
+        </div>
+      ))}
       {/* 재생 위치 */}
       <div className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" style={{ left: pct(time) }} />
     </div>
@@ -175,7 +217,7 @@ export function VideoToGifTool() {
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")
   const [error, setError] = useState<string | null>(null)
-  const [progress, setProgress] = useState<{ step: string; ratio: number } | null>(null)
+  const [progress, setProgress] = useState<{ step: string; ratio: number; done: number } | null>(null)
   const [result, setResult] = useState<Result | null>(null)
   const [playing, setPlaying] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -226,6 +268,12 @@ export function VideoToGifTool() {
     // 멈춰 있을 때는 프레임 띠에서 구간 밖을 눌러 봐도 그 자리에 둔다
     if (!v.paused && (v.currentTime >= range[1] || v.currentTime < range[0] - 0.05)) v.currentTime = range[0]
   }
+
+  // 재생 속도를 미리보기에도 반영한다(결과를 보다 돌아오면 영상이 새로 붙어 다시 맞춘다)
+  useEffect(() => {
+    const v = preview.current
+    if (v) v.defaultPlaybackRate = v.playbackRate = Number(speed)
+  }, [speed, source, result])
 
   // 재생 위치(프레임 띠의 세로선). 재생 중에는 화면 그릴 때마다 따라간다
   const [time, setTime] = useState(0)
@@ -372,12 +420,15 @@ export function VideoToGifTool() {
       const delay = Math.max(20, Math.round(1000 / Number(fps) / Number(speed) / 10) * 10)
       const finished = new Promise<ArrayBuffer>((resolve) => {
         worker.onmessage = (e: MessageEvent<GifWorkerOut>) => {
-          if (e.data.type === "frame-done") setProgress({ step: "GIF 만드는 중", ratio: e.data.index / frames })
+          if (e.data.type === "frame-done") {
+            const done = e.data.index
+            setProgress({ step: done >= frames ? "마무리하는 중" : "변환하는 중", ratio: Math.min(done / frames, 0.99), done })
+          }
           else resolve(e.data.bytes)
         }
       })
       worker.postMessage({ type: "start", width: outW, height: outH, repeat: Number(repeat), colors: Number(colors), delay } satisfies GifWorkerIn)
-      setProgress({ step: "장면 뽑는 중", ratio: 0 })
+      setProgress({ step: "변환하는 중", ratio: 0, done: 0 })
       for (let i = 0; i < frames; i++) {
         if (cancelled) return
         await seek(video, Math.min(range[0] + i / Number(fps), source.duration - 0.001))
@@ -390,7 +441,13 @@ export function VideoToGifTool() {
       if (cancelled) return
       const blob = new Blob([bytes], { type: "image/gif" })
       const base = source.file.name.replace(/\.[^.]+$/, "")
-      setResult({ url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.gif` })
+      const made = { url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.gif` }
+      setResult(made)
+      // 변환이 끝나면 바로 내려받는다(결과 화면에서 다시 받을 수도 있다)
+      const a = document.createElement("a")
+      a.href = made.url
+      a.download = made.name
+      a.click()
     } catch {
       if (!cancelled) setError("변환하지 못했습니다. 다른 동영상 형식(MP4·WebM)으로 다시 시도해 주세요.")
     } finally {
@@ -655,20 +712,24 @@ export function VideoToGifTool() {
               </Field>
 
               {busy ? (
-                <div className="flex flex-col gap-2 rounded-lg border p-3">
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
                   <div className="flex items-center gap-2 text-sm">
                     <span className="font-medium">{progress.step}…</span>
-                    <span className="text-muted-foreground tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+                    <span className="text-lg font-semibold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {progress.done} / {frames}장
+                    </span>
                     <Button variant="ghost" size="xs" className="ml-auto" onClick={() => cancelRef.current?.()}>
                       취소
                     </Button>
                   </div>
-                  <Progress value={progress.ratio * 100} />
+                  <Progress value={progress.ratio * 100} className="h-2" />
+                  <span className="text-xs text-muted-foreground">끝나면 GIF 가 바로 내려받아집니다.</span>
                 </div>
               ) : (
                 <Button size="lg" className="w-full" disabled={tooMany || length <= 0} onClick={() => void convert()}>
                   <Wand2 data-icon="inline-start" />
-                  GIF 로 변환
+                  GIF 로 변환 후 내려받기
                 </Button>
               )}
             </>
@@ -712,6 +773,15 @@ export function VideoToGifTool() {
               <span className="text-xs text-muted-foreground">고른 구간만 반복해서 보여 줍니다</span>
             </div>
             <div className="relative overflow-hidden rounded-xl border bg-black">
+              {progress && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
+                  <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+                  <span className="text-sm text-white/80">
+                    {progress.step}… {progress.done} / {frames}장
+                  </span>
+                  <Progress value={progress.ratio * 100} className="h-2 w-2/3 bg-white/20" />
+                </div>
+              )}
               <video
                 ref={preview}
                 src={source.url}
@@ -720,6 +790,7 @@ export function VideoToGifTool() {
                 playsInline
                 onTimeUpdate={onTime}
                 onSeeked={onSeeked}
+                onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
                 onPlay={() => setPlaying(true)}
                 onPause={() => setPlaying(false)}
                 onClick={togglePlay}
@@ -740,6 +811,13 @@ export function VideoToGifTool() {
               duration={source.duration}
               range={range}
               time={time}
+              disabled={busy}
+              onRange={(next, commit) => {
+                setSliding(!commit)
+                setRange(next)
+                if (commit) playRange(next[0])
+                else seekPreview(next[0] !== range[0] ? next[0] : next[1])
+              }}
               onSeek={(t) => {
                 setTime(t)
                 seekPreview(t)
