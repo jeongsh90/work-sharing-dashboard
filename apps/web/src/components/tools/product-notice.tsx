@@ -4,11 +4,11 @@ import { Check, Copy, Download, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { EmphasisTextarea } from "@/components/tools/emphasis-textarea"
 import { ToolHistory } from "@/components/tools/tool-history"
 import { SortableList } from "@/components/sortable-list"
 import { api } from "@/lib/api"
-import { applyFont, loadFonts, wrapText, type TextStyle } from "@/lib/canvas-text"
+import { applyFont, fillRich, loadFonts, stripEmphasis, wrapRich, wrapText, type RichRun, type TextStyle } from "@/lib/canvas-text"
 import { invalidate } from "@/lib/store"
 
 // 디자인 툴 > 상품정보고시: 고시 항목·주의사항·영양정보를 입력하면 상세페이지용 이미지(가로 860)를 만든다.
@@ -86,6 +86,17 @@ function contentOf(f: Form) {
   return { rows, notes, nutri, nutriNote, nutriTitle: tidy(f.nutriTitle) }
 }
 
+// 강조 표시(**)를 뺀 내용(alt·히스토리 제목)
+function plainContent(f: Form) {
+  const c = contentOf(f)
+  return {
+    ...c,
+    rows: c.rows.map((r) => ({ label: r.label, value: stripEmphasis(r.value) })),
+    notes: c.notes.map(stripEmphasis),
+    nutriNote: c.nutriNote.map(stripEmphasis),
+  }
+}
+
 // 그리기: 먼저 높이를 재고(measure=true) 그다음 실제로 그린다
 function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
   const c = contentOf(f)
@@ -98,6 +109,14 @@ function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
     ctx.textBaseline = "middle"
     ctx.fillText(str, x, lineY + lh / 2)
   }
+  // 강조(**…**)가 들어간 한 줄: 강조 부분만 브랜드 색
+  const rich = (s: TextStyle, color: string, runs: RichRun[], x: number, lineY: number, lh: number) => {
+    if (measure) return
+    applyFont(ctx, s)
+    ctx.textBaseline = "middle"
+    fillRich(ctx, runs, x, lineY + lh / 2, color, ORANGE)
+  }
+  const allEm = (lines: RichRun[][]) => lines.flat().length > 0 && lines.flat().every((r) => r.em)
   const rule = (yy: number, h: number, color: string) => {
     if (measure) return
     ctx.fillStyle = color
@@ -118,10 +137,10 @@ function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
       applyFont(ctx, S.label)
       const labelLines = wrapText(ctx, r.label, 110)
       applyFont(ctx, S.value)
-      const valueLines = r.value ? wrapText(ctx, r.value, valueW) : [""]
+      const valueLines = r.value ? wrapRich(ctx, r.value, valueW) : [[]]
       const h = Math.max(labelLines.length * LH.label, valueLines.length * LH.value)
       labelLines.forEach((l, i) => text(S.label, MAIN, l, PAD.side + 16, y + 16 + i * LH.label, LH.label))
-      valueLines.forEach((l, i) => text(S.value, SUB, l, PAD.side + 16 + 110 + 24, y + 16 + i * LH.value, LH.value))
+      valueLines.forEach((l, i) => rich(S.value, SUB, l, PAD.side + 16 + 110 + 24, y + 16 + i * LH.value, LH.value))
       y += 16 + h + 16
       rule(y, 1, LINE)
       y += 1
@@ -134,9 +153,9 @@ function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
     applyFont(ctx, S.note)
     c.notes.forEach((n, i) => {
       if (i > 0) y += 10
-      const lines = wrapText(ctx, n, CONTENT_W - 24 - 7)
-      text(S.note, SUB, "※", PAD.side, y, LH.note)
-      lines.forEach((l, li) => text(S.note, SUB, l, PAD.side + 24 + 7, y + li * LH.note, LH.note))
+      const lines = wrapRich(ctx, n, CONTENT_W - 24 - 7)
+      text(S.note, allEm(lines) ? ORANGE : SUB, "※", PAD.side, y, LH.note)
+      lines.forEach((l, li) => rich(S.note, SUB, l, PAD.side + 24 + 7, y + li * LH.note, LH.note))
       applyFont(ctx, S.note)
       y += lines.length * LH.note
     })
@@ -176,9 +195,9 @@ function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
       applyFont(ctx, S.value)
       c.nutriNote.forEach((n, i) => {
         if (i > 0) y += 10
-        const lines = wrapText(ctx, n, CONTENT_W - 20 - 10)
-        text(S.value, SUB, "※", PAD.side, y, LH.value)
-        lines.forEach((l, li) => text(S.value, SUB, l, PAD.side + 30, y + li * LH.value, LH.value))
+        const lines = wrapRich(ctx, n, CONTENT_W - 20 - 10)
+        text(S.value, allEm(lines) ? ORANGE : SUB, "※", PAD.side, y, LH.value)
+        lines.forEach((l, li) => rich(S.value, SUB, l, PAD.side + 30, y + li * LH.value, LH.value))
         applyFont(ctx, S.value)
         y += lines.length * LH.value
       })
@@ -201,7 +220,7 @@ async function draw(canvas: HTMLCanvasElement, f: Form) {
 
 // 이미지 alt(사양 10-1): 긴 내용도 alt 하나에
 function altText(f: Form) {
-  const c = contentOf(f)
+  const c = plainContent(f)
   const name = c.rows.find((r) => r.label === "제품명")?.value ?? ""
   const parts = [
     ...c.rows.map((r) => `${r.label}: ${r.label === "제조원" ? r.value.replace(/\s*\|\s*/g, ", ") : r.value}`),
@@ -237,7 +256,7 @@ export function ProductNoticeTool() {
   const saveHistory = (name: string) => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const title = contentOf(form).rows.find((r) => r.label === "제품명")?.value || "제목 없음"
+    const title = plainContent(form).rows.find((r) => r.label === "제품명")?.value || "제목 없음"
     api("/tools/product-notice/history", { body: { title, fileName: name, form, image: canvas.toDataURL("image/jpeg", 0.92) } }).then(
       () => invalidate(),
       () => {},
@@ -300,9 +319,9 @@ export function ProductNoticeTool() {
                 <div key={r.id} className="flex items-start gap-2">
                   <span className="w-5 shrink-0" aria-hidden />
                   <Input value={r.label} readOnly aria-label="항목 제목" className="w-28 shrink-0 bg-muted" />
-                  <Textarea
+                  <EmphasisTextarea
                     value={r.value}
-                    onChange={(e) => setRow(r.id, { value: e.target.value })}
+                    onValueChange={(value) => setRow(r.id, { value })}
                     placeholder="내용"
                     aria-label={`${r.label} 내용`}
                     className="min-h-9 py-1.5 break-keep"
@@ -319,9 +338,9 @@ export function ProductNoticeTool() {
               <div className="flex items-start gap-2">
                 {handle}
                 <Input value={r.label} onChange={(e) => setRow(r.id, { label: e.target.value })} placeholder="제목" aria-label="항목 제목" className="w-28 shrink-0" />
-                <Textarea
+                <EmphasisTextarea
                   value={r.value}
-                  onChange={(e) => setRow(r.id, { value: e.target.value })}
+                  onValueChange={(value) => setRow(r.id, { value })}
                   placeholder="내용"
                   aria-label={`${r.label || "항목"} 내용`}
                   className="min-h-9 py-1.5 break-keep"
@@ -347,14 +366,14 @@ export function ProductNoticeTool() {
 
         <Field>
           <FieldLabel htmlFor="notice-notes">주의사항</FieldLabel>
-          <Textarea
+          <EmphasisTextarea
             id="notice-notes"
             value={form.notes}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onValueChange={(notes) => setForm((f) => ({ ...f, notes }))}
             placeholder={"한 줄에 하나씩 적어 주세요. 앞에 ※ 는 자동으로 붙습니다.\n예: 개봉한 제품은 변질될 우려가 있으므로 가급적 빨리 드시기 바랍니다."}
             className="min-h-28 break-keep"
           />
-          <FieldDescription>비워 두면 이미지에 나오지 않습니다.</FieldDescription>
+          <FieldDescription>비워 두면 이미지에 나오지 않습니다. 글을 드래그해 고른 뒤 강조(Ctrl+B)를 누르면 그 부분만 브랜드 색으로 나옵니다(다시 누르면 풀기).</FieldDescription>
         </Field>
 
         {/* 영양정보 */}
@@ -406,7 +425,7 @@ export function ProductNoticeTool() {
 
         <Field>
           <FieldLabel htmlFor="nutri-note">영양정보 안내</FieldLabel>
-          <Textarea id="nutri-note" value={form.nutriNote} onChange={(e) => setForm((f) => ({ ...f, nutriNote: e.target.value }))} className="min-h-20 break-keep" />
+          <EmphasisTextarea id="nutri-note" value={form.nutriNote} onValueChange={(nutriNote) => setForm((f) => ({ ...f, nutriNote }))} className="min-h-20 break-keep" />
           <FieldDescription>비워 두면 이미지에 나오지 않습니다.</FieldDescription>
         </Field>
 

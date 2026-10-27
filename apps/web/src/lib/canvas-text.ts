@@ -77,3 +77,61 @@ export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   }
   return lines
 }
+
+// 강조(브랜드 색): 입력 글에서 **…** 로 감싼 부분. 글자는 그대로 두고 색만 바꿔 그린다.
+const EMPHASIS = /\*\*([\s\S]+?)\*\*/g
+
+export function stripEmphasis(text: string) {
+  return text.replace(EMPHASIS, "$1")
+}
+
+// 표시 글자와 글자마다 강조 여부
+function parseEmphasis(text: string) {
+  let plain = ""
+  const marks: boolean[] = []
+  let last = 0
+  for (const m of text.matchAll(EMPHASIS)) {
+    const before = text.slice(last, m.index)
+    plain += before
+    marks.push(...Array.from(before, () => false))
+    plain += m[1]
+    marks.push(...Array.from(m[1], () => true))
+    last = m.index + m[0].length
+  }
+  const rest = text.slice(last)
+  plain += rest
+  marks.push(...Array.from(rest, () => false))
+  return { plain, marks }
+}
+
+export type RichRun = { t: string; em: boolean }
+
+// wrapText 와 같은 줄바꿈에 강조 조각을 얹는다. 줄의 글자는 원문 글자를 차례로 따라가며 찾는다(줄바꿈에서 빠진 띄어쓰기는 건너뜀).
+export function wrapRich(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): RichRun[][] {
+  const { plain, marks } = parseEmphasis(text)
+  const chars = Array.from(plain)
+  let p = 0
+  return wrapText(ctx, plain, maxWidth).map((line) => {
+    const runs: RichRun[] = []
+    for (const ch of line) {
+      while (p < chars.length && chars[p] !== ch) p++
+      const em = marks[p] ?? false
+      p++
+      const prev = runs[runs.length - 1]
+      if (prev && prev.em === em) prev.t += ch
+      else runs.push({ t: ch, em })
+    }
+    return runs
+  })
+}
+
+// 왼쪽 맞춤으로 한 줄의 조각을 이어 그린다(글꼴은 미리 applyFont)
+export function fillRich(ctx: CanvasRenderingContext2D, runs: RichRun[], x: number, y: number, color: string, emColor: string) {
+  ctx.textAlign = "left"
+  let cx = x
+  for (const r of runs) {
+    ctx.fillStyle = r.em ? emColor : color
+    ctx.fillText(r.t, cx, y)
+    cx += ctx.measureText(r.t).width
+  }
+}
