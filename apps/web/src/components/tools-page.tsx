@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ClipboardList, FileCheck2, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, FileCheck2, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PurchaseCertTool } from "@/components/tools/purchase-cert"
 import { ProductNoticeTool } from "@/components/tools/product-notice"
+import { VideoToGifTool } from "@/components/tools/video-to-gif"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
@@ -45,6 +46,14 @@ const TOOLS: Tool[] = [
     description: "상품 상세페이지를 만들고 정리하는 도구",
     icon: LayoutTemplate,
     color: "from-sky-400 to-indigo-600",
+  },
+  {
+    id: "video-to-gif",
+    name: "동영상 → GIF",
+    description: "동영상 파일(MP4·MOV·WebM)을 구간·크기·속도를 정해 GIF 로 바꾸는 도구",
+    icon: Clapperboard,
+    color: "from-fuchsia-400 to-purple-600",
+    body: <VideoToGifTool />,
   },
   {
     id: "mail-signature",
