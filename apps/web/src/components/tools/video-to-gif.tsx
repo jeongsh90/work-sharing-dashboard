@@ -533,7 +533,11 @@ export function VideoToGifTool() {
               >
                 <Upload className="size-7" />
                 <span className="font-medium text-foreground">동영상 파일 고르기</span>
-                <span>MP4·MOV·WebM 을 고르거나 여기에 끌어 놓으세요. 파일은 서버에 올라가지 않습니다.</span>
+                <span className="break-keep">
+                  MP4·MOV·WebM 을 고르거나 여기에 끌어 놓으세요.
+                  <br />
+                  파일은 서버에 올라가지 않습니다.
+                </span>
               </button>
             )}
             {error && <FieldError>{error}</FieldError>}
