@@ -158,9 +158,9 @@ const BAR_BUTTON = "h-12 px-6 text-base"
 // 예) 작업 시작 → 작업 중(파랑), 컨펌 요청 → 시안 확인(보라), 반려 → 수정 중(주황), 작업 완료 → 완료(초록)
 // 모두 외곽선 형태: 테두리·글자만 상태 색, 마우스를 올리면 같은 색으로 옅게 칠한다.
 const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
-  take: "border-pink-500 text-pink-700 hover:bg-pink-500/10 hover:text-pink-700 dark:border-pink-500/70 dark:text-pink-300 dark:hover:bg-pink-500/15 dark:hover:text-pink-300",
+  take: "border-sky-500 text-sky-700 hover:bg-sky-500/10 hover:text-sky-700 dark:border-sky-500/70 dark:text-sky-300 dark:hover:bg-sky-500/15 dark:hover:text-sky-300",
   reassign: "border-indigo-500 text-indigo-700 hover:bg-indigo-500/10 hover:text-indigo-700 dark:border-indigo-500/70 dark:text-indigo-300 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-300",
-  assign: "border-pink-500 text-pink-700 hover:bg-pink-500/10 hover:text-pink-700 dark:border-pink-500/70 dark:text-pink-300 dark:hover:bg-pink-500/15 dark:hover:text-pink-300",
+  assign: "border-sky-500 text-sky-700 hover:bg-sky-500/10 hover:text-sky-700 dark:border-sky-500/70 dark:text-sky-300 dark:hover:bg-sky-500/15 dark:hover:text-sky-300",
   start: "border-blue-500 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700 dark:border-blue-500/70 dark:text-blue-300 dark:hover:bg-blue-500/15 dark:hover:text-blue-300",
   submit: "border-violet-500 text-violet-700 hover:bg-violet-500/10 hover:text-violet-700 dark:border-violet-500/70 dark:text-violet-300 dark:hover:bg-violet-500/15 dark:hover:text-violet-300",
   approve: "border-teal-500 text-teal-700 hover:bg-teal-500/10 hover:text-teal-700 dark:border-teal-500/70 dark:text-teal-300 dark:hover:bg-teal-500/15 dark:hover:text-teal-300",

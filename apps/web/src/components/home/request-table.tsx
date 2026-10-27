@@ -206,6 +206,8 @@ export function RequestTable({
               const waitingAssign = isUnassigned(r) && isActive(r)
               // 컨펌 대기(시안 확인 중)도 같은 방식으로 보라 선·배경
               const waitingReview = r.status === "review"
+              // 담당은 정해졌지만 아직 시작 전(작업 대기)은 하늘색 선·배경으로 작업 중과 구분
+              const waitingStart = r.status === "waiting"
               return (
                 <TableRow
                   key={r.id}
@@ -214,7 +216,9 @@ export function RequestTable({
                       ? "cursor-pointer bg-amber-500/8 shadow-[inset_3px_0_0_var(--color-amber-500)] hover:bg-amber-500/15"
                       : waitingReview
                         ? "cursor-pointer bg-violet-500/8 shadow-[inset_3px_0_0_var(--color-violet-500)] hover:bg-violet-500/15"
-                        : "cursor-pointer"
+                        : waitingStart
+                          ? "cursor-pointer bg-sky-500/8 shadow-[inset_3px_0_0_var(--color-sky-500)] hover:bg-sky-500/15"
+                          : "cursor-pointer"
                   }
                   onClick={() => openRequest(r.id)}
                 >
