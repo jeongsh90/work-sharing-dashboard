@@ -224,10 +224,10 @@ export function LibraryPage({ session }: { session: Session }) {
         ) : (
           <ul className="grid grid-cols-12 gap-4">
             {list.map((item) => (
-              <li key={item.id} className="col-span-12 flex flex-col overflow-hidden rounded-xl border bg-card sm:col-span-6 lg:col-span-4 xl:col-span-3">
+              <li key={item.id} className="col-span-12 flex flex-col overflow-hidden rounded-xl border bg-card transition-colors hover:border-primary/50 sm:col-span-6 lg:col-span-4 xl:col-span-3">
                 <button
                   type="button"
-                  className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
+                  className="group relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
                   onClick={() => void downloadLargeFile(item.file.id, item.file.name)}
                   title={`${item.file.name} 내려받기`}
                 >
@@ -236,6 +236,14 @@ export function LibraryPage({ session }: { session: Session }) {
                   ) : (
                     <TypeBadge name={item.file.name} className="size-20 text-xl" />
                   )}
+                  {/* 마우스를 올리면(또는 키보드로 고르면) 내려받기 표시 */}
+                  <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white opacity-0 backdrop-blur-[2px] transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    <span className="flex size-12 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/30 backdrop-blur-sm">
+                      <Download className="size-5" />
+                    </span>
+                    <span className="text-sm font-medium">내려받기</span>
+                    <span className="text-xs text-white/70 tabular-nums">{formatBytes(item.file.size)}</span>
+                  </span>
                 </button>
                 <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
                   <div className="flex items-start gap-2">
