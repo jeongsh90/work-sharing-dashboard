@@ -490,7 +490,8 @@ export function VideoToGifTool() {
       />
 
       {/* 오른쪽: 설정(넓은 화면에서는 미리보기 오른쪽) */}
-      <div className="col-span-12 lg:order-2 lg:col-span-5">
+      {/* 동영상을 고르기 전에는 고르기 칸만 화면 가운데 */}
+      <div className={source ? "col-span-12 lg:order-2 lg:col-span-5" : "col-span-12 md:col-span-8 md:col-start-3 lg:col-span-6 lg:col-start-4"}>
         <FieldGroup>
           <Field>
             <FieldLabel>동영상</FieldLabel>
@@ -738,99 +739,96 @@ export function VideoToGifTool() {
       </div>
 
       {/* 왼쪽: 미리보기(동영상) → 결과(GIF) */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:order-1 lg:col-span-7">
-        {result ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="mr-auto font-semibold">
-                결과 GIF
-                <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
-                  {result.width}×{result.height} · {result.frames}장 · {formatBytes(result.size)}
-                </span>
-              </h3>
-              <Button variant="outline" size="sm" onClick={() => setResult(null)}>
-                <RotateCcw data-icon="inline-start" />
-                다시 설정
-              </Button>
-              <Button size="sm" onClick={download}>
-                <Download data-icon="inline-start" />
-                GIF 내려받기
-              </Button>
-            </div>
-            <div className="flex justify-center overflow-hidden rounded-xl border bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-4">
-              <img src={result.url} alt={`${result.name} 미리보기`} className="max-h-[70vh] max-w-full object-contain" />
-            </div>
-            {result.size > 10 * 1024 * 1024 && (
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                10MB 가 넘습니다. 쇼핑몰에 올리기 무거우면 가로 크기·초당 장수·화질을 낮추거나 구간을 줄여 보세요.
-              </p>
-            )}
-          </>
-        ) : source ? (
-          <>
-            <div className="flex items-center gap-2">
-              <h3 className="mr-auto font-semibold">미리보기</h3>
-              <span className="text-xs text-muted-foreground">고른 구간만 반복해서 보여 줍니다</span>
-            </div>
-            <div className="relative overflow-hidden rounded-xl border bg-black">
-              {progress && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
-                  <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
-                  <span className="text-sm text-white/80">
-                    {progress.step}… {progress.done} / {frames}장
+      {source && (
+        <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:order-1 lg:col-span-7">
+          {result ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="mr-auto font-semibold">
+                  결과 GIF
+                  <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
+                    {result.width}×{result.height} · {result.frames}장 · {formatBytes(result.size)}
                   </span>
-                  <Progress value={progress.ratio * 100} className="h-2 w-2/3 bg-white/20" />
-                </div>
+                </h3>
+                <Button variant="outline" size="sm" onClick={() => setResult(null)}>
+                  <RotateCcw data-icon="inline-start" />
+                  다시 설정
+                </Button>
+                <Button size="sm" onClick={download}>
+                  <Download data-icon="inline-start" />
+                  GIF 내려받기
+                </Button>
+              </div>
+              <div className="flex justify-center overflow-hidden rounded-xl border bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-4">
+                <img src={result.url} alt={`${result.name} 미리보기`} className="max-h-[70vh] max-w-full object-contain" />
+              </div>
+              {result.size > 10 * 1024 * 1024 && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  10MB 가 넘습니다. 쇼핑몰에 올리기 무거우면 가로 크기·초당 장수·화질을 낮추거나 구간을 줄여 보세요.
+                </p>
               )}
-              <video
-                ref={preview}
-                src={source.url}
-                preload="auto"
-                muted
-                playsInline
-                onTimeUpdate={onTime}
-                onSeeked={onSeeked}
-                onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onClick={togglePlay}
-                className="max-h-[60vh] w-full cursor-pointer object-contain"
+            </>
+          ) : source ? (
+            <>
+              <div className="flex items-center gap-2">
+                <h3 className="mr-auto font-semibold">미리보기</h3>
+                <span className="text-xs text-muted-foreground">고른 구간만 반복해서 보여 줍니다</span>
+              </div>
+              <div className="relative overflow-hidden rounded-xl border bg-black">
+                {progress && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
+                    <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+                    <span className="text-sm text-white/80">
+                      {progress.step}… {progress.done} / {frames}장
+                    </span>
+                    <Progress value={progress.ratio * 100} className="h-2 w-2/3 bg-white/20" />
+                  </div>
+                )}
+                <video
+                  ref={preview}
+                  src={source.url}
+                  preload="auto"
+                  muted
+                  playsInline
+                  onTimeUpdate={onTime}
+                  onSeeked={onSeeked}
+                  onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onClick={togglePlay}
+                  className="max-h-[60vh] w-full cursor-pointer object-contain"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
+                  {playing ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+                  {playing ? "멈춤" : "구간 재생"}
+                </Button>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {fmt(time)} / {fmt(source.duration)}
+                </span>
+              </div>
+              <FrameStrip
+                thumbs={thumbs}
+                duration={source.duration}
+                range={range}
+                time={time}
+                disabled={busy}
+                onRange={(next, commit) => {
+                  setSliding(!commit)
+                  setRange(next)
+                  if (commit) playRange(next[0])
+                  else seekPreview(next[0] !== range[0] ? next[0] : next[1])
+                }}
+                onSeek={(t) => {
+                  setTime(t)
+                  seekPreview(t)
+                }}
               />
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
-                {playing ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-                {playing ? "멈춤" : "구간 재생"}
-              </Button>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {fmt(time)} / {fmt(source.duration)}
-              </span>
-            </div>
-            <FrameStrip
-              thumbs={thumbs}
-              duration={source.duration}
-              range={range}
-              time={time}
-              disabled={busy}
-              onRange={(next, commit) => {
-                setSliding(!commit)
-                setRange(next)
-                if (commit) playRange(next[0])
-                else seekPreview(next[0] !== range[0] ? next[0] : next[1])
-              }}
-              onSeek={(t) => {
-                setTime(t)
-                seekPreview(t)
-              }}
-            />
-          </>
-        ) : (
-          <div className="flex min-h-80 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-            <Film className="size-8" />
-            동영상을 고르면 여기에 미리보기가 나옵니다.
-          </div>
-        )}
-      </div>
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }
