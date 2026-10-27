@@ -5,7 +5,7 @@ import type { RequestStatus } from './requests'
 export const STATUS_TEXT: Record<RequestStatus, string> = {
   requested: 'text-slate-700 dark:text-slate-300',
   'needs-info': 'text-amber-800 dark:text-amber-300',
-  waiting: 'text-sky-700 dark:text-sky-300',
+  waiting: 'text-pink-700 dark:text-pink-300',
   'in-progress': 'text-blue-700 dark:text-blue-300',
   review: 'text-violet-700 dark:text-violet-300',
   revising: 'text-orange-800 dark:text-orange-300',
@@ -18,7 +18,7 @@ export const STATUS_TEXT: Record<RequestStatus, string> = {
 export const STATUS_BG: Record<RequestStatus, string> = {
   requested: 'bg-slate-500/10',
   'needs-info': 'bg-amber-500/15',
-  waiting: 'bg-sky-500/10',
+  waiting: 'bg-pink-500/10',
   'in-progress': 'bg-blue-500/10',
   review: 'bg-violet-500/10',
   revising: 'bg-orange-500/15',
@@ -32,7 +32,7 @@ export const STATUS_BG: Record<RequestStatus, string> = {
 export const STATUS_BEAM: Record<RequestStatus, string> = {
   requested: '#64748b',
   'needs-info': '#f59e0b',
-  waiting: '#0ea5e9',
+  waiting: '#ec4899',
   'in-progress': '#3b82f6',
   review: '#8b5cf6',
   revising: '#f97316',
