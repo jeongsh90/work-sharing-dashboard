@@ -287,8 +287,8 @@ export function VideoToGifTool() {
         }}
       />
 
-      {/* 왼쪽: 설정 */}
-      <div className="col-span-12 lg:col-span-5">
+      {/* 오른쪽: 설정(넓은 화면에서는 미리보기 오른쪽) */}
+      <div className="col-span-12 lg:order-2 lg:col-span-5">
         <FieldGroup>
           <Field>
             <FieldLabel>동영상</FieldLabel>
@@ -530,8 +530,8 @@ export function VideoToGifTool() {
         </FieldGroup>
       </div>
 
-      {/* 오른쪽: 미리보기(동영상) → 결과(GIF) */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-7">
+      {/* 왼쪽: 미리보기(동영상) → 결과(GIF) */}
+      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:order-1 lg:col-span-7">
         {result ? (
           <>
             <div className="flex flex-wrap items-center gap-2">
