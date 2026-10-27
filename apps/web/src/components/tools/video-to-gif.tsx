@@ -100,6 +100,72 @@ async function measurePerFrame(
   }
 }
 
+// 프레임 띠 칸 수
+const STRIP = 12
+
+// 미리보기 아래 프레임 띠: 고른 구간 밖은 어둡게, 구간은 테두리, 재생 위치는 세로선. 누르거나 끌면 그 장면으로 옮긴다.
+function FrameStrip({
+  thumbs,
+  duration,
+  range,
+  time,
+  onSeek,
+}: {
+  thumbs: (string | null)[]
+  duration: number
+  range: [number, number]
+  time: number
+  onSeek: (t: number) => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const pct = (t: number) => `${(Math.min(Math.max(t / duration, 0), 1) * 100).toFixed(3)}%`
+  const at = (e: React.PointerEvent) => {
+    const r = ref.current!.getBoundingClientRect()
+    onSeek(Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * duration)
+  }
+  return (
+    <div
+      ref={ref}
+      className="relative h-16 cursor-pointer touch-none overflow-hidden rounded-lg border bg-muted select-none"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId)
+        at(e)
+      }}
+      onPointerMove={(e) => e.buttons === 1 && at(e)}
+      role="slider"
+      aria-label="재생 위치"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration * 10) / 10}
+      aria-valuenow={Math.round(time * 10) / 10}
+      aria-valuetext={fmt(time)}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft") onSeek(Math.max(0, time - 0.1))
+        if (e.key === "ArrowRight") onSeek(Math.min(duration, time + 0.1))
+      }}
+    >
+      <div className="flex h-full">
+        {thumbs.map((url, i) =>
+          url ? (
+            <img key={i} src={url} alt="" draggable={false} className="h-full min-w-0 flex-1 object-cover" />
+          ) : (
+            <div key={i} className="h-full min-w-0 flex-1 animate-pulse border-r border-background/40 bg-muted-foreground/15 motion-reduce:animate-none" />
+          ),
+        )}
+      </div>
+      {/* 구간 밖은 어둡게 */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 bg-black/60" style={{ width: pct(range[0]) }} />
+      <div className="pointer-events-none absolute inset-y-0 right-0 bg-black/60" style={{ left: pct(range[1]) }} />
+      <div
+        className="pointer-events-none absolute inset-y-0 rounded-sm border-2 border-primary"
+        style={{ left: pct(range[0]), width: `calc(${pct(range[1])} - ${pct(range[0])})` }}
+      />
+      {/* 재생 위치 */}
+      <div className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" style={{ left: pct(time) }} />
+    </div>
+  )
+}
+
 export function VideoToGifTool() {
   const [source, setSource] = useState<Source | null>(null)
   const [range, setRange] = useState<[number, number]>([0, 0])
@@ -155,7 +221,85 @@ export function VideoToGifTool() {
   // 미리보기는 고른 구간만 되풀이한다
   const onTime = () => {
     const v = preview.current
-    if (v && (v.currentTime >= range[1] || v.currentTime < range[0] - 0.05)) v.currentTime = range[0]
+    if (!v) return
+    setTime(v.currentTime)
+    // 멈춰 있을 때는 프레임 띠에서 구간 밖을 눌러 봐도 그 자리에 둔다
+    if (!v.paused && (v.currentTime >= range[1] || v.currentTime < range[0] - 0.05)) v.currentTime = range[0]
+  }
+
+  // 재생 위치(프레임 띠의 세로선). 재생 중에는 화면 그릴 때마다 따라간다
+  const [time, setTime] = useState(0)
+  useEffect(() => {
+    if (!playing) return
+    let raf = 0
+    const tick = () => {
+      if (preview.current) setTime(preview.current.currentTime)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [playing])
+
+  // 프레임 띠: 영상 전체에서 고르게 장면을 뽑아 작은 그림으로 늘어놓는다(하나씩 채워진다)
+  const [thumbs, setThumbs] = useState<(string | null)[]>([])
+  useEffect(() => {
+    if (!source) return
+    let alive = true
+    const video = document.createElement("video")
+    video.muted = true
+    video.preload = "auto"
+    video.src = source.url
+    const h = 72
+    const w = Math.round((source.width * h) / source.height)
+    const canvas = document.createElement("canvas")
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext("2d")!
+    setThumbs(Array(STRIP).fill(null))
+    video.onloadeddata = async () => {
+      for (let i = 0; i < STRIP && alive; i++) {
+        try {
+          await seek(video, Math.min(((i + 0.5) * source.duration) / STRIP, source.duration - 0.001))
+        } catch {
+          return
+        }
+        if (!alive) return
+        ctx.drawImage(video, 0, 0, w, h)
+        const url = canvas.toDataURL("image/jpeg", 0.7)
+        setThumbs((list) => list.map((v, j) => (j === i ? url : v)))
+      }
+      video.removeAttribute("src")
+      video.load()
+    }
+    return () => {
+      alive = false
+      video.removeAttribute("src")
+      video.load()
+    }
+  }, [source])
+  // 손잡이를 끄는 동안: 4K 처럼 큰 영상은 한 번 옮기는 데 오래 걸려, 옮기는 중이면 마지막 위치만 기억했다가 끝나면 옮긴다
+  const pendingSeek = useRef<number | null>(null)
+  const [sliding, setSliding] = useState(false)
+  const seekPreview = (t: number) => {
+    const v = preview.current
+    if (!v) return
+    if (!v.paused) v.pause()
+    if (v.seeking) pendingSeek.current = t
+    else v.currentTime = t
+  }
+  const onSeeked = () => {
+    const t = pendingSeek.current
+    if (t === null || !preview.current) return
+    pendingSeek.current = null
+    preview.current.currentTime = t
+  }
+  // 손을 떼면 고른 구간을 처음부터 바로 재생한다
+  const playRange = (start: number) => {
+    const v = preview.current
+    if (!v) return
+    pendingSeek.current = null
+    v.currentTime = start
+    void v.play().catch(() => {})
   }
   const togglePlay = () => {
     const v = preview.current
@@ -177,7 +321,8 @@ export function VideoToGifTool() {
   const [perFrame, setPerFrame] = useState<{ key: string; bytes: number } | null>(null)
   const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${colors}` : ""
   useEffect(() => {
-    if (!source || busy || length <= 0) return
+    // 손잡이를 끄는 동안에는 재지 않는다(미리보기와 영상 읽기를 다투지 않게)
+    if (!source || busy || sliding || length <= 0) return
     let alive = true
     const timer = setTimeout(() => {
       const times = Array.from({ length: SAMPLES }, (_, i) => Math.min(range[0] + ((i + 0.5) * length) / SAMPLES, source.duration - 0.001))
@@ -185,14 +330,14 @@ export function VideoToGifTool() {
         (bytes) => alive && bytes !== null && setPerFrame({ key: sampleKey, bytes }),
         () => {},
       )
-    }, 400)
+    }, 600)
     return () => {
       alive = false
       clearTimeout(timer)
     }
     // sampleKey 에 구간·크기·화질이 모두 들어 있다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sampleKey, busy])
+  }, [sampleKey, busy, sliding])
   const estimating = !perFrame || perFrame.key !== sampleKey
   // 머리말·색표 몫(약 1KB)을 더한다
   const estimate = perFrame ? Math.round(perFrame.bytes * frames + 1024) : null
@@ -355,13 +500,14 @@ export function VideoToGifTool() {
                   disabled={busy}
                   onValueChange={(v) => {
                     const next: [number, number] = [v[0], v[1]]
+                    setSliding(true)
                     // 움직인 손잡이 위치를 미리보기로 보여 준다
-                    const v0 = preview.current
-                    if (v0) {
-                      v0.pause()
-                      v0.currentTime = next[0] !== range[0] ? next[0] : next[1]
-                    }
+                    seekPreview(next[0] !== range[0] ? next[0] : next[1])
                     setRange(next)
+                  }}
+                  onValueCommit={(v) => {
+                    setSliding(false)
+                    playRange(v[0])
                   }}
                   aria-label="GIF 로 만들 구간"
                   className="py-2"
@@ -569,19 +715,36 @@ export function VideoToGifTool() {
               <video
                 ref={preview}
                 src={source.url}
+                preload="auto"
                 muted
                 playsInline
                 onTimeUpdate={onTime}
+                onSeeked={onSeeked}
                 onPlay={() => setPlaying(true)}
                 onPause={() => setPlaying(false)}
                 onClick={togglePlay}
                 className="max-h-[60vh] w-full cursor-pointer object-contain"
               />
             </div>
-            <Button variant="outline" size="sm" className="self-start" onClick={togglePlay} disabled={busy}>
-              {playing ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-              {playing ? "멈춤" : "구간 재생"}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
+                {playing ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+                {playing ? "멈춤" : "구간 재생"}
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {fmt(time)} / {fmt(source.duration)}
+              </span>
+            </div>
+            <FrameStrip
+              thumbs={thumbs}
+              duration={source.duration}
+              range={range}
+              time={time}
+              onSeek={(t) => {
+                setTime(t)
+                seekPreview(t)
+              }}
+            />
           </>
         ) : (
           <div className="flex min-h-80 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
