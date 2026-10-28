@@ -147,7 +147,8 @@ export function sizeForBox(cssWidth: number, cssHeight: number): ImageSize {
 // 이미지 비교용 크기 순위(단계 숫자). 창을 줄일 때 다시 받지 않으려고 쓴다.
 export const sizeRank = (v: ImageSize | null) => (v && /^[wv]\d+$/.test(v) ? Number(v.slice(1)) : 0)
 
-function fileUrl(id: string, size?: ImageSize) {
+// 로그인이 필요한 파일을 브라우저 안 주소(blob:)로 받는다. 같은 파일은 한 번만 받는다.
+export function fileUrl(id: string, size?: ImageSize) {
   const key = size ? `${id}:${size}` : id
   let pending = blobCache.get(key)
   if (!pending) {

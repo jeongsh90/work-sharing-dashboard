@@ -28,6 +28,9 @@ function lazyPage<M, C extends ComponentType<any>>(load: () => Promise<M>, pick:
 const FeedbackPage = lazyPage(() => import('@/components/feedback-page'), (m) => m.FeedbackPage)
 const FilesPage = lazyPage(() => import('@/components/files-page'), (m) => m.FilesPage)
 const LibraryPage = lazyPage(() => import('@/components/library-page'), (m) => m.LibraryPage)
+const NoticeListPage = lazyPage(() => import('@/components/notices/notice-list-page'), (m) => m.NoticeListPage)
+const NoticeDetailPage = lazyPage(() => import('@/components/notices/notice-detail-page'), (m) => m.NoticeDetailPage)
+const NoticeEditPage = lazyPage(() => import('@/components/notices/notice-edit-page'), (m) => m.NoticeEditPage)
 const MePage = lazyPage(() => import('@/components/me-page'), (m) => m.MePage)
 const NotificationsPage = lazyPage(() => import('@/components/notifications-page'), (m) => m.NotificationsPage)
 const RequestDetailPage = lazyPage(() => import('@/components/requests/request-detail-page'), (m) => m.RequestDetailPage)
@@ -147,8 +150,11 @@ export default function App() {
 
   // 역할에 없는 메뉴 주소로 들어오면 홈을 보여 준다.
   const allowed = new Set(menuFor(session).flatMap((g) => g.items.map((i) => i.id)))
+  // 공지사항 상세는 누구나, 쓰기·고치기는 관리자만
+  if (allowed.has('notices')) allowed.add('notice-detail')
+  if (isManager(session)) allowed.add('notice-edit')
   const page = route.page === 'request-detail' || allowed.has(route.page) ? route.page : 'home'
-  const pageKey = page === 'request-detail' ? `request-${route.id}` : page
+  const pageKey = page === 'request-detail' ? `request-${route.id}` : page.startsWith('notice-') ? `${page}-${route.id}` : page
   // 요청 상세는 아래 처리 버튼이 있어 오른쪽 아래 버튼 묶음을 숨긴다
   const showDock = page !== 'request-detail'
 
@@ -172,6 +178,12 @@ export default function App() {
         )
       case 'files':
         return <FilesPage />
+      case 'notices':
+        return <NoticeListPage session={session} />
+      case 'notice-detail':
+        return <NoticeDetailPage id={route.id!} session={session} />
+      case 'notice-edit':
+        return <NoticeEditPage id={route.id!} />
       case 'library':
         return <LibraryPage session={session} />
       case 'notifications':
@@ -209,7 +221,7 @@ export default function App() {
     <SidebarProvider className={FADE_IN}>
       <AppSidebar
         session={session}
-        activeId={page === 'request-detail' ? '' : page}
+        activeId={page === 'request-detail' ? '' : page.startsWith('notice-') ? 'notices' : page}
         onNavigate={(id) => navigate(id)}
         onSessionChange={setSession}
         onLogout={async () => {

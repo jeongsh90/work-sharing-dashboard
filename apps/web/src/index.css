@@ -214,3 +214,73 @@
     display: none;
   }
 }
+
+/* 공지사항 본문(에디터·상세 공통) */
+.rich-content {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.rich-content > * + * {
+  margin-top: 0.75em;
+}
+.rich-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 1.5em;
+}
+.rich-content h3 {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.5;
+  margin-top: 1.25em;
+}
+.rich-content > :first-child {
+  margin-top: 0;
+}
+.rich-content ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.rich-content ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.rich-content li + li {
+  margin-top: 0.25em;
+}
+.rich-content li > p {
+  margin: 0;
+}
+.rich-content blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1em;
+  color: var(--muted-foreground);
+}
+.rich-content hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+.rich-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rich-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+.rich-content img.ProseMirror-selectednode {
+  outline: 3px solid var(--ring);
+}
+.rich-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}

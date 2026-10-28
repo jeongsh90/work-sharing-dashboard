@@ -49,6 +49,7 @@ import { holidays } from './holidays.ts'
 import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, schedulePlans, updatePlanLine } from './schedule-plans.ts'
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
+import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
   approveUser,
   createSession,
@@ -175,6 +176,8 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse) {
   sendJson(res, 200, { token: createSession(user.id, { remember: body.remember === true }), user })
 }
 
+const NOTICE_PATH = /^\/api\/notices\/(\d+)$/
+
 // 파일 올리기: 본문이 파일 그대로(멀티파트 아님). 파일 이름은 X-File-Name 헤더(URL 인코딩)로 받는다.
 // 크기 제한은 두지 않는다(작업 원본 PSD 등). 메모리에 올리지 않고 받는 대로 디스크에 쓴다.
 async function handleUpload(req: IncomingMessage, res: ServerResponse, user: PublicUser) {
@@ -211,7 +214,7 @@ async function handleFile(
   // 디자인 툴 히스토리 이미지(kind 'tool')는 디자인팀 누구나 본다
   const toolFile = file?.kind === 'tool' && canSeeToolFile(user)
   // 디자인팀 자료실 파일(kind 'library')은 디자인팀·관리자가 본다
-  const libraryFile = file?.kind === 'library' && canUseLibrary(user)
+  const libraryFile = (file?.kind === 'library' && canUseLibrary(user)) || (file?.kind === 'notice' && canSeeNoticeFile(user))
   if (!file || (file.request_id === null && file.kind !== 'avatar' && !toolFile && !libraryFile && file.uploader_id !== user.id)) {
     throw new HttpError(404, '파일을 찾을 수 없습니다.')
   }
@@ -473,6 +476,18 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     const body = await readJson(req)
     resolvePin(user, Number(m[1]), body.resolved !== false)
     return sendJson(res, 200, { ok: true })
+  }
+
+  // ── 공지사항 ──
+  if (path === '/api/notices') {
+    if (method === 'GET') return sendJson(res, 200, listNotices(user))
+    if (method === 'POST') return sendJson(res, 201, await createNotice(user, await readJson(req, 2 * 1024 * 1024)))
+  }
+  if ((m = path.match(NOTICE_PATH))) {
+    const id = Number(m[1])
+    if (method === 'GET') return sendJson(res, 200, noticeDetail(user, id))
+    if (method === 'PATCH') return sendJson(res, 200, await updateNotice(user, id, await readJson(req, 2 * 1024 * 1024)))
+    if (method === 'DELETE') return sendJson(res, 200, await deleteNotice(user, id))
   }
 
   // ── 디자인팀 자료실 ──

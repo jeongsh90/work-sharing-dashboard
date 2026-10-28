@@ -9,6 +9,10 @@ function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'requests' && parts[1]) return { page: 'request-detail', id: parts[1] }
   if (parts[0] === 'requests' && !parts[1]) return { page: 'inbox' }
+  // 공지사항: #/notices/12 상세, #/notices/12/edit 고치기, #/notices/new 새 글
+  if (parts[0] === 'notices' && parts[1] === 'new') return { page: 'notice-edit', id: 'new' }
+  if (parts[0] === 'notices' && parts[1] && parts[2] === 'edit') return { page: 'notice-edit', id: parts[1] }
+  if (parts[0] === 'notices' && parts[1]) return { page: 'notice-detail', id: parts[1] }
   return { page: parts[0] || 'home' }
 }
 
@@ -28,7 +32,16 @@ export function useRoute() {
 }
 
 export function navigate(page: string, id?: string) {
-  const hash = page === 'request-detail' ? `#/requests/${id}` : page === 'home' ? '#/' : `#/${page}`
+  const hash =
+    page === 'request-detail'
+      ? `#/requests/${id}`
+      : page === 'notice-detail'
+        ? `#/notices/${id}`
+        : page === 'notice-edit'
+          ? id === 'new' ? '#/notices/new' : `#/notices/${id}/edit`
+          : page === 'home'
+            ? '#/'
+            : `#/${page}`
   if (window.location.hash !== hash) window.location.hash = hash
   window.scrollTo({ top: 0 })
 }

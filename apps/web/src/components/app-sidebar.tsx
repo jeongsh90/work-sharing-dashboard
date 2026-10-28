@@ -24,14 +24,16 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-// 메뉴 N 표시: 건의게시판에 다른 사람의 새 글이 있거나, 아직 보지 않은 새 버전이 있으면
+// 메뉴 N 표시: 건의게시판에 다른 사람의 새 글이 있거나, 아직 보지 않은 새 버전이 있거나, 안 읽은 공지사항이 있으면
 function useFreshMenus(userId: string) {
   const { data } = useApi<{ id: number; authorId: string }[]>("/suggestions", 60_000)
+  const { data: notices } = useApi<{ authorId: string; read: boolean }[]>("/notices", 60_000)
   const seenFeedback = Number(useSeen(userId, "feedback") ?? 0)
   const seenVersion = useSeen(userId, "version")
   const fresh = new Set<string>()
   if (data?.some((s) => s.authorId !== userId && s.id > seenFeedback)) fresh.add("feedback")
   if (seenVersion !== APP_VERSION) fresh.add("version")
+  if (notices?.some((n) => n.authorId !== userId && !n.read)) fresh.add("notices")
   return fresh
 }
 
