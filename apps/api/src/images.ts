@@ -35,27 +35,76 @@ export const isImageSize = (v: string): v is ImageSize => Object.hasOwn(SIZES, v
 export const RESIZABLE = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 const RESIZED_DIR = join(UPLOAD_DIR, 'resized')
-const pending = new Map<string, Promise<Buffer>>()
+// 줄인 이미지. null 이면 줄이지 못해(너무 긴 이미지) 원본을 그대로 보낸다.
+export type Resized = { data: Buffer; type: 'image/webp' | 'image/jpeg' } | null
+const pending = new Map<string, Promise<Resized>>()
+
+// WebP 는 가로·세로 16383px 까지라, 세로로 아주 긴 상세페이지 시안은 JPEG(65535px 까지)로 만든다.
+// 그보다도 길면 원본을 그대로 보낸다.
+const WEBP_MAX = 16383
+const JPEG_MAX = 65535
+
+// 줄인 뒤 크기(긴 쪽). 원본보다 키우지 않는다.
+function outLongest(size: ImageSize, width: number, height: number) {
+  if (size === 'thumb') return Math.min(320, Math.max(width, height))
+  const box = size === 'view' ? 2000 : size.startsWith('v') ? Number(size.slice(1)) : 0
+  const scale = box ? Math.min(1, box / width, box / height) : Math.min(1, (size === 'wide' ? 1600 : Number(size.slice(1))) / width)
+  return Math.round(Math.max(width, height) * scale)
+}
+
+// 만들어 둔 것이 있으면 그것(undefined 면 아직 없음)
+async function cached(key: string): Promise<Resized | undefined> {
+  for (const [ext, type] of [['webp', 'image/webp'], ['jpg', 'image/jpeg']] as const) {
+    try {
+      return { data: await readFile(join(RESIZED_DIR, `${key}.${ext}`)), type }
+    } catch {
+      // 없으면 다음
+    }
+  }
+  try {
+    await readFile(join(RESIZED_DIR, `${key}.original`))
+    return null
+  } catch {
+    return undefined
+  }
+}
+
+async function save(name: string, data: Buffer) {
+  await mkdir(RESIZED_DIR, { recursive: true })
+  const target = join(RESIZED_DIR, name)
+  const tmp = `${target}.${process.pid}.tmp`
+  await writeFile(tmp, data)
+  await rename(tmp, target)
+}
 
 export function resizedImage(fileId: string, size: ImageSize) {
   const key = `${fileId}-${size}`
   let job = pending.get(key)
   if (!job) {
-    job = (async () => {
-      const target = join(RESIZED_DIR, `${key}.webp`)
-      try {
-        return await readFile(target)
-      } catch {
-        // 아직 없으면 만든다
+    job = (async (): Promise<Resized> => {
+      const hit = await cached(key)
+      if (hit !== undefined) return hit
+      // 줄인 뒤 크기를 먼저 셈해서 형식을 고른다(사진 방향 정보로 가로·세로가 바뀌는 경우 포함)
+      const meta = await sharp(join(UPLOAD_DIR, fileId), { limitInputPixels: false }).metadata()
+      const turned = (meta.orientation ?? 1) >= 5
+      const w = (turned ? meta.height : meta.width) ?? 1
+      const h = (turned ? meta.width : meta.height) ?? 1
+      const longest = outLongest(size, w, h)
+      if (longest > JPEG_MAX) {
+        await save(`${key}.original`, Buffer.alloc(0))
+        return null
       }
-      const out = await SIZES[size](sharp(join(UPLOAD_DIR, fileId), { limitInputPixels: false }).rotate())
-        .webp({ quality: size === 'thumb' ? 78 : 85 })
-        .toBuffer()
-      await mkdir(RESIZED_DIR, { recursive: true })
-      const tmp = `${target}.${process.pid}.tmp`
-      await writeFile(tmp, out)
-      await rename(tmp, target)
-      return out
+      const quality = size === 'thumb' ? 78 : 85
+      const img = SIZES[size](sharp(join(UPLOAD_DIR, fileId), { limitInputPixels: false }).rotate())
+      if (longest <= WEBP_MAX) {
+        const data = await img.webp({ quality }).toBuffer()
+        await save(`${key}.webp`, data)
+        return { data, type: 'image/webp' }
+      }
+      // JPEG 는 투명을 못 담아 흰 바탕으로 채운다
+      const data = await img.flatten({ background: '#ffffff' }).jpeg({ quality, mozjpeg: true }).toBuffer()
+      await save(`${key}.jpg`, data)
+      return { data, type: 'image/jpeg' }
     })()
     pending.set(key, job)
     job.finally(() => pending.delete(key)).catch(() => {})

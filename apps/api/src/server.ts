@@ -221,14 +221,17 @@ async function handleFile(
   // 화면용 줄인 이미지(썸네일·크게 보기). 내려받기는 늘 원본
   if (!download && size && isImageSize(size) && RESIZABLE.has(file.mime)) {
     const resized = await resizedImage(file.id, size)
-    res.writeHead(200, {
-      'Content-Type': 'image/webp',
-      'Content-Length': resized.length,
-      'Cache-Control': 'private, max-age=31536000, immutable',
-      'X-Content-Type-Options': 'nosniff',
-    })
-    res.end(resized)
-    return
+    // 너무 길어 줄이지 못한 이미지는 아래에서 원본을 보낸다
+    if (resized) {
+      res.writeHead(200, {
+        'Content-Type': resized.type,
+        'Content-Length': resized.data.length,
+        'Cache-Control': 'private, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+      })
+      res.end(resized.data)
+      return
+    }
   }
   const disposition = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`
   res.writeHead(200, {
