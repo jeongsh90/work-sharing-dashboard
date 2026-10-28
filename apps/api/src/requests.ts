@@ -56,6 +56,9 @@ type RequestRow = {
   source: string
   created_by: string | null
   requester_label: string
+  original_kind: string
+  original_link: string
+  original_tool: string
 }
 
 type FileRow = {
@@ -325,6 +328,18 @@ function claimFiles(
 
 // ── 조회 ──────────────────────────────────────────────
 
+export const ORIGINAL_KINDS = ['file', 'figma', 'tool', 'link'] as const
+type OriginalKind = (typeof ORIGINAL_KINDS)[number]
+const ORIGINAL_LABEL: Record<OriginalKind, string> = { file: '파일', figma: 'Figma 로 작업', tool: '디자인 툴로 제작', link: '링크' }
+const isHttpUrl = (v: string) => {
+  try {
+    const u = new URL(v)
+    return u.protocol === 'https:' || u.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
 function summary(row: RequestRow & { requester_name: string }) {
   return {
     id: row.id,
@@ -337,6 +352,10 @@ function summary(row: RequestRow & { requester_name: string }) {
     requesterName: row.requester_label || row.requester_name,
     source: row.source,
     createdBy: row.created_by,
+    // 작업 원본 형태(원본 업로드 때 고른다): 파일이 없는 작업(Figma·디자인 툴)도 어디서 만들었는지 남긴다
+    originalKind: row.original_kind,
+    originalLink: row.original_link,
+    originalTool: row.original_tool,
     designers: assigneesOf(row.id),
     urgency: row.urgency,
     status: row.status,
@@ -736,10 +755,24 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         return
       }
       case 'upload-source': {
+        // 원본 형태: 파일이 없는 작업(Figma 로 작업, 수매확인서 같은 디자인 툴로 제작)도 완료할 수 있다
+        const kind = ORIGINAL_KINDS.includes(body.originalKind as OriginalKind) ? (body.originalKind as OriginalKind) : 'file'
+        const link = text(body.originalLink, '링크', { max: 500 })
+        const tool = text(body.originalTool, '디자인 툴', { max: 40 })
+        if (link && !isHttpUrl(link)) throw new HttpError(400, '링크는 https:// 로 시작하는 주소를 넣어 주세요.')
+        if ((kind === 'figma' || kind === 'link') && !link) throw new HttpError(400, '작업 링크를 넣어 주세요.')
+        if (kind === 'tool' && !tool) throw new HttpError(400, '사용한 디자인 툴을 골라 주세요.')
         const count = claimFiles(user, body.fileIds, { requestId: id, kind: 'final' })
-        if (count === 0) throw new HttpError(400, '작업 원본 파일을 한 개 이상 올려 주세요.')
+        if (kind === 'file' && count === 0) throw new HttpError(400, '작업 원본 파일을 한 개 이상 올려 주세요.')
+        run('UPDATE requests SET original_kind = :kind, original_link = :link, original_tool = :tool WHERE id = :id', {
+          id,
+          kind,
+          link,
+          tool: kind === 'tool' ? tool : '',
+        })
         setStatus(req, 'done')
-        logEvent(id, user.id, action, req.status, 'done', note ? `원본 ${count}개 · ${note}` : `원본 ${count}개`)
+        const what = [ORIGINAL_LABEL[kind] + (kind === 'tool' ? `(${tool})` : ''), count > 0 ? `원본 ${count}개` : '', note].filter(Boolean).join(' · ')
+        logEvent(id, user.id, action, req.status, 'done', what)
         notify([req.requester_id], user.id, id, `작업 원본 파일이 등록되었습니다: ${req.title}`)
         return
       }

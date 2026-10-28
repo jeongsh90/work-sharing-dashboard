@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Undo2 } from "lucide-react"
+import { LayoutGrid, Link2, PenTool, Undo2, Upload, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -11,13 +11,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { BottomBar } from "@/components/bottom-bar"
 import { FilePicker } from "@/components/requests/file-picker"
 import { api, ApiError, uploadAll } from "@/lib/api"
-import { STATUS_LABEL, type RequestAction, type RequestDetailDto } from "@/lib/requests"
+import { ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
 import { invalidate, isDesignWorker, useUsers } from "@/lib/store"
 
 // 진행 동작 버튼. 어떤 버튼이 보일지는 서버가 준 actions 로 정한다(apps/api/src/requests.ts).
@@ -30,7 +32,10 @@ type DialogSpec = {
   files?: { label: string; hint: string; images?: boolean; required?: boolean }
   designers?: boolean
   destructive?: boolean
+  original?: boolean // 작업 원본 형태 고르기(파일·Figma·디자인 툴·기타 링크)
 }
+
+const ORIGINAL_ICON: Record<OriginalKind, LucideIcon> = { file: Upload, figma: PenTool, tool: LayoutGrid, link: Link2 }
 
 type ActionSpec = { label: string; dialog?: DialogSpec }
 
@@ -107,9 +112,11 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
     label: "원본 업로드",
     dialog: {
       title: "작업 원본 업로드",
-      description: "컨펌된 작업의 원본 파일(PSD·AI 등)을 올리면 최종 완료되고 요청자에게 알림이 갑니다.",
+      description:
+        "컨펌된 작업의 원본을 남기면 최종 완료되고 요청자에게 알림이 갑니다. 원본 파일이 없는 작업(Figma 로 작업, 수매확인서 같은 디자인 툴로 제작)은 형태를 골라 주세요.",
       confirm: "원본 올리고 완료",
       files: { label: "작업 원본", hint: "PSD·AI·소스 이미지 등, 여러 개 가능", required: true },
+      original: true,
       note: { label: "메모", placeholder: "선택" },
     },
   },
@@ -296,6 +303,11 @@ function ActionDialog({
   const [note, setNote] = useState("")
   const [files, setFiles] = useState<File[]>([])
   const [designerIds, setDesignerIds] = useState<string[]>(detail.designers)
+  const [kind, setKind] = useState<OriginalKind>("file")
+  const [link, setLink] = useState("")
+  const [tool, setTool] = useState("")
+  // 원본 형태가 파일이 아니면 파일은 고르지 않아도 된다(함께 남길 파일만 선택)
+  const filesRequired = spec.files?.required && (!spec.original || kind === "file")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -304,13 +316,21 @@ function ActionDialog({
 
   const confirm = async () => {
     if (spec.note?.required && !note.trim()) return setError(`${spec.note.label}을(를) 적어 주세요.`)
-    if (spec.files?.required && files.length === 0) return setError(`${spec.files.label}을(를) 올려 주세요.`)
+    if (filesRequired && files.length === 0) return setError(`${spec.files!.label}을(를) 올려 주세요.`)
+    if (spec.original && (kind === "figma" || kind === "link") && !/^https?:\/\/\S+$/i.test(link.trim()))
+      return setError("작업 링크(https://…)를 넣어 주세요.")
+    if (spec.original && kind === "tool" && !tool) return setError("사용한 디자인 툴을 골라 주세요.")
     if (spec.designers && designerIds.length === 0) return setError("담당 작업자를 한 명 이상 골라 주세요.")
     setPending(true)
     setError(null)
     try {
       const uploaded = await uploadAll(files)
-      await onConfirm({ note, fileIds: uploaded.map((f) => f.id), designerIds })
+      await onConfirm({
+        note,
+        fileIds: uploaded.map((f) => f.id),
+        designerIds,
+        ...(spec.original && { originalKind: kind, originalLink: link.trim(), originalTool: tool }),
+      })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "처리하지 못했습니다.")
       setPending(false)
@@ -350,9 +370,66 @@ function ActionDialog({
               </ul>
             </Field>
           )}
+          {spec.original && (
+            <Field>
+              <FieldLabel>원본 형태</FieldLabel>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="원본 형태">
+                {(Object.keys(ORIGINAL_LABEL) as OriginalKind[]).map((k) => {
+                  const Icon = ORIGINAL_ICON[k]
+                  return (
+                    <Button
+                      key={k}
+                      type="button"
+                      role="radio"
+                      aria-checked={kind === k}
+                      variant="outline"
+                      className={`h-auto justify-start py-2.5 ${kind === k ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground"}`}
+                      onClick={() => {
+                        setKind(k)
+                        setError(null)
+                      }}
+                    >
+                      <Icon data-icon="inline-start" />
+                      {ORIGINAL_LABEL[k]}
+                    </Button>
+                  )
+                })}
+              </div>
+            </Field>
+          )}
+          {spec.original && kind === "tool" && (
+            <Field>
+              <FieldLabel htmlFor="original-tool">사용한 디자인 툴</FieldLabel>
+              <Select value={tool} onValueChange={setTool}>
+                <SelectTrigger id="original-tool" className="w-full">
+                  <SelectValue placeholder="골라 주세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORIGINAL_TOOLS.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+          {spec.original && kind !== "file" && (
+            <Field>
+              <FieldLabel htmlFor="original-link">{kind === "figma" ? "Figma 링크" : kind === "link" ? "작업 링크" : "링크 (선택)"}</FieldLabel>
+              <Input
+                id="original-link"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                inputMode="url"
+                placeholder={kind === "figma" ? "https://www.figma.com/design/…" : "https://"}
+              />
+              {kind === "link" && <FieldDescription>구글 드라이브·노션 등 원본을 볼 수 있는 주소</FieldDescription>}
+            </Field>
+          )}
           {spec.files && (
             <Field>
-              <FieldLabel>{spec.files.label}</FieldLabel>
+              <FieldLabel>{spec.original && kind !== "file" ? "함께 남길 파일 (선택)" : spec.files.label}</FieldLabel>
               <FilePicker
                 files={files}
                 onChange={setFiles}
@@ -381,7 +458,7 @@ function ActionDialog({
             닫기
           </Button>
           <Button variant={spec.destructive ? "destructive" : "default"} onClick={confirm} disabled={pending}>
-            {pending ? "처리 중…" : spec.confirm}
+            {pending ? "처리 중…" : spec.original && kind !== "file" ? "완료 처리" : spec.confirm}
           </Button>
         </DialogFooter>
       </DialogContent>

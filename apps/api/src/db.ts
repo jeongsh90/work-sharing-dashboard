@@ -201,6 +201,10 @@ addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('requests', 'source', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'created_by', 'TEXT')
 addColumn('requests', 'requester_label', "TEXT NOT NULL DEFAULT ''")
+// 작업 원본 형태: file(파일) | figma(Figma 링크) | tool(디자인 툴로 제작) | link(기타 링크). 예전 요청은 '' = 파일
+addColumn('requests', 'original_kind', "TEXT NOT NULL DEFAULT ''")
+addColumn('requests', 'original_link', "TEXT NOT NULL DEFAULT ''")
+addColumn('requests', 'original_tool', "TEXT NOT NULL DEFAULT ''")
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {

@@ -10,6 +10,7 @@ import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { ActionPanel } from "@/components/requests/action-panel"
 import { FileGallery } from "@/components/requests/file-list"
+import { OriginalInfo } from "@/components/requests/original-info"
 import { RequestForm } from "@/components/requests/request-form-page"
 import { ReviewBoard } from "@/components/requests/review-board"
 import { Timeline } from "@/components/requests/timeline"
@@ -128,10 +129,11 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
             <h3 className="text-xs font-medium text-muted-foreground">참고 자료</h3>
             <FileGallery files={detail.references} empty="첨부한 참고 자료가 없습니다." />
           </div>
-          {detail.finals.length > 0 && (
+          {(detail.finals.length > 0 || (detail.originalKind && detail.originalKind !== "file")) && (
             <div className="flex flex-col gap-2">
               <h3 className="text-xs font-medium text-muted-foreground">작업 원본</h3>
-              <FileGallery files={detail.finals} />
+              <OriginalInfo kind={detail.originalKind} link={detail.originalLink} tool={detail.originalTool} />
+              {detail.finals.length > 0 && <FileGallery files={detail.finals} />}
             </div>
           )}
         </CardContent>

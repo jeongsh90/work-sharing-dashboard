@@ -24,6 +24,7 @@ import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { FileGallery } from "@/components/requests/file-list"
+import { OriginalInfo } from "@/components/requests/original-info"
 import { downloadFile, formatBytes } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type FileInfo, type RequestSummaryDto } from "@/lib/requests"
@@ -218,7 +219,14 @@ export function FilesPage() {
                   </button>
                   {item.files.length > 0 && <DownloadMenu files={item.files} />}
                 </div>
-                <FileGallery files={item.files} empty="보관된 파일이 없습니다." maxImages={4} imagesOnly />
+                {/* 원본 파일이 없는 작업(Figma·디자인 툴)은 어디서 만들었는지 */}
+                <OriginalInfo kind={item.originalKind} link={item.originalLink} tool={item.originalTool} compact />
+                <FileGallery
+                  files={item.files}
+                  empty={item.originalKind && item.originalKind !== "file" ? undefined : "보관된 파일이 없습니다."}
+                  maxImages={4}
+                  imagesOnly
+                />
               </li>
             ))}
           </ul>

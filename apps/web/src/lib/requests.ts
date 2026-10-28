@@ -35,6 +35,17 @@ export type DesignRequest = {
   source: string // 대신 작성한 요청의 받은 경로(없으면 '')
 }
 
+// 작업 원본 형태: 파일이 없는 작업(Figma 로 작업, 수매확인서처럼 디자인 툴로 제작)도 어디서 만들었는지 남긴다
+export type OriginalKind = "file" | "figma" | "tool" | "link"
+export const ORIGINAL_LABEL: Record<OriginalKind, string> = {
+  file: "파일 업로드",
+  figma: "Figma 로 작업",
+  tool: "디자인 툴로 제작",
+  link: "기타 링크",
+}
+// 고를 수 있는 디자인 툴(메뉴의 디자인 툴 이름)
+export const ORIGINAL_TOOLS = ["수매확인서", "상품정보고시", "동영상 → GIF", "메일 서명", "기타 툴"]
+
 // 대신 작성: 시스템 밖(말·전화 등)으로 받은 요청을 작업자·관리자가 요청서로 옮겨 적을 때 받은 경로
 export const REQUEST_SOURCES = ["구두", "전화", "메신저", "메일", "기타"] as const
 
@@ -49,6 +60,10 @@ export type RequestSummaryDto = {
   requesterName: string
   source: string // 대신 작성한 요청을 받은 경로(구두·전화·메신저·메일·기타). 요청자가 직접 쓴 요청은 ''
   createdBy: string | null // 요청서를 실제로 쓴 사람
+  // 작업 원본 형태(원본 업로드 때 고름). '' 는 예전 요청(파일)
+  originalKind: OriginalKind | ""
+  originalLink: string
+  originalTool: string
   designers: string[]
   urgency: Urgency
   status: RequestStatus
