@@ -208,6 +208,8 @@ export function RequestTable({
               const waitingReview = r.status === "review"
               // 담당은 정해졌지만 아직 시작 전(작업 대기)은 하늘색 선·배경으로 작업 중과 구분
               const waitingStart = r.status === "waiting"
+              // 작업 중은 초록 선·배경
+              const working = r.status === "in-progress"
               return (
                 <TableRow
                   key={r.id}
@@ -218,7 +220,9 @@ export function RequestTable({
                         ? "cursor-pointer bg-violet-500/8 shadow-[inset_3px_0_0_var(--color-violet-500)] hover:bg-violet-500/15"
                         : waitingStart
                           ? "cursor-pointer bg-sky-500/8 shadow-[inset_3px_0_0_var(--color-sky-500)] hover:bg-sky-500/15"
-                          : "cursor-pointer"
+                          : working
+                            ? "cursor-pointer bg-emerald-500/8 shadow-[inset_3px_0_0_var(--color-emerald-500)] hover:bg-emerald-500/15"
+                            : "cursor-pointer"
                   }
                   onClick={() => openRequest(r.id)}
                 >
