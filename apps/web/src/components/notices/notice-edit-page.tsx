@@ -12,16 +12,16 @@ import { NOTICE_COLUMN } from "@/components/notices/notice-detail-page"
 import { RichEditor } from "@/components/notices/rich-editor"
 import { api, ApiError, formatBytes, uploadAll } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
-import { toStoredHtml, toViewHtml, type NoticeDetail, type NoticeFile } from "@/lib/notices"
+import { CATEGORY_STYLE, NOTICE_CATEGORIES, toStoredHtml, toViewHtml, type NoticeCategory, type NoticeDetail, type NoticeFile } from "@/lib/notices"
 import { navigate } from "@/lib/router"
 import { invalidate } from "@/lib/store"
 
 // 공지사항 쓰기·고치기(관리자). id 가 "new" 면 새 글.
-type Draft = { title: string; html: string; pinned: boolean; files: NoticeFile[] }
+type Draft = { title: string; html: string; category: NoticeCategory; pinned: boolean; files: NoticeFile[] }
 
 export function NoticeEditPage({ id }: { id: string }) {
   const isNew = id === "new"
-  const [draft, setDraft] = useState<Draft | null>(isNew ? { title: "", html: "", pinned: false, files: [] } : null)
+  const [draft, setDraft] = useState<Draft | null>(isNew ? { title: "", html: "", category: "notice", pinned: false, files: [] } : null)
   const [loadError, setLoadError] = useState<string | null>(null)
   useEffect(() => {
     if (isNew) return
@@ -30,7 +30,7 @@ export function NoticeEditPage({ id }: { id: string }) {
       async (d) => {
         // 본문 그림을 에디터에서 보이게 주소를 채워 넣는다(저장할 때 다시 뺀다)
         const html = await toViewHtml(d.body)
-        if (alive) setDraft({ title: d.title, html, pinned: d.pinned, files: d.files })
+        if (alive) setDraft({ title: d.title, html, category: d.category ?? "notice", pinned: d.pinned, files: d.files })
       },
       (e: Error) => alive && setLoadError(e.message),
     )
@@ -46,6 +46,7 @@ function NoticeForm({ id, initial }: { id: string; initial: Draft }) {
   const isNew = id === "new"
   const [title, setTitle] = useState(initial.title)
   const [html, setHtml] = useState(initial.html)
+  const [category, setCategory] = useState<NoticeCategory>(initial.category)
   const [pinned, setPinned] = useState(initial.pinned)
   const [notify, setNotify] = useState(true)
   const [kept, setKept] = useState(initial.files)
@@ -66,6 +67,7 @@ function NoticeForm({ id, initial }: { id: string; initial: Draft }) {
       const body = {
         title: title.trim(),
         body: toStoredHtml(html),
+        category,
         pinned,
         fileIds: [...kept.map((f) => f.id), ...uploaded.map((f) => f.id)],
         ...(isNew && { notify }),
@@ -96,6 +98,21 @@ function NoticeForm({ id, initial }: { id: string; initial: Draft }) {
           {isNew ? "등록하면 모든 사람의 공지사항 메뉴에 N 표시가 뜨고, 알림을 켜 두면 알림도 갑니다." : "고친 내용은 바로 반영됩니다."}
         </p>
         <FieldGroup>
+          {/* 말머리: 제목 앞에 붙는 배지. 하나만 고른다(체크하면 다른 것은 풀린다) */}
+          <Field>
+            <FieldLabel>말머리</FieldLabel>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="말머리">
+              {NOTICE_CATEGORIES.map((c) => (
+                <Label
+                  key={c}
+                  className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 font-semibold transition-colors ${category === c ? `border-transparent ${CATEGORY_STYLE[c].className}` : "text-muted-foreground hover:bg-accent"}`}
+                >
+                  <Checkbox checked={category === c} onCheckedChange={(v) => v === true && setCategory(c)} aria-label={CATEGORY_STYLE[c].label} />
+                  {CATEGORY_STYLE[c].label}
+                </Label>
+              ))}
+            </div>
+          </Field>
           <Field data-invalid={titleError}>
             <FieldLabel htmlFor="notice-title">제목</FieldLabel>
             <Input

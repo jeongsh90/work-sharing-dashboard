@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { PageState } from "@/components/page-state"
+import { CategoryBadge } from "@/components/notices/category-badge"
 import { api, downloadLargeFile, formatBytes } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
@@ -63,12 +64,15 @@ export function NoticeDetailPage({ id, session }: { id: string; session: Session
     <div className={PAGE_GRID}>
       <article className={`${NOTICE_COLUMN} flex flex-col gap-6`}>
         <header className="flex flex-col gap-3">
-          {data.pinned && (
-            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-              <Pin className="size-3" />
-              고정 공지
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <CategoryBadge category={data.category} />
+            {data.pinned && (
+              <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+                <Pin className="size-3" />
+                고정
+              </span>
+            )}
+          </div>
           {/* 제목 줄 오른쪽에도 수정·삭제(관리자). 아래 버튼과 같은 동작 */}
           <div className="flex items-start gap-3">
             <h2 className="min-w-0 flex-1 text-xl font-bold break-keep">{data.title}</h2>

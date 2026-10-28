@@ -2,7 +2,7 @@ import { unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { UPLOAD_DIR } from './config.ts'
-import { all, db, get, run, transaction } from './db.ts'
+import { addColumn, all, db, get, run, transaction } from './db.ts'
 import { HttpError, notifyLink } from './requests.ts'
 import { isManager, listUsers, type PublicUser } from './users.ts'
 
@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS notice_reads (
 );
 `)
 
+// 말머리(카테고리): 공지 · 주간보고. 예전 글은 공지
+addColumn('notices', 'category', "TEXT NOT NULL DEFAULT 'notice'")
+export const NOTICE_CATEGORIES = ['notice', 'weekly'] as const
+const category = (v: unknown) => {
+  if (v === undefined) return 'notice'
+  if (!(NOTICE_CATEGORIES as readonly unknown[]).includes(v)) throw new HttpError(400, '말머리를 골라 주세요.')
+  return v as string
+}
+
 // 공지 파일(kind 'notice')은 로그인한 누구나 본다
 export const canSeeNoticeFile = (_u: PublicUser) => true
 
@@ -47,6 +56,7 @@ type NoticeRow = {
   title: string
   body: string
   pinned: number
+  category: string
   author_id: string
   author_name: string | null
   created_at: number
@@ -66,6 +76,7 @@ const summary = (n: NoticeRow) => ({
   id: n.id,
   title: n.title,
   pinned: !!n.pinned,
+  category: n.category,
   authorId: n.author_id,
   authorName: n.author_name ?? n.author_id,
   createdAt: n.created_at,
@@ -148,7 +159,7 @@ function attachFiles(user: PublicUser, noticeId: number, body: string, attachmen
 
 const removeFromDisk = (fileIds: string[]) => Promise.all(fileIds.map((f) => unlink(join(UPLOAD_DIR, f)).catch(() => {})))
 
-// body = { title, body, pinned, fileIds, notify }
+// body = { title, body, category, pinned, fileIds, notify }
 export async function createNotice(user: PublicUser, body: Record<string, unknown>) {
   requireWriter(user)
   const title = text(body.title, '제목', 150, true)
@@ -156,8 +167,8 @@ export async function createNotice(user: PublicUser, body: Record<string, unknow
   const now = Date.now()
   const id = transaction(() => {
     const r = run(
-      'INSERT INTO notices (title, body, pinned, author_id, created_at, updated_at) VALUES (:title, :html, :pinned, :me, :now, :now)',
-      { title, html, pinned: body.pinned === true ? 1 : 0, me: user.id, now },
+      'INSERT INTO notices (title, body, category, pinned, author_id, created_at, updated_at) VALUES (:title, :html, :category, :pinned, :me, :now, :now)',
+      { title, html, category: category(body.category), pinned: body.pinned === true ? 1 : 0, me: user.id, now },
     )
     const noticeId = Number(r.lastInsertRowid)
     attachFiles(user, noticeId, html, ids(body.fileIds))
@@ -168,7 +179,7 @@ export async function createNotice(user: PublicUser, body: Record<string, unknow
     const receivers = listUsers()
       .filter((u) => u.active && u.approved && u.id !== user.id)
       .map((u) => u.id)
-    notifyLink(receivers, `새 공지사항: ${title}`, `notices/${id}`)
+    notifyLink(receivers, `${body.category === "weekly" ? "새 주간보고" : "새 공지사항"}: ${title}`, `notices/${id}`)
   }
   return { id }
 }
@@ -179,10 +190,11 @@ export async function updateNotice(user: PublicUser, id: number, body: Record<st
   const title = text(body.title, '제목', 150, true)
   const html = text(body.body, '본문', 1_000_000)
   const removed = transaction(() => {
-    run('UPDATE notices SET title = :title, body = :html, pinned = :pinned, updated_at = :now WHERE id = :id', {
+    run('UPDATE notices SET title = :title, body = :html, category = :category, pinned = :pinned, updated_at = :now WHERE id = :id', {
       id,
       title,
       html,
+      category: category(body.category),
       pinned: body.pinned === true ? 1 : 0,
       now: Date.now(),
     })

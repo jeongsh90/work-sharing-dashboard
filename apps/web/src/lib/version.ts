@@ -11,6 +11,14 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.3',
+    date: '2026-10-29',
+    changes: [
+      '공지사항: 글쓰기 제목 앞에 말머리(공지·주간보고) 체크, 목록·상세 제목 앞에 말머리 배지(공지 주황·주간보고 파랑), 고정 글은 번호 자리에 핀',
+      '알림함: 알림 종류마다 카드 테두리·아이콘 색(새 요청 노랑·담당 하늘·작업 시작 파랑·컨펌 요청 보라·완료 초록·원본 연두·반려·취소 빨강·공지 주황·주간보고 파랑·댓글 남색 등), 새 알림은 굵은 테두리',
+    ],
+  },
+  {
     version: '0.6.2',
     date: '2026-10-28',
     changes: [

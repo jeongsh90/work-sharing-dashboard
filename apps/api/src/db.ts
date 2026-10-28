@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS suggestions (
 `)
 
 // 이미 만들어진 DB 에 나중에 생긴 칸을 더한다.
-function addColumn(table: string, column: string, definition: string) {
+export function addColumn(table: string, column: string, definition: string) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
   if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
 }

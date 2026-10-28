@@ -14,6 +14,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
+import { CategoryBadge } from "@/components/notices/category-badge"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { isRecent, type NoticeSummary } from "@/lib/notices"
@@ -102,17 +103,16 @@ export function NoticeListPage({ session }: { session: Session }) {
                       onClick={() => navigate("notice-detail", String(n.id))}
                     >
                       <TableCell className="pl-4 text-center text-muted-foreground tabular-nums">
+                        {/* 고정 글은 번호 대신 핀 */}
                         {n.pinned ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-                            <Pin className="size-3" />
-                            공지
-                          </span>
+                          <Pin className="mx-auto size-4 text-primary" aria-label="고정" />
                         ) : (
                           numberOf.get(n.id)
                         )}
                       </TableCell>
                       <TableCell>
                         <div className="flex min-w-0 items-center gap-1.5">
+                          <CategoryBadge category={n.category} />
                           <a
                             href={`#/notices/${n.id}`}
                             className={`truncate hover:underline ${unread ? "font-bold" : n.pinned ? "font-semibold" : "font-normal"}`}

@@ -4,9 +4,19 @@ import { fileUrl } from './api'
 
 // 공지사항(서버 apps/api/src/notices.ts)
 
+// 말머리(카테고리). 서버 NOTICE_CATEGORIES 와 같다
+export type NoticeCategory = 'notice' | 'weekly'
+export const NOTICE_CATEGORIES: NoticeCategory[] = ['notice', 'weekly']
+// 공지는 브랜드 주황(알림), 주간보고는 파랑(보고서)
+export const CATEGORY_STYLE: Record<NoticeCategory, { label: string; className: string }> = {
+  notice: { label: '공지', className: 'bg-orange-500/15 text-orange-700 dark:text-orange-300' },
+  weekly: { label: '주간보고', className: 'bg-blue-500/15 text-blue-700 dark:text-blue-300' },
+}
+
 export type NoticeSummary = {
   id: number
   title: string
+  category: NoticeCategory
   pinned: boolean
   authorId: string
   authorName: string
