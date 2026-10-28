@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 
 // 디자인 툴 > 데스크 명찰: 팀 이름·직급(직책)·이름을 넣어 가로 8.5cm × 세로 5.5cm 명찰을 인쇄한다.
 // 모양은 Figma(셰프애찬 570-1433) 그대로: 850×550 좌표(1 = 0.1mm)의 SVG 로 그린다.
-// 팀 이름·직급은 Gmarket Sans Medium, 이름은 Pretendard Medium(Figma 이름 크기·자리에 맞춤).
+// 팀 이름·직급은 Gmarket Sans Medium, 이름은 Pretendard SemiBold(Figma 이름 크기·자리에 맞춤).
 // 여러 명을 넣어 A4 에 왼쪽 위부터 2열 × 5줄로 놓고, 숨긴 iframe 에 담아 A4 로 인쇄한다(배율 100%, 여백 없음).
 
 type Form = { team: string; rank: string; name: string }
@@ -46,8 +46,8 @@ function nameplateSvg(f: Form, print = false) {
   const teamSize = fit(team, 54, 0.962, 0.2, W - 111 - PAD)
   const rankSize = fit(rank, 80, 0.962, rankSpacing([...rank].length), W - PAD * 2)
   const nameSize = fit(name, 250, 0.864, 0.155, W - PAD * 2)
-  // 팀 이름은 어두운 띠(높이 125) 가운데에 심볼과 나란히. 이름이 줄면 글자 가운데 높이(Figma 기준 358)를 지킨다
-  const nameY = 358.5 + (nameSize * (0.79 - 0.08)) / 2
+  // 팀 이름은 어두운 띠(높이 125) 가운데에 심볼과 나란히. 이름은 직급과 사이를 조금 더 띄워 글자 가운데를 372 에 둔다(Figma 는 358)
+  const nameY = 372 + (nameSize * (0.79 - 0.08)) / 2
   const size = print ? `width="85mm" height="55mm"` : `width="100%"`
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ${size} style="display:block">
 <rect width="${W}" height="${H}" fill="#fff"/>
@@ -55,7 +55,7 @@ function nameplateSvg(f: Form, print = false) {
 ${SYMBOL}
 <text x="111" y="${62.5 + (teamSize * (0.75 - 0.1)) / 2}" fill="#fff" font-family="GmarketSans" font-weight="500" font-size="${teamSize}" letter-spacing="${0.2 * teamSize}">${esc(team)}</text>
 ${rank ? `<text x="40.6" y="221" fill="#FF4D00" font-family="GmarketSans" font-weight="500" font-size="${rankSize}" letter-spacing="${rankSpacing([...rank].length) * rankSize}">${esc(rank)}</text>` : ""}
-<text x="45" y="${nameY}" fill="#161312" font-family="'Pretendard Variable', Pretendard" font-weight="500" font-size="${nameSize}" letter-spacing="${0.155 * nameSize}">${esc(name)}</text>
+<text x="45" y="${nameY}" fill="#161312" font-family="'Pretendard Variable', Pretendard" font-weight="600" font-size="${nameSize}" letter-spacing="${0.155 * nameSize}">${esc(name)}</text>
 </svg>`
 }
 
@@ -125,7 +125,7 @@ html,body{margin:0;padding:0;background:#fff}
   }
   // 이름 글꼴은 글자 묶음별로 나뉘어 있어 넣은 글자로 받는다
   const text = (k: keyof Form) => list.map((f) => f[k]).join("")
-  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("500 50px 'Pretendard Variable'", text("name"))]).then(go)
+  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("600 50px 'Pretendard Variable'", text("name"))]).then(go)
 }
 
 let nextId = 1
