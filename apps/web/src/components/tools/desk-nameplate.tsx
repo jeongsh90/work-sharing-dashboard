@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { CircleAlert, Plus, Printer, Trash2 } from "lucide-react"
+import { CircleAlert, Copy, Plus, Printer, Trash2 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 
 // 디자인 툴 > 데스크 명찰: 팀 이름·직급(직책)·이름을 넣어 가로 8.5cm × 세로 5.5cm 명찰을 인쇄한다.
 // 모양은 Figma(셰프애찬 570-1433) 그대로: 850×550 좌표(1 = 0.1mm)의 SVG 로 그린다.
-// 팀 이름·직급은 Gmarket Sans Medium, 이름은 Pretendard Regular(Figma 이름 크기·자리에 맞춤).
+// 팀 이름·직급은 Gmarket Sans Medium, 이름은 Pretendard Medium(Figma 이름 크기·자리에 맞춤).
 // 여러 명을 넣어 A4 에 왼쪽 위부터 2열 × 5줄로 놓고, 숨긴 iframe 에 담아 A4 로 인쇄한다(배율 100%, 여백 없음).
 
 type Form = { team: string; rank: string; name: string }
@@ -46,16 +46,16 @@ function nameplateSvg(f: Form, print = false) {
   const teamSize = fit(team, 54, 0.962, 0.2, W - 111 - PAD)
   const rankSize = fit(rank, 80, 0.962, rankSpacing([...rank].length), W - PAD * 2)
   const nameSize = fit(name, 250, 0.864, 0.155, W - PAD * 2)
-  // 이름이 줄면 글자 가운데 높이(Figma 기준 358)를 지킨다
+  // 팀 이름은 어두운 띠(높이 125) 가운데에 심볼과 나란히. 이름이 줄면 글자 가운데 높이(Figma 기준 358)를 지킨다
   const nameY = 358.5 + (nameSize * (0.79 - 0.08)) / 2
   const size = print ? `width="85mm" height="55mm"` : `width="100%"`
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ${size} style="display:block">
 <rect width="${W}" height="${H}" fill="#fff"/>
 <rect width="${W}" height="125" fill="#292525"/>
 ${SYMBOL}
-<text x="111" y="78.5" fill="#fff" font-family="GmarketSans" font-weight="500" font-size="${teamSize}" letter-spacing="${0.2 * teamSize}">${esc(team)}</text>
+<text x="111" y="${62.5 + (teamSize * (0.75 - 0.1)) / 2}" fill="#fff" font-family="GmarketSans" font-weight="500" font-size="${teamSize}" letter-spacing="${0.2 * teamSize}">${esc(team)}</text>
 ${rank ? `<text x="40.6" y="221" fill="#FF4D00" font-family="GmarketSans" font-weight="500" font-size="${rankSize}" letter-spacing="${rankSpacing([...rank].length) * rankSize}">${esc(rank)}</text>` : ""}
-<text x="45" y="${nameY}" fill="#161312" font-family="'Pretendard Variable', Pretendard" font-weight="400" font-size="${nameSize}" letter-spacing="${0.155 * nameSize}">${esc(name)}</text>
+<text x="45" y="${nameY}" fill="#161312" font-family="'Pretendard Variable', Pretendard" font-weight="500" font-size="${nameSize}" letter-spacing="${0.155 * nameSize}">${esc(name)}</text>
 </svg>`
 }
 
@@ -63,14 +63,15 @@ ${rank ? `<text x="40.6" y="221" fill="#FF4D00" font-family="GmarketSans" font-w
 type Entry = Form & { id: number; checked: boolean }
 type Errors = Partial<Record<keyof Form, string>>
 
-// A4(210×297mm) 배치: 왼쪽 위(왼쪽 10mm·위 6mm)부터 명찰(85×55mm)을 사이를 띄워(가로 5mm·세로 3mm) 2열 × 5줄 = 10장. 아래 여백은 4mm 남는다
+// A4(210×297mm) 배치: 명찰(85×55mm)을 사이를 띄워(가로 5mm·세로 3mm) 2열 × 5줄 = 10장, 묶음 전체를 A4 가운데(위아래·좌우)에 놓는다
 const A4 = { w: 210, h: 297 }
 const CARD = { w: 85, h: 55 }
-const MARGIN = { left: 10, top: 6 }
+const MARGIN = { left: (210 - (85 * 2 + 5)) / 2, top: (297 - (55 * 5 + 3 * 4)) / 2 } // 17.5mm · 5mm
 const GAP = { x: 5, y: 3 }
 const COLS = 2
 const ROWS = 5
 const PER_PAGE = COLS * ROWS
+const MAX_ENTRIES = PER_PAGE // 한 번에 넣을 수 있는 사람 수(A4 한 장)
 const slot = (i: number) => ({ left: MARGIN.left + (i % COLS) * (CARD.w + GAP.x), top: MARGIN.top + Math.floor(i / COLS) * (CARD.h + GAP.y) })
 const pagesOf = <T,>(list: T[]) => Array.from({ length: Math.ceil(list.length / PER_PAGE) }, (_, p) => list.slice(p * PER_PAGE, (p + 1) * PER_PAGE))
 
@@ -124,7 +125,7 @@ html,body{margin:0;padding:0;background:#fff}
   }
   // 이름 글꼴은 글자 묶음별로 나뉘어 있어 넣은 글자로 받는다
   const text = (k: keyof Form) => list.map((f) => f[k]).join("")
-  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("400 50px 'Pretendard Variable'", text("name"))]).then(go)
+  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("500 50px 'Pretendard Variable'", text("name"))]).then(go)
 }
 
 let nextId = 1
@@ -147,15 +148,27 @@ export function DeskNameplateTool() {
     // 쓰는 중에도 띄어쓰기가 들어가면 바로 알려 준다
     setErrors((er) => ({ ...er, [id]: { ...er[id], [key]: hasSpace(value) ? "띄어쓰기 없이 입력해 주세요." : undefined } }))
   }
-  // 추가하기: 새 칸을 맨 아래에 만들고(팀 이름은 바로 위 사람 것을 이어 받는다) 이름 칸으로 옮긴다
-  const add = () => {
-    const entry = newEntry(entries.at(-1)?.team.trim() ?? "")
-    setEntries((list) => [...list, entry])
+  // 최대 A4 한 장(10명)까지만 늘릴 수 있다
+  const full = entries.length >= MAX_ENTRIES
+  const focusName = (id: number) =>
     requestAnimationFrame(() => {
-      const input = nameRefs.current.get(entry.id)
+      const input = nameRefs.current.get(id)
       input?.scrollIntoView({ behavior: "smooth", block: "center" })
       input?.focus({ preventScroll: true })
     })
+  // 추가하기: 새 칸을 맨 아래에 만들고(팀 이름은 바로 위 사람 것을 이어 받는다) 이름 칸으로 옮긴다
+  const add = () => {
+    if (full) return
+    const entry = newEntry(entries.at(-1)?.team.trim() ?? "")
+    setEntries((list) => [...list, entry])
+    focusName(entry.id)
+  }
+  // 복사하기: 같은 내용(팀·직급·이름)을 바로 아래에 하나 더 만든다(같은 명찰을 여러 장 뽑을 때)
+  const duplicate = (src: Entry) => {
+    if (full) return
+    const entry = { ...newEntry(), team: src.team, rank: src.rank, name: src.name }
+    setEntries((list) => list.flatMap((e) => (e.id === src.id ? [e, entry] : [e])))
+    focusName(entry.id)
   }
   const remove = (id: number) => {
     setEntries((list) => (list.length > 1 ? list.filter((e) => e.id !== id) : [newEntry()]))
@@ -196,7 +209,10 @@ export function DeskNameplateTool() {
                 모든 칸은 <b className="text-foreground">띄어쓰기 없이</b> 써 주세요. (예: 디자인 팀 → 디자인팀)
               </li>
               <li>팀 이름, 직급(직책), 이름 순서로 넣어 주세요. 직급과 직책 가운데 명찰에 보일 것 하나만 넣습니다.</li>
-              <li>A4 한 장에 10명(2열 × 5줄)씩 왼쪽 위부터 차례로 놓입니다. 체크한 사람만 인쇄됩니다.</li>
+              <li>A4 한 장에 최대 10명(2열 × 5줄)까지 왼쪽 위부터 차례로 놓입니다. 체크한 사람만 인쇄됩니다.</li>
+              <li>
+                각 칸 오른쪽 위 <Copy className="inline size-3.5 align-[-2px]" aria-label="복사하기" /> 복사하기를 누르면 같은 내용(팀 이름·직급·이름)이 바로 아래에 하나 더 생깁니다. 같은 명찰을 여러 장 뽑을 때 쓰세요. 10명이 차면 추가하기·복사하기가 막힙니다.
+              </li>
               <li>인쇄 창에서 용지는 A4, 배율은 100%(실제 크기), 여백은 없음으로 두어야 명찰이 8.5cm × 5.5cm 로 나옵니다.</li>
             </ul>
           </AlertDescription>
@@ -226,7 +242,19 @@ export function DeskNameplateTool() {
                   <label htmlFor={`np-check-${e.id}`} className="text-sm font-semibold tabular-nums">
                     {i + 1}번
                   </label>
-                  <Button type="button" variant="ghost" size="icon-sm" className="ml-auto" aria-label={`${i + 1}번 지우기`} onClick={() => remove(e.id)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="ml-auto"
+                    aria-label={`${i + 1}번 복사하기`}
+                    title={full ? `최대 ${MAX_ENTRIES}명까지 넣을 수 있습니다` : "같은 내용으로 하나 더"}
+                    disabled={full}
+                    onClick={() => duplicate(e)}
+                  >
+                    <Copy />
+                  </Button>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`${i + 1}번 지우기`} title="지우기" onClick={() => remove(e.id)}>
                     <Trash2 />
                   </Button>
                 </div>
@@ -267,9 +295,9 @@ export function DeskNameplateTool() {
           })}
         </ol>
 
-        <Button type="button" variant="outline" className="w-full" onClick={add}>
+        <Button type="button" variant="outline" className="w-full" disabled={full} onClick={add}>
           <Plus data-icon="inline-start" />
-          추가하기
+          {full ? `최대 ${MAX_ENTRIES}명까지 넣을 수 있습니다` : "추가하기"}
         </Button>
         <Button type="submit" size="lg" className="w-full" disabled={targets.length === 0}>
           <Printer data-icon="inline-start" />
