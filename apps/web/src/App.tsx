@@ -7,7 +7,6 @@ import { OverlayScrollbar } from '@/components/overlay-scrollbar'
 import { LoginForm } from '@/components/login-form'
 import { PageState } from '@/components/page-state'
 import { dockItemCount, FloatingDock } from '@/components/home/floating-dock'
-import { UpdateNotice } from '@/components/update-notice'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { UNAUTHORIZED_EVENT } from '@/lib/api'
 import { useAskOnFirstClick } from '@/lib/desktop-notify'
@@ -82,27 +81,48 @@ export default function App() {
   useNotificationSync(session?.id ?? null)
   // PC 알림 권한을 아직 묻지 않았으면 로그인 후 첫 클릭에 묻는다.
   useAskOnFirstClick(!!session)
-  // 3분마다 사이트를 새로 받는다(새 버전·데이터 반영). 글을 쓰는 중이거나 창(대화상자)이 열려 있으면
-  // 입력이 날아가지 않게 그때는 건너뛰고 1분 뒤 다시 확인한다.
-  // 디자인 요청 작성·공지 작성 화면은 칸에서 잠깐 손을 떼도(파일 고르기·다른 창 보기) 내용이 날아가지 않게 아예 새로 고치지 않는다.
+  // 화면에 아무 동작(마우스 이동·클릭·키보드·스크롤·터치)이 3분 동안 없으면 사이트를 새로 받는다(새 버전·데이터 반영).
+  // 움직이면 3분을 처음부터 다시 센다. 단, 입력이 날아가지 않게 아래일 때는 새로 고치지 않는다.
+  //  - 이 화면에서 무엇이든 입력했으면(다른 화면으로 옮기기 전까지) · 입력 칸에 커서가 있으면 · 창(대화상자)이 열려 있으면
+  //  - 디자인 요청 작성·공지 작성 화면 · 다른 탭을 보고 있으면
   const pageRef = useRef(route.page)
   pageRef.current = route.page
+  const dirtyRef = useRef(false)
   useEffect(() => {
-    let last = Date.now()
+    dirtyRef.current = false
+  }, [route.page, route.id, session?.id])
+  useEffect(() => {
+    let lastActive = Date.now()
+    const onActive = () => (lastActive = Date.now())
+    const onInput = () => (dirtyRef.current = true)
+    // 선택 상자·체크·라디오 등(입력 이벤트가 없는 shadcn 조작)이나 작성 양식 안을 누른 것도 입력으로 본다
+    const onPress = (e: PointerEvent) => {
+      onActive()
+      const t = e.target as Element | null
+      if (t?.closest?.('form, [role=option], [role=checkbox], [role=radio], [role=switch], [role=slider], [role=menuitemradio], [role=menuitemcheckbox]'))
+        dirtyRef.current = true
+    }
+    window.addEventListener('pointerdown', onPress, true)
+    document.addEventListener('change', onInput, true)
+    const ACTIVITY = ['pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'] as const
+    ACTIVITY.forEach((t) => window.addEventListener(t, onActive, { capture: true, passive: true }))
+    document.addEventListener('input', onInput, true)
     const timer = setInterval(() => {
-      if (Date.now() - last < 3 * 60_000) return
+      if (Date.now() - lastActive < 3 * 60_000) return
       const el = document.activeElement as HTMLElement | null
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
       const overlayOpen = !!document.querySelector('[role=dialog][data-state=open], [role=alertdialog][data-state=open]')
       const writing = NO_AUTO_RELOAD.has(pageRef.current)
-      if (typing || overlayOpen || writing || document.visibilityState !== 'visible') {
-        last = Date.now() - 2 * 60_000
-        return
-      }
-      last = Date.now()
+      if (typing || overlayOpen || writing || dirtyRef.current || document.visibilityState !== 'visible') return
       window.location.reload()
-    }, 30_000)
-    return () => clearInterval(timer)
+    }, 15_000)
+    return () => {
+      clearInterval(timer)
+      ACTIVITY.forEach((t) => window.removeEventListener(t, onActive, { capture: true }))
+      document.removeEventListener('input', onInput, true)
+      window.removeEventListener('pointerdown', onPress, true)
+      document.removeEventListener('change', onInput, true)
+    }
   }, [])
 
   useEffect(() => {
@@ -239,8 +259,6 @@ export default function App() {
         }}
         onSwitched={onSwitched}
       />
-      {/* 로그인하면 업데이트 공지(다시 보지 않기 전까지) */}
-      <UpdateNotice key={session.id} session={session} />
       <SidebarInset className="min-w-0">
         {/* 페이지 세로 스크롤바: 헤더 아래 오른쪽 */}
         <OverlayScrollbar target={() => window} className="fixed top-16 right-0.5 bottom-1 w-1.5" />
