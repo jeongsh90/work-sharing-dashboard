@@ -173,6 +173,14 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
     }),
   })
   const [linkOpen, setLinkOpen] = useState(false)
+  const [colorOpen, setColorOpen] = useState(false)
+  // 색을 고르면 창을 닫고 선택을 풀어(끝으로 커서) 바뀐 색이 바로 보이게 한다. 선택 표시(파란 바탕)에 가려 안 바뀐 것처럼 보이지 않게.
+  const pickColor = (value: string | null) => {
+    const end = editor.state.selection.to
+    const chain = c()
+    ;(value ? chain.setColor(value) : chain.unsetColor()).setTextSelection(end).run()
+    setColorOpen(false)
+  }
   const [href, setHref] = useState("")
   const c = () => editor.chain().focus()
 
@@ -197,13 +205,13 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
       <Tool icon={Italic} label="기울임 (Ctrl+I)" active={s.italic} onClick={() => c().toggleItalic().run()} />
       <Tool icon={Underline} label="밑줄 (Ctrl+U)" active={s.underline} onClick={() => c().toggleUnderline().run()} />
       <Tool icon={Strikethrough} label="취소선" active={s.strike} onClick={() => c().toggleStrike().run()} />
-      <Popover>
+      <Popover open={colorOpen} onOpenChange={setColorOpen}>
         <PopoverTrigger asChild>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="글자 색" title="글자 색" onMouseDown={(e) => e.preventDefault()}>
             <Palette style={s.color ? { color: s.color } : undefined} />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="flex w-auto gap-1 p-2" onOpenAutoFocus={(e) => e.preventDefault()}>
+        <PopoverContent className="flex w-auto flex-row gap-1 p-2" onOpenAutoFocus={(e) => e.preventDefault()}>
           {COLORS.map((col) => (
             <button
               key={col.label}
@@ -211,7 +219,7 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
               title={col.label}
               aria-label={col.label}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => (col.value ? c().setColor(col.value).run() : c().unsetColor().run())}
+              onClick={() => pickColor(col.value)}
               className={`size-7 rounded-md border ${s.color === col.value ? "ring-2 ring-ring" : ""}`}
               style={{ background: col.value ?? "var(--foreground)" }}
             />
