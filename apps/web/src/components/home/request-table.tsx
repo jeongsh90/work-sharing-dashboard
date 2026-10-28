@@ -46,7 +46,7 @@ import { canEditAnytime, EDIT_ON_OPEN_KEY, loadSession } from "@/lib/auth"
 import { openRequest } from "@/lib/router"
 import { invalidate, useUserNames, useUsers } from "@/lib/store"
 
-const PAGE_SIZE = 8
+const PAGE_SIZE = 15
 const COLUMN_COUNT = 8
 
 const FILTERS: { id: string; label: string; statuses: RequestStatus[] | null }[] = [

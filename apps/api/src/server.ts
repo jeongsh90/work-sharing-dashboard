@@ -326,7 +326,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (path === '/api/switch') {
     if (!SWITCH_ACCOUNTS.includes(user.id)) throw new HttpError(403, '계정 전환을 쓸 수 없는 계정입니다.')
     const accounts = listUsers().filter((u) => SWITCH_ACCOUNTS.includes(u.id) && u.active && u.approved && u.canLogin)
-    if (method === 'GET') return sendJson(res, 200, accounts.map((u) => ({ id: u.id, name: u.name, role: u.role })))
+    if (method === 'GET') return sendJson(res, 200, accounts.map((u) => ({ id: u.id, name: u.name, role: u.role, avatarId: u.avatarId })))
     if (method === 'POST') {
       const body = await readJson(req)
       const target = accounts.find((u) => u.id === body.id)

@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Check, Repeat2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { UserAvatar } from "@/components/user-avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +15,7 @@ import { api, ApiError } from "@/lib/api"
 import { ROLE_LABEL, type Role, type Session } from "@/lib/auth"
 import { useApi } from "@/lib/store"
 
-type SwitchAccount = { id: string; name: string; role: Role }
+type SwitchAccount = { id: string; name: string; role: Role; avatarId?: string | null }
 export type OnSwitched = (token: string, user: Session) => void
 
 // 전환할 수 있는 계정 목록과 전환 함수. 묶음에 없는 계정은 서버가 403 을 주므로 accounts 가 비어 있다.
@@ -44,6 +45,7 @@ export function AccountSwitchItems({
     <>
       {accounts.map((a) => (
         <DropdownMenuItem key={a.id} disabled={a.id === currentId} onSelect={() => switchTo(a.id)}>
+          <UserAvatar name={a.name} avatarId={a.avatarId} className="size-7 rounded-lg" fallbackClassName="rounded-lg text-xs" />
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate">
               {a.name} <span className="text-xs text-muted-foreground">· {ROLE_LABEL[a.role]}</span>
