@@ -69,7 +69,22 @@ export function NoticeDetailPage({ id, session }: { id: string; session: Session
               고정 공지
             </span>
           )}
-          <h2 className="text-xl font-bold break-keep">{data.title}</h2>
+          {/* 제목 줄 오른쪽에도 수정·삭제(관리자). 아래 버튼과 같은 동작 */}
+          <div className="flex items-start gap-3">
+            <h2 className="min-w-0 flex-1 text-xl font-bold break-keep">{data.title}</h2>
+            {manager && (
+              <div className="flex shrink-0 gap-1.5">
+                <Button variant="outline" size="sm" onClick={() => navigate("notice-edit", String(data.id))}>
+                  <Pencil data-icon="inline-start" />
+                  수정
+                </Button>
+                <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => void remove()}>
+                  <Trash2 data-icon="inline-start" />
+                  삭제
+                </Button>
+              </div>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span className="font-medium text-foreground">{data.authorName}</span>
             <span className="tabular-nums">{formatDateTime(new Date(data.createdAt))}</span>
