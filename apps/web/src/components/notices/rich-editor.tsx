@@ -123,7 +123,7 @@ export function RichEditor({
 
   if (!editor) return null
   return (
-    <div className="overflow-hidden rounded-lg border bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+    <div className="rounded-lg border bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
       <Toolbar editor={editor} busy={busy} setBusy={setBusy} onError={onError} />
       <EditorContent editor={editor} />
     </div>
@@ -194,7 +194,8 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/40 p-1">
+    // 내려도 도구 막대는 화면 위(머리글 아래)에 붙어 있다
+    <div className="sticky top-16 z-10 flex flex-wrap items-center gap-0.5 rounded-t-lg border-b bg-muted p-1">
       <Tool icon={Undo2} label="실행 취소" disabled={!s.canUndo} onClick={() => c().undo().run()} />
       <Tool icon={Redo2} label="다시 실행" disabled={!s.canRedo} onClick={() => c().redo().run()} />
       <Separator orientation="vertical" className="mx-1 h-5" />
