@@ -210,6 +210,8 @@ export function RequestTable({
               const waitingStart = r.status === "waiting"
               // 작업 중은 초록 선·배경
               const working = r.status === "in-progress"
+              // n차 수정 중은 분홍 선·배경(미배정 주황과 구분)
+              const revising = r.status === "revising"
               return (
                 <TableRow
                   key={r.id}
@@ -222,7 +224,9 @@ export function RequestTable({
                           ? "cursor-pointer bg-sky-500/8 shadow-[inset_3px_0_0_var(--color-sky-500)] hover:bg-sky-500/15"
                           : working
                             ? "cursor-pointer bg-emerald-500/8 shadow-[inset_3px_0_0_var(--color-emerald-500)] hover:bg-emerald-500/15"
-                            : "cursor-pointer"
+                            : revising
+                              ? "cursor-pointer bg-rose-500/8 shadow-[inset_3px_0_0_var(--color-rose-500)] hover:bg-rose-500/15"
+                              : "cursor-pointer"
                   }
                   onClick={() => openRequest(r.id)}
                 >
