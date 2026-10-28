@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { ClipboardList, Clapperboard, FileCheck2, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, FileCheck2, IdCard, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { DeskNameplateTool } from "@/components/tools/desk-nameplate"
 import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PurchaseCertTool } from "@/components/tools/purchase-cert"
 import { ProductNoticeTool } from "@/components/tools/product-notice"
@@ -62,6 +63,14 @@ const TOOLS: Tool[] = [
     icon: Mail,
     color: "from-rose-400 to-red-600",
     body: <MailSignatureTool />,
+  },
+  {
+    id: "desk-nameplate",
+    name: "데스크 명찰",
+    description: "팀 이름·직급(직책)·이름을 넣어 8.5cm × 5.5cm 데스크 명찰을 인쇄하는 도구",
+    icon: IdCard,
+    color: "from-slate-500 to-zinc-800",
+    body: <DeskNameplateTool />,
   },
 ]
 

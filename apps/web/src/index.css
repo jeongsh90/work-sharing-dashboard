@@ -4,6 +4,11 @@
 @import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "lenis/dist/lenis.css";
 
+/* Gmarket Sans: 데스크 명찰(디자인 툴)에 쓴다. 쓰는 화면에서만 받는다 */
+@font-face { font-family: "GmarketSans"; font-weight: 300; font-display: swap; src: url("./assets/fonts/GmarketSansTTFLight.ttf") format("truetype"); }
+@font-face { font-family: "GmarketSans"; font-weight: 500; font-display: swap; src: url("./assets/fonts/GmarketSansTTFMedium.ttf") format("truetype"); }
+@font-face { font-family: "GmarketSans"; font-weight: 700; font-display: swap; src: url("./assets/fonts/GmarketSansTTFBold.ttf") format("truetype"); }
+
 @custom-variant dark (&:is(.dark *));
 
 /* 화면별 글자 크기 변수. text-card-name 처럼 클래스로 쓴다. */
