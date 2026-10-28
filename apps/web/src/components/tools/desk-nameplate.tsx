@@ -164,9 +164,9 @@ export function DeskNameplateTool() {
     setEntries((list) => [...list, entry])
     focusName(entry.id)
   }
-  // 복사하기: 같은 내용(팀·직급·이름)을 바로 아래에 하나 더 만든다(같은 명찰을 여러 장 뽑을 때)
+  // 복사하기: 같은 내용(팀·직급·이름)을 바로 아래에 하나 더 만든다(같은 명찰을 여러 장 뽑을 때). 이름을 넣어야 쓸 수 있다
   const duplicate = (src: Entry) => {
-    if (full) return
+    if (full || !src.name.trim()) return
     const entry = { ...newEntry(), team: src.team, rank: src.rank, name: src.name }
     setEntries((list) => list.flatMap((e) => (e.id === src.id ? [e, entry] : [e])))
     focusName(entry.id)
@@ -212,7 +212,7 @@ export function DeskNameplateTool() {
               <li>팀 이름, 직급(직책), 이름 순서로 넣어 주세요. 직급과 직책 가운데 명찰에 보일 것 하나만 넣습니다.</li>
               <li>A4 한 장에 최대 10명(2열 × 5줄)까지 왼쪽 위부터 차례로 놓입니다. 체크한 사람만 인쇄됩니다.</li>
               <li>
-                각 칸 오른쪽 위 <Copy className="inline size-3.5 align-[-2px]" aria-label="복사하기" /> 복사하기를 누르면 같은 내용(팀 이름·직급·이름)이 바로 아래에 하나 더 생깁니다. 같은 명찰을 여러 장 뽑을 때 쓰세요. 10명이 차면 추가하기·복사하기가 막힙니다.
+                각 칸 오른쪽 위 <Copy className="inline size-3.5 align-[-2px]" aria-label="복사하기" /> 복사하기를 누르면 같은 내용(팀 이름·직급·이름)이 바로 아래에 하나 더 생깁니다. 이름을 넣어야 복사되고, 10명이 차면 추가하기·복사하기가 막힙니다.
               </li>
               <li>인쇄 창에서 용지는 A4, 배율은 100%(실제 크기), 여백은 없음으로 두어야 명찰이 8.5cm × 5.5cm 로 나옵니다.</li>
             </ul>
@@ -249,8 +249,8 @@ export function DeskNameplateTool() {
                     size="icon-sm"
                     className="ml-auto"
                     aria-label={`${i + 1}번 복사하기`}
-                    title={full ? `최대 ${MAX_ENTRIES}명까지 넣을 수 있습니다` : "같은 내용으로 하나 더"}
-                    disabled={full}
+                    title={full ? `최대 ${MAX_ENTRIES}명까지 넣을 수 있습니다` : !e.name.trim() ? "이름을 넣어야 복사할 수 있습니다" : "같은 내용으로 하나 더"}
+                    disabled={full || !e.name.trim()}
                     onClick={() => duplicate(e)}
                   >
                     <Copy />
