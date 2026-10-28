@@ -191,8 +191,8 @@ export function MailSignatureTool() {
 
   return (
     <div className="mx-auto grid w-full max-w-6xl grid-cols-12 gap-6 p-4 md:p-6">
-      {/* 왼쪽: 입력 */}
-      <form className="col-span-12 lg:col-span-5" onSubmit={(e) => e.preventDefault()}>
+      {/* 오른쪽(넓은 화면): 입력 */}
+      <form className="col-span-12 lg:order-2 lg:col-span-5" onSubmit={(e) => e.preventDefault()}>
         <FieldGroup>
           <div className="grid grid-cols-2 gap-4">
             <Field data-invalid={!!errors.department}>
@@ -291,8 +291,8 @@ export function MailSignatureTool() {
         </FieldGroup>
       </form>
 
-      {/* 오른쪽: 미리보기 + 복사·내려받기 */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-7">
+      {/* 왼쪽(넓은 화면): 미리보기 + 복사·내려받기 */}
+      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:order-1 lg:col-span-7">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="mr-auto font-semibold">미리보기</h3>
           <Button variant="outline" size="sm" onClick={download}>
