@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from 'react'
 
 import { AppHeader } from '@/components/app-header'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -70,6 +70,9 @@ function Placeholder() {
 
 const DOCK_PAD = ['', 'pb-16', 'pb-32', 'pb-48']
 
+// 자동 새로 고침을 하지 않는 화면(긴 글을 쓰는 화면)
+const NO_AUTO_RELOAD = new Set<string>(['request', 'notice-edit'])
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession)
   const route = useRoute()
@@ -81,6 +84,9 @@ export default function App() {
   useAskOnFirstClick(!!session)
   // 3분마다 사이트를 새로 받는다(새 버전·데이터 반영). 글을 쓰는 중이거나 창(대화상자)이 열려 있으면
   // 입력이 날아가지 않게 그때는 건너뛰고 1분 뒤 다시 확인한다.
+  // 디자인 요청 작성·공지 작성 화면은 칸에서 잠깐 손을 떼도(파일 고르기·다른 창 보기) 내용이 날아가지 않게 아예 새로 고치지 않는다.
+  const pageRef = useRef(route.page)
+  pageRef.current = route.page
   useEffect(() => {
     let last = Date.now()
     const timer = setInterval(() => {
@@ -88,7 +94,8 @@ export default function App() {
       const el = document.activeElement as HTMLElement | null
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
       const overlayOpen = !!document.querySelector('[role=dialog][data-state=open], [role=alertdialog][data-state=open]')
-      if (typing || overlayOpen || document.visibilityState !== 'visible') {
+      const writing = NO_AUTO_RELOAD.has(pageRef.current)
+      if (typing || overlayOpen || writing || document.visibilityState !== 'visible') {
         last = Date.now() - 2 * 60_000
         return
       }
