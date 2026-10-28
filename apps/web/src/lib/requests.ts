@@ -72,6 +72,7 @@ export type RequestSummaryDto = {
   ongoing: boolean // 계속 업무(마감 없음)
   dueAt: number
   createdAt: number
+  updatedAt: number // 마지막으로 바뀐 때(상태·내용)
   startedAt: number | null
   completedAt: number | null
 }

@@ -1,10 +1,14 @@
+import { useEffect } from "react"
 import { FilePlus2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
-import type { Session } from "@/lib/auth"
+import { isManager, type Session } from "@/lib/auth"
 import { menuFor } from "@/lib/menu"
-import { useSeen } from "@/lib/seen"
+import type { NoticeSummary } from "@/lib/notices"
+import { useNotifications } from "@/lib/notifications"
+import type { RequestSummaryDto } from "@/lib/requests"
+import { markSeen, useSeen } from "@/lib/seen"
 import { useApi } from "@/lib/store"
 import { APP_VERSION } from "@/lib/version"
 import { NavUser } from "@/components/nav-user"
@@ -24,16 +28,48 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-// 메뉴 N 표시: 건의게시판에 다른 사람의 새 글이 있거나, 아직 보지 않은 새 버전이 있거나, 안 읽은 공지사항이 있으면
-function useFreshMenus(userId: string) {
-  const { data } = useApi<{ id: number; authorId: string }[]>("/suggestions", 60_000)
-  const { data: notices } = useApi<{ authorId: string; read: boolean }[]>("/notices", 60_000)
-  const seenFeedback = Number(useSeen(userId, "feedback") ?? 0)
+// 메뉴 N 표시: 다른 사람이 새로 올린 내용이 있으면 하루 동안 N 을 띄운다. 그 메뉴를 열어 보면 꺼진다.
+// (버전 정보는 아직 보지 않은 새 버전이 있으면)
+const DAY = 24 * 60 * 60 * 1000
+const TRACKED = ["notices", "inbox", "my-requests", "files", "library", "feedback", "notifications"] as const
+
+function useFreshMenus(session: Session, activeId: string) {
+  const userId = session.id
+  const team = isManager(session) || session.role === "designer"
+  const { data: requests } = useApi<RequestSummaryDto[]>("/requests")
+  const { data: suggestions } = useApi<{ authorId: string; createdAt: number }[]>("/suggestions", 60_000)
+  const { data: notices } = useApi<NoticeSummary[]>("/notices", 60_000)
+  const { data: library } = useApi<{ uploaderId: string; createdAt: number }[]>(team ? "/library" : null, 60_000)
+  const { items: notifications } = useNotifications()
   const seenVersion = useSeen(userId, "version")
+  // 메뉴마다 마지막으로 연 때(이 브라우저)
+  const seen = Object.fromEntries(TRACKED.map((id) => [id, Number(useSeen(userId, `menu:${id}`) ?? 0)])) as Record<(typeof TRACKED)[number], number>
+
+  // 메뉴를 열 때와 떠날 때 "본 때"를 남긴다(열어 둔 동안 들어온 것은 떠날 때 본 것으로)
+  useEffect(() => {
+    if (!(TRACKED as readonly string[]).includes(activeId)) return
+    markSeen(userId, `menu:${activeId}`, String(Date.now()))
+    return () => markSeen(userId, `menu:${activeId}`, String(Date.now()))
+  }, [userId, activeId])
+
+  const latest = (list: number[]) => (list.length ? Math.max(...list) : 0)
+  const mineReq = (r: RequestSummaryDto) => r.requesterId === userId || r.createdBy === userId
+  const newest: Record<(typeof TRACKED)[number], number> = {
+    notices: latest((notices ?? []).filter((n) => n.authorId !== userId && !n.read).map((n) => n.createdAt)),
+    // 받은 요청함: 다른 사람이 새로 보낸 요청
+    inbox: latest((requests ?? []).filter((r) => !mineReq(r)).map((r) => r.createdAt)),
+    // 내 요청: 내 요청에 생긴 변화(보낸 뒤 상태가 바뀐 것)
+    "my-requests": latest((requests ?? []).filter((r) => r.requesterId === userId && r.updatedAt - r.createdAt > 5_000).map((r) => r.updatedAt)),
+    // 최종 파일 보관함: 새로 완료된 작업
+    files: latest((requests ?? []).filter((r) => r.completedAt).map((r) => r.completedAt!)),
+    library: latest((library ?? []).filter((l) => l.uploaderId !== userId).map((l) => l.createdAt)),
+    feedback: latest((suggestions ?? []).filter((x) => x.authorId !== userId).map((x) => x.createdAt)),
+    notifications: latest(notifications.filter((n) => !n.read).map((n) => n.createdAt)),
+  }
+  const now = Date.now()
   const fresh = new Set<string>()
-  if (data?.some((s) => s.authorId !== userId && s.id > seenFeedback)) fresh.add("feedback")
+  for (const id of TRACKED) if (id !== activeId && newest[id] > Math.max(seen[id], now - DAY)) fresh.add(id)
   if (seenVersion !== APP_VERSION) fresh.add("version")
-  if (notices?.some((n) => n.authorId !== userId && !n.read)) fresh.add("notices")
   return fresh
 }
 
@@ -53,7 +89,7 @@ export function AppSidebar({
   onLogout: () => void
   onSwitched: OnSwitched
 }) {
-  const fresh = useFreshMenus(session.id)
+  const fresh = useFreshMenus(session, activeId)
   // "디자인 요청"은 메뉴 목록 대신 로고 아래 큰 버튼으로 둔다(작업자는 대신 작성)
   const requestButton = true
 
