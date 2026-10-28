@@ -10,7 +10,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { buttonVariants } from "@/components/ui/button"
 
 // 확인 창(shadcn AlertDialog). 브라우저 기본 confirm() 대신 쓴다.
 //   if (!(await confirmDialog({ title: '지울까요?', confirmText: '삭제', destructive: true }))) return
@@ -54,7 +53,7 @@ export function ConfirmHost() {
         <AlertDialogFooter>
           <AlertDialogCancel onClick={() => close(false)}>취소</AlertDialogCancel>
           <AlertDialogAction
-            className={req?.destructive ? buttonVariants({ variant: "destructive" }) : undefined}
+            variant={req?.destructive ? "destructive" : "default"}
             onClick={() => close(true)}
           >
             {req?.confirmText ?? "확인"}
