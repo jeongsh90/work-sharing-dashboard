@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils"
 
 // 알림함: 프로젝트(요청)별로 알림을 묶어 shadcn Alert 카드 하나로 보여 준다.
 // 카드 제목은 요청 제목, 내용은 그 요청에 온 알림을 최근 것부터 몇 줄. 요청과 관계없는 알림(가입·건의)은 한 건씩 카드로.
-// 새 알림(이 화면을 열기 전까지 안 읽은 것)이 있는 카드는 "새 알림" 배지와 굵은 테두리. 카드 테두리·아이콘 색은 최근 알림 종류를 따른다.
+// 새 알림(이 화면을 열기 전까지 안 읽은 것)이 있는 카드는 "새 알림" 배지와 더 굵은 테두리(보통 2px, 새 알림 3px). 카드 테두리·아이콘 색은 최근 알림 종류를 따른다.
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const MAX_LINES = 4
@@ -181,8 +181,9 @@ export function NotificationsPage() {
                       className={cn(
                         "px-4 py-3 pr-28 has-data-[slot=alert-action]:pr-28",
                         clickable && "cursor-pointer transition-colors hover:bg-accent/50",
+                        "border-2",
                         TONE[kind.tone],
-                        newCount > 0 && "border-2",
+                        newCount > 0 && "border-3",
                       )}
                     >
                       <kind.icon />
