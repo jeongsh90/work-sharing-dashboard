@@ -1,20 +1,20 @@
-import { useState } from "react"
-import { CircleAlert, Printer } from "lucide-react"
+import { useRef, useState } from "react"
+import { CircleAlert, Plus, Printer, Trash2 } from "lucide-react"
 import "@fontsource/noto-sans-kr/400.css"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
 // 디자인 툴 > 데스크 명찰: 팀 이름·직급(직책)·이름을 넣어 가로 8.5cm × 세로 5.5cm 명찰을 인쇄한다.
 // 모양은 Figma(셰프애찬 570-1433) 그대로: 850×550 좌표(1 = 0.1mm)의 SVG 로 그린다.
 // 팀 이름·직급은 Gmarket Sans Medium, 이름은 Noto Sans KR Regular(Figma 와 같은 글꼴).
-// 인쇄는 숨긴 iframe 에 명찰만 담아 @page 크기를 85mm × 55mm 로 맞춘다(배율 100%, 여백 없음).
+// 여러 명을 넣어 A4 에 왼쪽 위부터 2열 × 5줄로 놓고, 숨긴 iframe 에 담아 A4 로 인쇄한다(배율 100%, 여백 없음).
 
 type Form = { team: string; rank: string; name: string }
 
-const SAMPLE: Form = { team: "디자인팀", rank: "과장", name: "홍길동" }
 const W = 850
 const H = 550
 const PAD = 41 // 왼쪽 글자 시작(이름·직급), 오른쪽도 이만큼 비운다
@@ -60,16 +60,43 @@ ${rank ? `<text x="40.6" y="221" fill="#FF4D00" font-family="GmarketSans" font-w
 </svg>`
 }
 
+// 여러 명: 한 사람씩 입력 칸을 추가하고, 체크한 사람만 A4 에 왼쪽 위부터 차례로(2열 × 5줄) 놓는다.
+type Entry = Form & { id: number; checked: boolean }
+type Errors = Partial<Record<keyof Form, string>>
+
+// A4(210×297mm) 배치: 왼쪽 위 여백 10mm 부터 명찰(85×55mm)을 빈틈없이 붙여 2열 × 5줄 = 10장
+const A4 = { w: 210, h: 297 }
+const CARD = { w: 85, h: 55 }
+const MARGIN = 10
+const COLS = 2
+const ROWS = 5
+const PER_PAGE = COLS * ROWS
+const slot = (i: number) => ({ left: MARGIN + (i % COLS) * CARD.w, top: MARGIN + Math.floor(i / COLS) * CARD.h })
+const pagesOf = <T,>(list: T[]) => Array.from({ length: Math.ceil(list.length / PER_PAGE) }, (_, p) => list.slice(p * PER_PAGE, (p + 1) * PER_PAGE))
+
+const trimmed = (f: Form): Form => ({ team: f.team.trim(), rank: f.rank.trim(), name: f.name.trim() })
+const isBlank = (f: Form) => !f.team.trim() && !f.rank.trim() && !f.name.trim()
+
 function validate(f: Form) {
-  const e: Partial<Record<keyof Form, string>> = {}
+  const e: Errors = {}
   if (!f.name.trim()) e.name = "이름을 입력해 주세요."
   for (const k of ["team", "rank", "name"] as const) if (hasSpace(f[k])) e[k] = "띄어쓰기 없이 입력해 주세요."
   return e
 }
 
-// 숨긴 iframe 에 명찰만 넣고 인쇄 창을 연다. 글꼴을 다 받은 뒤에 인쇄한다.
-function printNameplate(f: Form) {
-  const html = nameplateSvg(f, true)
+// 숨긴 iframe 에 A4 쪽들만 넣고 인쇄 창을 연다. 글꼴을 다 받은 뒤에 인쇄한다.
+function printSheets(list: Form[]) {
+  const pages = pagesOf(list)
+    .map(
+      (cards) =>
+        `<div class="page">${cards
+          .map((f, i) => {
+            const { left, top } = slot(i)
+            return `<div class="card" style="left:${left}mm;top:${top}mm">${nameplateSvg(f, true)}</div>`
+          })
+          .join("")}</div>`,
+    )
+    .join("")
   const frame = document.createElement("iframe")
   frame.setAttribute("aria-hidden", "true")
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0"
@@ -79,7 +106,14 @@ function printNameplate(f: Form) {
   const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')].map((n) => n.outerHTML).join("")
   doc.open()
   doc.write(
-    `<!doctype html><html><head><meta charset="utf-8"><base href="${location.origin}/">${styles}<style>@page{size:85mm 55mm;margin:0}html,body{margin:0;padding:0;background:#fff}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>${html}</body></html>`,
+    `<!doctype html><html><head><meta charset="utf-8"><base href="${location.origin}/">${styles}<style>
+@page{size:A4 portrait;margin:0}
+html,body{margin:0;padding:0;background:#fff}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{position:relative;width:${A4.w}mm;height:${A4.h}mm;overflow:hidden;break-after:page}
+.page:last-child{break-after:auto}
+.card{position:absolute;width:${CARD.w}mm;height:${CARD.h}mm;outline:0.1mm solid #d4d4d4}
+</style></head><body>${pages}</body></html>`,
   )
   doc.close()
   const go = () => {
@@ -87,35 +121,66 @@ function printNameplate(f: Form) {
     frame.contentWindow!.print()
     setTimeout(() => frame.remove(), 1000)
   }
-  // 글꼴을 다 받은 뒤 인쇄(이름 글꼴은 글자 묶음별로 나뉘어 있어 넣은 글자로 받는다)
-  void Promise.all([doc.fonts.load("500 50px GmarketSans", f.team + f.rank), doc.fonts.load("400 50px 'Noto Sans KR'", f.name)]).then(go)
+  // 이름 글꼴은 글자 묶음별로 나뉘어 있어 넣은 글자로 받는다
+  const text = (k: keyof Form) => list.map((f) => f[k]).join("")
+  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("400 50px 'Noto Sans KR'", text("name"))]).then(go)
 }
 
-export function DeskNameplateTool() {
-  const [form, setForm] = useState<Form>({ team: "", rank: "", name: "" })
-  const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({})
-  // 미리보기는 이름을 넣기 전까지 예시 값으로 채운다
-  const preview = form.name.trim() ? form : { team: form.team || SAMPLE.team, rank: form.rank || SAMPLE.rank, name: SAMPLE.name }
+let nextId = 1
+const newEntry = (team = ""): Entry => ({ id: nextId++, team, rank: "", name: "", checked: true })
 
-  const set = (key: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setForm((f) => ({ ...f, [key]: value }))
+export function DeskNameplateTool() {
+  const [entries, setEntries] = useState<Entry[]>(() => [newEntry()])
+  const [errors, setErrors] = useState<Record<number, Errors>>({})
+  const nameRefs = useRef(new Map<number, HTMLInputElement>())
+
+  // 미리보기·인쇄 대상: 체크했고 비어 있지 않은 사람
+  const targets = entries.filter((e) => e.checked && !isBlank(e))
+  const sheets = pagesOf(targets)
+  const allChecked = entries.every((e) => e.checked)
+
+  const patch = (id: number, p: Partial<Entry>) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...p } : e)))
+  const set = (id: number, key: keyof Form) => (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const value = ev.target.value
+    patch(id, { [key]: value })
     // 쓰는 중에도 띄어쓰기가 들어가면 바로 알려 준다
-    setErrors((er) => ({ ...er, [key]: hasSpace(value) ? "띄어쓰기 없이 입력해 주세요." : undefined }))
+    setErrors((er) => ({ ...er, [id]: { ...er[id], [key]: hasSpace(value) ? "띄어쓰기 없이 입력해 주세요." : undefined } }))
+  }
+  // 추가하기: 새 칸을 맨 아래에 만들고(팀 이름은 바로 위 사람 것을 이어 받는다) 이름 칸으로 옮긴다
+  const add = () => {
+    const entry = newEntry(entries.at(-1)?.team.trim() ?? "")
+    setEntries((list) => [...list, entry])
+    requestAnimationFrame(() => {
+      const input = nameRefs.current.get(entry.id)
+      input?.scrollIntoView({ behavior: "smooth", block: "center" })
+      input?.focus({ preventScroll: true })
+    })
+  }
+  const remove = (id: number) => {
+    setEntries((list) => (list.length > 1 ? list.filter((e) => e.id !== id) : [newEntry()]))
+    setErrors((er) => Object.fromEntries(Object.entries(er).filter(([k]) => Number(k) !== id)))
   }
 
   const print = () => {
-    const e = validate(form)
-    setErrors(e)
-    if (Object.keys(e).length > 0) return
-    printNameplate({ team: form.team.trim(), rank: form.rank.trim(), name: form.name.trim() })
+    const found: Record<number, Errors> = {}
+    for (const e of targets) {
+      const v = validate(e)
+      if (Object.keys(v).length > 0) found[e.id] = v
+    }
+    setErrors(found)
+    const first = Object.keys(found)[0]
+    if (first) {
+      nameRefs.current.get(Number(first))?.scrollIntoView({ behavior: "smooth", block: "center" })
+      return
+    }
+    if (targets.length > 0) printSheets(targets.map(trimmed))
   }
 
   return (
     <div className="mx-auto grid w-full max-w-6xl grid-cols-12 gap-6 p-4 md:p-6">
-      {/* 왼쪽: 주의사항 + 입력 */}
+      {/* 왼쪽: 주의사항 + 사람 목록 */}
       <form
-        className="col-span-12 flex flex-col gap-6 lg:col-span-5"
+        className="col-span-12 flex flex-col gap-4 lg:col-span-6"
         onSubmit={(e) => {
           e.preventDefault()
           print()
@@ -130,49 +195,126 @@ export function DeskNameplateTool() {
                 모든 칸은 <b className="text-foreground">띄어쓰기 없이</b> 써 주세요. (예: 디자인 팀 → 디자인팀)
               </li>
               <li>팀 이름, 직급(직책), 이름 순서로 넣어 주세요. 직급과 직책 가운데 명찰에 보일 것 하나만 넣습니다.</li>
-              <li>인쇄 창에서 배율은 100%(실제 크기), 여백은 없음으로 두어야 8.5cm × 5.5cm 로 나옵니다.</li>
+              <li>A4 한 장에 10명(2열 × 5줄)씩 왼쪽 위부터 차례로 놓입니다. 체크한 사람만 인쇄됩니다.</li>
+              <li>인쇄 창에서 용지는 A4, 배율은 100%(실제 크기), 여백은 없음으로 두어야 명찰이 8.5cm × 5.5cm 로 나옵니다.</li>
             </ul>
           </AlertDescription>
         </Alert>
-        <FieldGroup>
-          <Field data-invalid={!!errors.team}>
-            <FieldLabel htmlFor="np-team">팀 이름</FieldLabel>
-            <Input id="np-team" value={form.team} onChange={set("team")} placeholder="예: 디자인팀" aria-invalid={!!errors.team} />
-            {errors.team && <FieldError>{errors.team}</FieldError>}
-          </Field>
-          <Field data-invalid={!!errors.rank}>
-            <FieldLabel htmlFor="np-rank">직급·직책</FieldLabel>
-            <Input id="np-rank" value={form.rank} onChange={set("rank")} placeholder="예: 과장, 팀장" aria-invalid={!!errors.rank} />
-            {errors.rank ? <FieldError>{errors.rank}</FieldError> : <FieldDescription>비워 두면 팀 이름만 보입니다.</FieldDescription>}
-          </Field>
-          <Field data-invalid={!!errors.name}>
-            <FieldLabel htmlFor="np-name">
-              이름{" "}
-              <span className="text-destructive" aria-label="필수">
-                *
-              </span>
-            </FieldLabel>
-            <Input id="np-name" value={form.name} onChange={set("name")} placeholder="예: 홍길동" aria-invalid={!!errors.name} />
-            {errors.name && <FieldError>{errors.name}</FieldError>}
-          </Field>
-          <Button type="submit" size="lg" className="w-full">
-            <Printer data-icon="inline-start" />
-            인쇄하기
-          </Button>
-        </FieldGroup>
+
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="np-all"
+            checked={allChecked ? true : entries.some((e) => e.checked) ? "indeterminate" : false}
+            onCheckedChange={(v) => setEntries((list) => list.map((e) => ({ ...e, checked: v === true })))}
+          />
+          <label htmlFor="np-all" className="text-sm font-medium">
+            전체 선택
+          </label>
+          <span className="ml-auto text-sm text-muted-foreground tabular-nums">
+            {entries.length}명 중 {targets.length}명 인쇄
+          </span>
+        </div>
+
+        <ol className="flex flex-col gap-3">
+          {entries.map((e, i) => {
+            const er = errors[e.id] ?? {}
+            return (
+              <li key={e.id} className={`rounded-xl border p-3 transition-opacity ${e.checked ? "" : "opacity-60"}`}>
+                <div className="mb-2 flex items-center gap-2">
+                  <Checkbox id={`np-check-${e.id}`} checked={e.checked} onCheckedChange={(v) => patch(e.id, { checked: v === true })} />
+                  <label htmlFor={`np-check-${e.id}`} className="text-sm font-semibold tabular-nums">
+                    {i + 1}번
+                  </label>
+                  <Button type="button" variant="ghost" size="icon-sm" className="ml-auto" aria-label={`${i + 1}번 지우기`} onClick={() => remove(e.id)}>
+                    <Trash2 />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Field data-invalid={!!er.team}>
+                    <FieldLabel htmlFor={`np-team-${e.id}`}>팀 이름</FieldLabel>
+                    <Input id={`np-team-${e.id}`} value={e.team} onChange={set(e.id, "team")} placeholder="디자인팀" aria-invalid={!!er.team} />
+                    {er.team && <FieldError>{er.team}</FieldError>}
+                  </Field>
+                  <Field data-invalid={!!er.rank}>
+                    <FieldLabel htmlFor={`np-rank-${e.id}`}>직급·직책</FieldLabel>
+                    <Input id={`np-rank-${e.id}`} value={e.rank} onChange={set(e.id, "rank")} placeholder="과장" aria-invalid={!!er.rank} />
+                    {er.rank && <FieldError>{er.rank}</FieldError>}
+                  </Field>
+                  <Field data-invalid={!!er.name}>
+                    <FieldLabel htmlFor={`np-name-${e.id}`}>
+                      이름{" "}
+                      <span className="text-destructive" aria-label="필수">
+                        *
+                      </span>
+                    </FieldLabel>
+                    <Input
+                      id={`np-name-${e.id}`}
+                      ref={(el) => {
+                        if (el) nameRefs.current.set(e.id, el)
+                        else nameRefs.current.delete(e.id)
+                      }}
+                      value={e.name}
+                      onChange={set(e.id, "name")}
+                      placeholder="홍길동"
+                      aria-invalid={!!er.name}
+                    />
+                    {er.name && <FieldError>{er.name}</FieldError>}
+                  </Field>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+
+        <Button type="button" variant="outline" className="w-full" onClick={add}>
+          <Plus data-icon="inline-start" />
+          추가하기
+        </Button>
+        <Button type="submit" size="lg" className="w-full" disabled={targets.length === 0}>
+          <Printer data-icon="inline-start" />
+          인쇄하기 {targets.length > 0 && `(${targets.length}명 · A4 ${sheets.length}장)`}
+        </Button>
+        <FieldDescription>체크를 풀면 목록에는 남고 미리보기·인쇄에서만 빠집니다.</FieldDescription>
       </form>
 
-      {/* 오른쪽: 미리보기(칸 너비에 맞춰 크게) */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-3 lg:col-span-7">
+      {/* 오른쪽: A4 미리보기(실제 비율). 내려도 화면에 붙어 있다 */}
+      <div className="col-span-12 flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:col-span-6 lg:self-start">
         <div className="flex items-baseline gap-2">
           <h3 className="font-semibold">미리보기</h3>
-          <span className="text-xs text-muted-foreground">가로 8.5cm × 세로 5.5cm (화면은 확대)</span>
+          <span className="text-xs text-muted-foreground">A4(210 × 297mm) · 명찰 8.5 × 5.5cm · 한 장에 10명</span>
         </div>
-        <div className="rounded-xl border bg-muted/40 p-6">
-          {/* SVG 라 칸 너비에 맞춰 그대로 커진다 */}
-          <div className="mx-auto max-w-[170mm] shadow-md" dangerouslySetInnerHTML={{ __html: nameplateSvg(preview) }} />
+        <div className="flex flex-col gap-4 rounded-xl border bg-muted/40 p-4">
+          {(sheets.length > 0 ? sheets : [[]]).map((cards, p) => (
+            <div key={p} className="relative w-full bg-white shadow-md" style={{ aspectRatio: `${A4.w} / ${A4.h}` }} aria-label={`A4 ${p + 1}장`}>
+              {cards.map((f, i) => {
+                const { left, top } = slot(i)
+                return (
+                  <div
+                    key={f.id}
+                    className="absolute outline outline-neutral-300"
+                    style={{
+                      left: `${(left / A4.w) * 100}%`,
+                      top: `${(top / A4.h) * 100}%`,
+                      width: `${(CARD.w / A4.w) * 100}%`,
+                      height: `${(CARD.h / A4.h) * 100}%`,
+                    }}
+                    dangerouslySetInnerHTML={{ __html: nameplateSvg(trimmed(f)) }}
+                  />
+                )
+              })}
+              {cards.length === 0 && (
+                <p className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm break-keep text-neutral-400">
+                  이름을 넣으면 왼쪽 위부터 차례로 놓입니다.
+                </p>
+              )}
+              {sheets.length > 1 && (
+                <span className="absolute right-2 bottom-1 text-[10px] text-neutral-400 tabular-nums">
+                  {p + 1} / {sheets.length}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
-        {!form.name.trim() && <p className="text-xs text-muted-foreground">이름을 넣기 전에는 예시 값으로 보입니다.</p>}
       </div>
     </div>
   )
