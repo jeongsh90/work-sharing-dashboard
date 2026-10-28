@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Bell,
   CircleCheck,
@@ -23,13 +23,13 @@ import { Badge } from "@/components/ui/badge"
 import { DesktopNotifyToggle } from "@/components/desktop-notify-toggle"
 import { Section } from "@/components/home/home-page"
 import { PAGE_GRID } from "@/lib/layout"
-import { useNotifications, type AppNotification } from "@/lib/notifications"
+import { markAllRead, takeJustRead, useNotifications, type AppNotification } from "@/lib/notifications"
 import { navigate, openRequest } from "@/lib/router"
 import { cn } from "@/lib/utils"
 
 // 알림함: 프로젝트(요청)별로 알림을 묶어 shadcn Alert 카드 하나로 보여 준다.
 // 카드 제목은 요청 제목, 내용은 그 요청에 온 알림을 최근 것부터 몇 줄. 요청과 관계없는 알림(가입·건의)은 한 건씩 카드로.
-// 새 알림(이 화면을 열기 전까지 안 읽은 것)이 있는 카드는 "새 알림" 배지와 더 굵은 테두리(보통 2px, 새 알림 3px). 카드 테두리·아이콘 색은 최근 알림 종류를 따른다.
+// 새 알림(이 화면을 열기 전까지 안 읽은 것)이 있는 카드는 "새 알림" 배지·더 굵은 테두리(보통 2px, 새 알림 3px)·같은 색 그림자. 카드 테두리·아이콘 색은 최근 알림 종류를 따른다.
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const MAX_LINES = 4
@@ -56,6 +56,22 @@ const TONE = {
   pink: "border-pink-500/50 *:[svg]:text-pink-500",
   indigo: "border-indigo-500/50 *:[svg]:text-indigo-500",
 } as const
+
+// 확인 안 한 알림(새 알림) 카드는 같은 색 그림자로 띄워 강조한다
+const GLOW: Record<keyof typeof TONE, string> = {
+  slate: "shadow-slate-500/40",
+  amber: "shadow-amber-500/50",
+  sky: "shadow-sky-500/50",
+  blue: "shadow-blue-500/50",
+  violet: "shadow-violet-500/50",
+  lime: "shadow-lime-500/50",
+  emerald: "shadow-emerald-500/50",
+  red: "shadow-red-500/50",
+  orange: "shadow-orange-500/50",
+  teal: "shadow-teal-500/50",
+  pink: "shadow-pink-500/50",
+  indigo: "shadow-indigo-500/50",
+}
 
 // 알림 문구로 종류를 고른다. 제목에 든 낱말에 휘둘리지 않게 앞부분만 본다.
 function kindOf(full: string): { icon: LucideIcon; tone: keyof typeof TONE } {
@@ -139,8 +155,20 @@ function groupByProject(items: AppNotification[]) {
 
 export function NotificationsPage() {
   const { items } = useNotifications()
-  // 이 화면을 열면 모두 읽음 처리되므로, 처음 열 때 안 읽었던 알림을 기억해 새 알림으로 표시한다.
-  const [fresh] = useState(() => new Set(items.filter((n) => !n.read).map((n) => n.id)))
+  // 이 화면을 열면 모두 읽음 처리되므로(App 이 화면보다 먼저 처리한다), 그때 읽음으로 바뀐 알림과
+  // 화면을 보는 동안 새로 들어온 알림을 기억해 새 알림으로 표시한다.
+  const [fresh, setFresh] = useState(() => {
+    const ids = takeJustRead()
+    for (const n of items) if (!n.read) ids.add(n.id)
+    return ids
+  })
+  useEffect(() => {
+    const unread = items.filter((n) => !n.read)
+    if (unread.length === 0) return
+    setFresh((prev) => new Set([...prev, ...unread.map((n) => n.id)]))
+    markAllRead()
+    takeJustRead()
+  }, [items])
   const [today] = useState(() => new Date())
   const days = groupByDay(items, today)
 
@@ -183,7 +211,7 @@ export function NotificationsPage() {
                         clickable && "cursor-pointer transition-colors hover:bg-accent/50",
                         "border-2",
                         TONE[kind.tone],
-                        newCount > 0 && "border-3",
+                        newCount > 0 && ["border-3 shadow-[0_0_18px_2px]", GLOW[kind.tone]],
                       )}
                     >
                       <kind.icon />

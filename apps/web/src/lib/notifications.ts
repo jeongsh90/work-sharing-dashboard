@@ -88,8 +88,17 @@ export function useNotificationSync(userId: string | null) {
   }, [userId])
 }
 
+// 알림함을 열 때 방금 읽음으로 바꾼 알림(알림함 화면이 "새 알림"으로 강조한다). 알림함을 나가면 비운다.
+const justRead = new Set<number>()
+export const takeJustRead = () => {
+  const ids = new Set(justRead)
+  justRead.clear()
+  return ids
+}
+
 export function markAllRead() {
   if (!items.some((n) => !n.read)) return
+  for (const n of items) if (!n.read) justRead.add(n.id)
   items = items.map((n) => ({ ...n, read: true }))
   emit()
   api('/notifications/read', { body: {} }).catch(() => {})
