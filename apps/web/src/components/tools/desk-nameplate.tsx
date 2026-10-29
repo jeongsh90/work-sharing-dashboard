@@ -25,17 +25,8 @@ const COLORS = [
   { id: "settle", label: "정산", team: "정산팀", band: "#3D6B61", name: "#3D6B61" },
   { id: "account", label: "회계", team: "회계팀", band: "#3F441B", name: "#3F441B" },
 ] as const
-// 부서 이름 없이 색만(팀 이름은 그대로 둔다). 첫 색은 Figma 원래 띠 색
-const PLAIN_COLORS = [
-  { id: "c-ink", band: "#292525", name: "#161312" },
-  { id: "c-red", band: "#C8102E", name: "#C8102E" },
-  { id: "c-orange", band: "#EA5504", name: "#EA5504" },
-  { id: "c-yellow", band: "#C99A00", name: "#B38900" },
-  { id: "c-blue", band: "#0B4EA2", name: "#0B4EA2" },
-  { id: "c-navy", band: "#1E2A5A", name: "#1E2A5A" },
-  { id: "c-teal", band: "#00857C", name: "#00857C" },
-  { id: "c-brown", band: "#6B4E3D", name: "#6B4E3D" },
-] as const
+// 부서 이름 없이 색만(팀 이름은 그대로 둔다): 부서 색과 같은 색, 겹치는 색(F3·인사총무)은 하나만
+const PLAIN_COLORS = COLORS.filter((c, i) => COLORS.findIndex((d) => d.band === c.band) === i).map((c) => ({ id: `c-${c.id}`, band: c.band, name: c.name }))
 const colorOf = (id: string) => [...COLORS, ...PLAIN_COLORS].find((c) => c.id === id) ?? COLORS[0]
 
 const W = 850
