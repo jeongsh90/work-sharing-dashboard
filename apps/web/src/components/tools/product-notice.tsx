@@ -4,6 +4,7 @@ import { Check, Copy, Download, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmphasisTextarea } from "@/components/tools/emphasis-textarea"
 import { ToolHistory } from "@/components/tools/tool-history"
 import { SortableList } from "@/components/sortable-list"
@@ -41,6 +42,10 @@ const S = {
   nutriHead: { weight: 700, size: 28, spacing: -0.02 } as TextStyle,
   nutriCell: { weight: 500, size: 26, spacing: -0.015 } as TextStyle,
   nutriRatio: { weight: 700, size: 26, spacing: -0.015 } as TextStyle,
+  // 가로형(Figma 셰프애찬 592-437): 성분마다 한 칸, 머리 16 Bold · 비율 20 Bold · 함량 16
+  hHead: { weight: 700, size: 16, spacing: -0.02 } as TextStyle,
+  hRatio: { weight: 700, size: 20, spacing: -0.015 } as TextStyle,
+  hAmount: { weight: 500, size: 16, spacing: -0.015 } as TextStyle,
 }
 const LH = { title: 68, label: 39, value: 43, note: 41 }
 
@@ -57,6 +62,8 @@ type Form = {
   nutriTitle: string
   nutri: NutriRow[]
   nutriNote: string
+  // 영양정보 표 모양: 세로형(성분이 한 줄씩) · 가로형(성분이 한 칸씩 옆으로). 예전 기록은 없으면 세로형
+  nutriLayout?: "vertical" | "horizontal"
 }
 
 const initialForm = (): Form => ({
@@ -65,6 +72,7 @@ const initialForm = (): Form => ({
   nutriTitle: "영양정보 (100g당)",
   nutri: NUTRI_NAMES.map((name) => ({ id: id(), name, amount: "", ratio: "" })),
   nutriNote: DEFAULT_NUTRI_NOTE,
+  nutriLayout: "vertical",
 })
 
 // 입력 정리(사양 8장): 온도 °C → ℃, 주의 문구 앞 ※ 는 빼고 툴이 붙인다
@@ -123,6 +131,30 @@ function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
     ctx.fillRect(PAD.side, yy, CONTENT_W, h)
   }
 
+  // 가로형 영양정보: 성분 수만큼 너비를 똑같이 나눈 칸에 가운데 맞춤.
+  // 머리 행 54(이름) · 1px 선 · 값 행 84(위: 비율 주황 Bold, 아래: 함량) · 1px 선. 칸보다 긴 글은 글자를 줄인다.
+  // 비율이 없으면 위에 회색 "-". 단, 열량은 위에 숫자(검정 Bold)·아래에 단위(kcal)
+  function renderHorizontal(top: number) {
+    const colW = CONTENT_W / c.nutri.length
+    const fitted = (s: TextStyle, str: string) => {
+      applyFont(ctx, s)
+      const w = ctx.measureText(str).width
+      return w > colW - 6 ? { ...s, size: Math.floor((s.size * (colW - 6)) / w) } : s
+    }
+    const cell = (s: TextStyle, color: string, str: string, i: number, centerY: number) =>
+      text(fitted(s, str), color, str, PAD.side + colW * i + colW / 2, centerY - 12, 24, "center")
+    c.nutri.forEach((n, i) => {
+      cell(S.hHead, MAIN, n.name, i, top + 26.5)
+      const kcal = !n.ratio && n.name === "열량" ? n.amount.match(/^([\d.,]+)\s*(.*)$/) : null
+      const [upper, lower] = kcal ? [kcal[1], kcal[2]] : [n.ratio && n.ratio !== "-" ? n.ratio : "-", n.amount]
+      cell(S.hRatio, kcal ? MAIN : upper === "-" ? SUB : ORANGE, upper, i, top + 54 + 31.5)
+      cell(S.hAmount, MAIN, lower, i, top + 54 + 58)
+    })
+    rule(top + 54, 1, LINE)
+    rule(top + 54 + 1 + 84, 1, LINE)
+    return top + 54 + 1 + 84 + 1
+  }
+
   // 5-0 제목
   text(S.title, MAIN, "상품정보고시", W / 2, y, LH.title, "center")
   y += LH.title
@@ -170,24 +202,28 @@ function render(ctx: CanvasRenderingContext2D, f: Form, measure: boolean) {
     }
     rule(y, 2, MAIN)
     y += 2
-    const colW = (CONTENT_W - 48) / 3
-    const x1 = PAD.side + 24
-    const right2 = x1 + colW * 2
-    const right3 = x1 + colW * 3
-    // 머리 행(72)
-    text(S.nutriHead, MAIN, "영양성분", x1, y + 16, 40)
-    text(S.nutriHead, MAIN, "함량", right2, y + 16, 40, "right")
-    text(S.nutriHead, MAIN, "1일 기준치 비율", right3, y + 16, 40, "right")
-    y += 72
-    rule(y - 1, 1, LINE)
-    // 성분 행(76): 비율이 있으면 주황 Bold, 없으면 회색 -
-    for (const n of c.nutri) {
-      text(S.nutriCell, MAIN, n.name, x1, y + 16, LH.value)
-      text(S.nutriCell, MAIN, n.amount, right2, y + 16, LH.value, "right")
-      if (n.ratio && n.ratio !== "-") text(S.nutriRatio, ORANGE, n.ratio, right3, y + 16, LH.value, "right")
-      else text(S.nutriCell, SUB, "-", right3, y + 16, LH.value, "right")
-      y += 76
+    if (f.nutriLayout === "horizontal") {
+      y = renderHorizontal(y)
+    } else {
+      const colW = (CONTENT_W - 48) / 3
+      const x1 = PAD.side + 24
+      const right2 = x1 + colW * 2
+      const right3 = x1 + colW * 3
+      // 머리 행(72)
+      text(S.nutriHead, MAIN, "영양성분", x1, y + 16, 40)
+      text(S.nutriHead, MAIN, "함량", right2, y + 16, 40, "right")
+      text(S.nutriHead, MAIN, "1일 기준치 비율", right3, y + 16, 40, "right")
+      y += 72
       rule(y - 1, 1, LINE)
+      // 성분 행(76): 비율이 있으면 주황 Bold, 없으면 회색 -
+      for (const n of c.nutri) {
+        text(S.nutriCell, MAIN, n.name, x1, y + 16, LH.value)
+        text(S.nutriCell, MAIN, n.amount, right2, y + 16, LH.value, "right")
+        if (n.ratio && n.ratio !== "-") text(S.nutriRatio, ORANGE, n.ratio, right3, y + 16, LH.value, "right")
+        else text(S.nutriCell, SUB, "-", right3, y + 16, LH.value, "right")
+        y += 76
+        rule(y - 1, 1, LINE)
+      }
     }
     // 안내(없으면 뺀다): ※ 칸 20 + 간격 10
     if (c.nutriNote.length > 0) {
@@ -378,7 +414,19 @@ export function ProductNoticeTool() {
 
         {/* 영양정보 */}
         <Field>
-          <FieldLabel htmlFor="nutri-title">영양정보</FieldLabel>
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel htmlFor="nutri-title">영양정보</FieldLabel>
+            {/* 표 모양: 세로형(기존) · 가로형(성분이 옆으로 한 칸씩) */}
+            <Tabs
+              value={form.nutriLayout ?? "vertical"}
+              onValueChange={(v) => setForm((f) => ({ ...f, nutriLayout: v as Form["nutriLayout"] }))}
+            >
+              <TabsList>
+                <TabsTrigger value="vertical">세로형</TabsTrigger>
+                <TabsTrigger value="horizontal">가로형</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
           <Input id="nutri-title" value={form.nutriTitle} onChange={(e) => setForm((f) => ({ ...f, nutriTitle: e.target.value }))} placeholder="예: 영양정보 (100g당)" />
           <div className="flex flex-col gap-2">
             <div className="grid grid-cols-[1.25rem_1fr_1fr_1fr_2.25rem] gap-2 text-xs text-muted-foreground">
