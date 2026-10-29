@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 
 // 디자인 툴 > 데스크 명찰: 팀 이름·직급(직책)·이름을 넣어 가로 8.5cm × 세로 5.5cm 명찰을 인쇄한다.
 // 모양은 Figma(셰프애찬 570-1433) 그대로: 850×550 좌표(1 = 0.1mm)의 SVG 로 그린다.
-// 팀 이름·직급은 Gmarket Sans Medium, 이름은 SB 어그로 Bold. 띠·이름 색은 부서 색에서 고른다.
+// 팀 이름·직급은 Gmarket Sans Medium, 이름은 SB 어그로 Medium. 띠·이름 색은 부서 색에서 고른다.
 // 한 사람마다 명찰 두 장을 위아래로 붙여(위는 거꾸로) 가운데 선을 접으면 앞뒤로 보이는 탁상 명찰이 된다(직원이름표_본사 양식).
 // 여러 명을 넣어 A4 에 왼쪽 위부터 2열 × 2줄(4명)로 놓고, 숨긴 iframe 에 담아 A4 로 인쇄한다(배율 100%, 여백 없음).
 
@@ -59,8 +59,8 @@ function cardSvg(f: Form) {
   const name = f.name.trim()
   const teamSize = fit(team, 54, 0.962, 0.2, W - TEAM_X - PAD)
   const rankSize = fit(rank, 80, 0.962, rankSpacing([...rank].length), W - PAD * 2)
-  // SB 어그로 한글 폭 0.96em, 글자는 기준선 위 0.75em·아래 0.14em
-  const nameSize = fit(name, 250, 0.96, 0.03, W - PAD * 2)
+  // SB 어그로 한글 폭 0.94em, 글자는 기준선 위 0.75em·아래 0.14em
+  const nameSize = fit(name, 250, 0.94, 0.03, W - PAD * 2)
   const color = colorOf(f.color)
   // 팀 이름은 색 띠(높이 125) 가운데에 심볼과 나란히. 이름은 글자 가운데를 372 에 둔다(Figma 는 358)
   const nameY = 372 + nameSize * 0.3
@@ -69,7 +69,7 @@ function cardSvg(f: Form) {
 ${SYMBOL}
 <text x="${TEAM_X}" y="${62.5 + (teamSize * (0.75 - 0.1)) / 2}" fill="#fff" font-family="GmarketSans" font-weight="500" font-size="${teamSize}" letter-spacing="${0.2 * teamSize}">${esc(team)}</text>
 ${rank ? `<text x="40.6" y="221" fill="#FF4D00" font-family="GmarketSans" font-weight="500" font-size="${rankSize}" letter-spacing="${rankSpacing([...rank].length) * rankSize}">${esc(rank)}</text>` : ""}
-<text x="${PAD}" y="${nameY}" fill="${color.name}" font-family="SBAggro" font-weight="700" font-size="${nameSize}" letter-spacing="${0.03 * nameSize}">${esc(name)}</text>
+<text x="${PAD}" y="${nameY}" fill="${color.name}" font-family="SBAggro" font-weight="500" font-size="${nameSize}" letter-spacing="${0.03 * nameSize}">${esc(name)}</text>
 <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="none" stroke="#e4e5e7" stroke-width="2"/>`
 }
 
@@ -149,7 +149,7 @@ html,body{margin:0;padding:0;background:#fff}
     setTimeout(() => frame.remove(), 1000)
   }
   const text = (k: keyof Errors) => list.map((f) => f[k]).join("")
-  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("700 50px SBAggro", text("name"))]).then(go)
+  void Promise.all([doc.fonts.load("500 50px GmarketSans", text("team") + text("rank")), doc.fonts.load("500 50px SBAggro", text("name"))]).then(go)
 }
 
 let nextId = 1

@@ -8,7 +8,7 @@
 @font-face { font-family: "GmarketSans"; font-weight: 300; font-display: swap; src: url("./assets/fonts/GmarketSansTTFLight.ttf") format("truetype"); }
 @font-face { font-family: "GmarketSans"; font-weight: 500; font-display: swap; src: url("./assets/fonts/GmarketSansTTFMedium.ttf") format("truetype"); }
 @font-face { font-family: "GmarketSans"; font-weight: 700; font-display: swap; src: url("./assets/fonts/GmarketSansTTFBold.ttf") format("truetype"); }
-@font-face { font-family: "SBAggro"; font-weight: 700; font-display: swap; src: url("./assets/fonts/SBAggroB.ttf") format("truetype"); }
+@font-face { font-family: "SBAggro"; font-weight: 500; font-display: swap; src: url("./assets/fonts/SBAggroM.ttf") format("truetype"); }
 
 @custom-variant dark (&:is(.dark *));
 
