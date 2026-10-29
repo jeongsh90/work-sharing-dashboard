@@ -25,7 +25,18 @@ const COLORS = [
   { id: "settle", label: "정산", team: "정산팀", band: "#3D6B61", name: "#3D6B61" },
   { id: "account", label: "회계", team: "회계팀", band: "#3F441B", name: "#3F441B" },
 ] as const
-const colorOf = (id: string) => COLORS.find((c) => c.id === id) ?? COLORS[0]
+// 부서 이름 없이 색만(팀 이름은 그대로 둔다). 첫 색은 Figma 원래 띠 색
+const PLAIN_COLORS = [
+  { id: "c-ink", band: "#292525", name: "#161312" },
+  { id: "c-red", band: "#C8102E", name: "#C8102E" },
+  { id: "c-orange", band: "#EA5504", name: "#EA5504" },
+  { id: "c-yellow", band: "#C99A00", name: "#B38900" },
+  { id: "c-blue", band: "#0B4EA2", name: "#0B4EA2" },
+  { id: "c-navy", band: "#1E2A5A", name: "#1E2A5A" },
+  { id: "c-teal", band: "#00857C", name: "#00857C" },
+  { id: "c-brown", band: "#6B4E3D", name: "#6B4E3D" },
+] as const
+const colorOf = (id: string) => [...COLORS, ...PLAIN_COLORS].find((c) => c.id === id) ?? COLORS[0]
 
 const W = 850
 const H = 550
@@ -235,7 +246,7 @@ export function DeskNameplateTool() {
               </li>
               <li>팀 이름, 직급(직책), 이름 순서로 넣어 주세요. 직급과 직책 가운데 명찰에 보일 것 하나만 넣습니다.</li>
               <li>한 사람마다 명찰이 위아래 2장(위는 거꾸로) 붙어 나옵니다. 테두리를 따라 자르고 가운데 선을 접으면 앞뒤로 보이는 탁상 명찰이 됩니다.</li>
-              <li>부서 색을 고르면 위 띠와 이름이 그 색으로 바뀌고 팀 이름이 자동으로 들어갑니다. 팀 이름은 고른 뒤에 고쳐 쓸 수 있습니다.</li>
+              <li>부서 색을 고르면 위 띠와 이름이 그 색으로 바뀌고 팀 이름이 자동으로 들어갑니다. 팀 이름은 고른 뒤에 고쳐 쓸 수 있습니다. 아래 &lsquo;색만&rsquo;은 팀 이름은 그대로 두고 색만 바꿉니다.</li>
               <li>A4 한 장에 최대 4명(2열 × 2줄)까지 왼쪽 위부터 차례로 놓입니다. 체크한 사람만 인쇄됩니다.</li>
               <li>
                 각 칸 오른쪽 위 <Copy className="inline size-3.5 align-[-2px]" aria-label="복사하기" /> 복사하기를 누르면 같은 내용(팀 이름·직급·이름)이 바로 아래에 하나 더 생깁니다. 이름을 넣어야 복사되고, 4명이 차면 추가하기·복사하기가 막힙니다.
@@ -338,6 +349,28 @@ export function DeskNameplateTool() {
                         >
                           {on && <Check data-icon="inline-start" />}
                           {c.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={`${i + 1}번 색만`}>
+                    <span className="mr-1 text-xs text-muted-foreground">색만</span>
+                    {PLAIN_COLORS.map((c) => {
+                      const on = e.color === c.id
+                      return (
+                        <Button
+                          key={c.id}
+                          type="button"
+                          size="icon-sm"
+                          role="radio"
+                          aria-checked={on}
+                          aria-label={c.band}
+                          title={c.band}
+                          className={`rounded-full border-0 text-white hover:opacity-90 ${on ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "opacity-70"}`}
+                          style={{ backgroundColor: c.band }}
+                          onClick={() => patch(e.id, { color: c.id })}
+                        >
+                          {on && <Check />}
                         </Button>
                       )
                     })}
