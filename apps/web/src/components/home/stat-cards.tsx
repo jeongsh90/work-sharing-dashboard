@@ -6,7 +6,7 @@ export function StatCards({ requests }: { requests: DesignRequest[] }) {
   const active = requests.filter(isActive)
   const stats = [
     { label: "진행 중 전체", value: active.length, note: "완료·취소를 뺀 요청" },
-    { label: "이번 주 마감", value: active.filter((r) => isThisWeek(r.dueAt)).length, note: "월요일 ~ 일요일" },
+    { label: "이번 주 마감", value: active.filter((r) => !r.onHold && isThisWeek(r.dueAt)).length, note: "월요일 ~ 일요일" },
     {
       label: "작업 중",
       value: active.filter((r) => r.status === "in-progress" || r.status === "revising").length,

@@ -173,6 +173,8 @@ export function RequestForm({
   const [department, setDepartment] = useState(initial?.department ?? session.department)
   // 계속 업무(마감 없음): 체크하면 시작일만 고르고 마감 시각은 쓰지 않는다.
   const [ongoing, setOngoing] = useState(initial?.ongoing ?? false)
+  // 보류(요청 수정에서만): 일정은 그대로 두고 잠시 멈춘다. 마감 지남·이번 주 마감에서 빠진다.
+  const [onHold, setOnHold] = useState(initial?.onHold ?? false)
   const [range, setRange] = useState<DateRange | undefined>(() =>
     initial
       ? initial.ongoing
@@ -263,6 +265,7 @@ export function RequestForm({
         })),
         requestedStartAt: startDay!.getTime(),
         ongoing,
+        onHold,
         dueAt: ongoing ? undefined : dueAt!.getTime(),
         fileIds: uploaded.map((f) => f.id),
         keepFileIds: kept.map((f) => f.id),
@@ -414,16 +417,24 @@ export function RequestForm({
           <Field data-invalid={invalid("period")}>
             <div className="flex items-center justify-between gap-2">
               <FieldLabel htmlFor="req-period">{ongoing ? "작업 시작일 (계속 업무)" : "작업 기간 (시작일 ~ 마감일)"}</FieldLabel>
-              <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
-                <Checkbox
-                  checked={ongoing}
-                  onCheckedChange={(v) => {
-                    setOngoing(v === true)
-                    clear("period")
-                  }}
-                />
-                계속 업무
-              </Label>
+              <div className="flex items-center gap-3">
+                {initial && (
+                  <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                    <Checkbox checked={onHold} onCheckedChange={(v) => setOnHold(v === true)} />
+                    보류
+                  </Label>
+                )}
+                <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                  <Checkbox
+                    checked={ongoing}
+                    onCheckedChange={(v) => {
+                      setOngoing(v === true)
+                      clear("period")
+                    }}
+                  />
+                  계속 업무
+                </Label>
+              </div>
             </div>
             <DateRangePicker
               id="req-period"

@@ -195,6 +195,8 @@ addColumn('events', 'undone', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('users', 'show_on_home', 'INTEGER NOT NULL DEFAULT 1')
 // 계속 업무(마감 없음). 1 이면 due_at 에는 아주 먼 날짜(ONGOING_DUE)를 넣어 마감 정렬에서 맨 뒤로 간다.
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
+// 보류(요청 수정에서 체크): 일정은 그대로 두고 잠시 멈춘 요청. 마감 지남·이번 주 마감에 걸리지 않는다.
+addColumn('requests', 'on_hold', 'INTEGER NOT NULL DEFAULT 0')
 // 대신 작성: 구두·전화 등으로 받은 요청을 작업자·관리자가 요청서로 옮겨 적은 경우.
 // source 는 받은 경로(구두·전화·메신저·메일·기타, 시스템에서 직접 쓴 요청은 ''), created_by 는 실제로 쓴 사람.
 // requester_label 은 계정이 없는 요청자의 이름(이때 requester_id 는 쓴 사람)

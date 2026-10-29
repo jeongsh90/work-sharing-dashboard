@@ -201,7 +201,7 @@ export function RequestTable({
           </TableHeader>
           <TableBody>
             {visible.map((r) => {
-              const overdue = isActive(r) && r.dueAt < now
+              const overdue = isActive(r) && !r.onHold && r.dueAt < now
               // 담당이 아직 없는 진행 중 요청은 왼쪽 주황 선과 옅은 배경으로 눈에 띄게
               const waitingAssign = isUnassigned(r) && isActive(r)
               // 컨펌 대기(시안 확인 중)도 같은 방식으로 보라 선·배경

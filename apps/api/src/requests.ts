@@ -47,6 +47,7 @@ type RequestRow = {
   revision: number
   requested_start_at: number | null
   ongoing: number
+  on_hold: number
   due_at: number
   created_at: number
   updated_at: number
@@ -362,6 +363,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     revision: row.revision,
     requestedStartAt: row.requested_start_at,
     ongoing: row.ongoing === 1,
+    onHold: row.on_hold === 1,
     dueAt: row.due_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -581,7 +583,7 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
     saveItems(id, itemList)
     run(
       `UPDATE requests SET title = :title, work_type = :workType, description = :description, department = :department,
-       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, ongoing = :ongoing, updated_at = :now WHERE id = :id`,
+       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, ongoing = :ongoing, on_hold = :onHold, updated_at = :now WHERE id = :id`,
       {
         id,
         title: text(body.title, '제목', { required: true, max: 100 }),
@@ -592,6 +594,7 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
         startAt,
         dueAt,
         ongoing,
+        onHold: body.onHold === true ? 1 : 0,
         now: Date.now(),
       },
     )

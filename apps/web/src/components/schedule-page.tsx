@@ -612,14 +612,14 @@ export function SchedulePage({ session }: { session: Session }) {
                   {bars.map((b) => {
                     const r = b.request
                     const color = STATUS_BEAM[r.status]
-                    const overdue = isActive(r) && startOfDay(r.dueAt) < today
+                    const overdue = isActive(r) && !r.onHold && startOfDay(r.dueAt) < today
                     const names = r.designers.map(userName).join(", ") || "미배정"
                     return (
                       <button
                         key={`${r.id}-${b.col}`}
                         type="button"
                         onClick={() => openRequest(r.id)}
-                        title={`${r.title}\n${statusText(r)} · ${names}\n${period(r).start.toLocaleDateString("ko-KR")} ~ ${r.ongoing ? "계속 업무" : r.dueAt.toLocaleString("ko-KR")}`}
+                        title={`${r.title}\n${statusText(r)} · ${names}\n${period(r).start.toLocaleDateString("ko-KR")} ~ ${r.ongoing ? "계속 업무" : r.dueAt.toLocaleString("ko-KR")}${r.onHold ? " · 보류" : ""}`}
                         className={`mx-0.5 flex min-w-0 items-center gap-1 overflow-hidden px-1.5 text-left text-xs leading-none transition-opacity hover:opacity-80 ${
                           b.startsHere ? "rounded-l-md" : ""
                         } ${b.endsHere ? "rounded-r-md" : ""}`}

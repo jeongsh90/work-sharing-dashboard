@@ -101,7 +101,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
 
   const rounds = detail.submissions
   const shown = rounds.find((s) => s.round === round) ?? rounds[rounds.length - 1]
-  const overdue = detail.status !== "done" && detail.status !== "canceled" && detail.dueAt < now
+  const overdue = !detail.onHold && detail.status !== "done" && detail.status !== "canceled" && detail.dueAt < now
 
   const content = (
     <Section title="요청 내용" className="col-span-12 lg:col-span-7">
@@ -248,6 +248,9 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           {/* 작업 기간: 요청자가 고른 시작일 ~ 마감 일시. 시작일이 없거나 마감일과 같으면 마감 일시만. 계속 업무는 시작일 ~ 계속 */}
           <Meta label="작업 기간">
             <span className={overdue ? "font-medium text-destructive" : undefined}>
+              {detail.onHold && (
+                <span className="mr-1.5 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">보류</span>
+              )}
               {detail.ongoing ? (
                 `${detail.requestedStartAt ? `${new Date(detail.requestedStartAt).getMonth() + 1}월 ${new Date(detail.requestedStartAt).getDate()}일 ~ ` : ""}계속 업무`
               ) : (
