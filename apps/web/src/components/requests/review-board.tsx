@@ -173,7 +173,7 @@ export function ReviewBoard({
               {canPin ? "아직 핀이 없습니다. 이미지를 눌러 첫 핀을 꽂아 보세요." : "이 시안에는 핀 댓글이 없습니다."}
             </p>
           ) : (
-            <SmoothScrollArea className="max-h-[calc(100svh-10rem)] overflow-y-auto pr-1">
+            <SmoothScrollArea className="max-h-[calc(100svh-10rem-var(--bottom-bar-h,0px))] overflow-y-auto pr-1">
             <ol className="flex flex-col gap-2">
               {pins.map((p) => (
                 <PinThread

@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.4',
+    date: '2026-10-30',
+    changes: [
+      '요청 상세: 오른쪽 핀 댓글 목록이 하단 버튼 막대에 가리지 않게(막대 높이만큼 목록 높이를 줄임)',
+    ],
+  },
+  {
     version: '0.6.3',
     date: '2026-10-29',
     changes: [
