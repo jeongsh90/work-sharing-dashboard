@@ -15,15 +15,15 @@ import { Input } from "@/components/ui/input"
 
 type Form = { team: string; rank: string; name: string; color: string }
 
-// 부서 색(직원이름표_본사 아래 색 띠). 띠와 이름에 같은 색을 쓰고, 회색 부서는 이름만 조금 더 진하게
+// 부서 색(직원이름표_본사 아래 색 띠). 띠와 이름에 같은 색을 쓰고, 회색 부서는 이름만 조금 더 진하게. 고르면 팀 이름(team)도 채운다
 const COLORS = [
-  { id: "b2b", label: "B2B", band: "#1D570B", name: "#1D570B" },
-  { id: "f3", label: "F3", band: "#3F4044", name: "#303133" },
-  { id: "buy", label: "구매", band: "#7767A8", name: "#7767A8" },
-  { id: "order", label: "발주", band: "#00B1F1", name: "#00B1F1" },
-  { id: "hr", label: "인사총무", band: "#3F4044", name: "#303133" },
-  { id: "settle", label: "정산", band: "#3D6B61", name: "#3D6B61" },
-  { id: "account", label: "회계", band: "#3F441B", name: "#3F441B" },
+  { id: "b2b", label: "B2B", team: "B2B사업부", band: "#1D570B", name: "#1D570B" },
+  { id: "f3", label: "F3", team: "F3생산본부", band: "#3F4044", name: "#303133" },
+  { id: "buy", label: "구매", team: "구매팀", band: "#7767A8", name: "#7767A8" },
+  { id: "order", label: "발주", team: "발주팀", band: "#00B1F1", name: "#00B1F1" },
+  { id: "hr", label: "인사총무", team: "인사총무팀", band: "#3F4044", name: "#303133" },
+  { id: "settle", label: "정산", team: "정산팀", band: "#3D6B61", name: "#3D6B61" },
+  { id: "account", label: "회계", team: "회계팀", band: "#3F441B", name: "#3F441B" },
 ] as const
 const colorOf = (id: string) => COLORS.find((c) => c.id === id) ?? COLORS[0]
 
@@ -235,7 +235,7 @@ export function DeskNameplateTool() {
               </li>
               <li>팀 이름, 직급(직책), 이름 순서로 넣어 주세요. 직급과 직책 가운데 명찰에 보일 것 하나만 넣습니다.</li>
               <li>한 사람마다 명찰이 위아래 2장(위는 거꾸로) 붙어 나옵니다. 테두리를 따라 자르고 가운데 선을 접으면 앞뒤로 보이는 탁상 명찰이 됩니다.</li>
-              <li>부서 색을 고르면 위 띠와 이름이 그 색으로 바뀝니다.</li>
+              <li>부서 색을 고르면 위 띠와 이름이 그 색으로 바뀌고 팀 이름이 자동으로 들어갑니다. 팀 이름은 고른 뒤에 고쳐 쓸 수 있습니다.</li>
               <li>A4 한 장에 최대 4명(2열 × 2줄)까지 왼쪽 위부터 차례로 놓입니다. 체크한 사람만 인쇄됩니다.</li>
               <li>
                 각 칸 오른쪽 위 <Copy className="inline size-3.5 align-[-2px]" aria-label="복사하기" /> 복사하기를 누르면 같은 내용(팀 이름·직급·이름)이 바로 아래에 하나 더 생깁니다. 이름을 넣어야 복사되고, 4명이 차면 추가하기·복사하기가 막힙니다.
@@ -331,7 +331,10 @@ export function DeskNameplateTool() {
                           aria-checked={on}
                           className={`border-0 text-white hover:opacity-90 ${on ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "opacity-70"}`}
                           style={{ backgroundColor: c.band }}
-                          onClick={() => patch(e.id, { color: c.id })}
+                          onClick={() => {
+                            patch(e.id, { color: c.id, team: c.team })
+                            setErrors((er) => ({ ...er, [e.id]: { ...er[e.id], team: undefined } }))
+                          }}
                         >
                           {on && <Check data-icon="inline-start" />}
                           {c.label}
