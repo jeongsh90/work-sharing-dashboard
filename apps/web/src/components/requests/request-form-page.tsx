@@ -452,9 +452,9 @@ export function RequestForm({
           </Field>
           <Field>
             <FieldLabel htmlFor="req-due-time">마감 시각</FieldLabel>
-            <Select value={dueTime} onValueChange={setDueTime} disabled={ongoing}>
+            <Select value={dueTime} onValueChange={setDueTime} disabled={ongoing || onHold}>
               <SelectTrigger id="req-due-time" className="w-full">
-                {ongoing ? <span className="text-muted-foreground">마감 없음(계속 업무)</span> : <SelectValue />}
+                {onHold ? <span className="text-red-600 dark:text-red-400">마감 없음(보류)</span> : ongoing ? <span className="text-muted-foreground">마감 없음(계속 업무)</span> : <SelectValue />}
               </SelectTrigger>
               <SelectContent>
                 {dueTimes.map((t) => (

@@ -248,10 +248,10 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           {/* 작업 기간: 요청자가 고른 시작일 ~ 마감 일시. 시작일이 없거나 마감일과 같으면 마감 일시만. 계속 업무는 시작일 ~ 계속 */}
           <Meta label="작업 기간">
             <span className={overdue ? "font-medium text-destructive" : undefined}>
-              {detail.onHold && (
-                <span className="mr-1.5 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">보류</span>
-              )}
-              {detail.ongoing ? (
+              {/* 보류면 마감 일시 없이 빨간 "보류"만 */}
+              {detail.onHold ? (
+                <span className="font-medium text-red-600 dark:text-red-400">보류</span>
+              ) : detail.ongoing ? (
                 `${detail.requestedStartAt ? `${new Date(detail.requestedStartAt).getMonth() + 1}월 ${new Date(detail.requestedStartAt).getDate()}일 ~ ` : ""}계속 업무`
               ) : (
                 <>

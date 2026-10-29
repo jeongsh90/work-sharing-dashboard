@@ -191,10 +191,10 @@ export function formatDateTime(date: Date) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-// 마감 표시: 계속 업무면 "계속 업무", 보류면 앞에 "보류"
+// 마감 표시: 보류면 마감 일시 없이 "보류", 계속 업무면 "계속 업무"
 export function dueText(r: { ongoing: boolean; onHold?: boolean; dueAt: Date }) {
-  const due = r.ongoing ? "계속 업무" : formatDateTime(r.dueAt)
-  return r.onHold ? `보류 · ${due}` : due
+  if (r.onHold) return "보류"
+  return r.ongoing ? "계속 업무" : formatDateTime(r.dueAt)
 }
 
 // <input type="datetime-local"> 값(로컬 시각)

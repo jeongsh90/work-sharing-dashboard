@@ -281,7 +281,7 @@ export function RequestTable({
                     {r.startedAt ? formatDateTime(r.startedAt) : "-"}
                   </TableCell>
                   <TableCell className={overdue ? "font-medium text-destructive" : undefined}>
-                    {dueText(r)}
+                    {r.onHold ? <span className="font-medium text-red-600 dark:text-red-400">보류</span> : dueText(r)}
                     {overdue && <span className="ml-1 text-xs">마감 지남</span>}
                   </TableCell>
                   <TableCell>
