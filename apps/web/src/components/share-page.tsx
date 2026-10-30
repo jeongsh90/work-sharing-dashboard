@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react"
-import { Download, EllipsisVertical, FilePlus2, Paperclip, Pencil, Search, Trash2, Upload, X } from "lucide-react"
+import { Download, EllipsisVertical, FilePlus2, FileText, ImageIcon, Paperclip, Pencil, Search, Trash2, Upload, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -32,11 +32,10 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { Textarea } from "@/components/ui/textarea"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
-import { OTHER, PREVIEWABLE, TYPES, TypeBadge, typeOf } from "@/components/file-type"
+import { OTHER, TYPES, TypeBadge, typeOf } from "@/components/file-type"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
-import { AuthImage } from "@/components/requests/file-list"
-import { ImageLightbox } from "@/components/requests/image-lightbox"
+import { FileGallery } from "@/components/requests/file-list"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { api, ApiError, downloadLargeFile, formatBytes, uploadFileWithProgress } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
@@ -67,7 +66,7 @@ const NEW_CATEGORY = "__new__"
 const NO_CATEGORY = "미분류"
 
 // 한 화면에 보이는 글 수. 넘으면 다음 장으로
-const PAGE_SIZE = 20
+const PAGE_SIZE = 30
 
 // 형식 필터: 파일 있는 글 / 글만 / 파일 형식별
 const KIND_FILTERS = [
@@ -298,7 +297,7 @@ export function SharePage({ session }: { session: Session }) {
         ) : list.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">조건에 맞는 자료가 없습니다.</p>
         ) : (
-          <ul className="flex flex-col gap-4">
+          <ul className="grid grid-cols-12 gap-4 md:gap-6">
             {visible.map((post) => (
               <PostCard
                 key={post.id}
@@ -354,48 +353,36 @@ function CategoryChip({ active, label, count, onClick }: { active: boolean; labe
   )
 }
 
-// 글 한 건: 분류·제목·올린 사람 / 내용(길면 접힘) / 이미지 미리보기 + 파일 목록
+// 글 한 건(최종 파일 보관함 카드와 같은 구조): 분류·제목·올린 사람 + 오른쪽 다운로드 / 내용(길면 접힘) / 이미지 미리보기(4장까지) + 파일
 function PostCard({ post, canEdit, onEdit, onRemove }: { post: SharePost; canEdit: boolean; onEdit: () => void; onRemove: () => void }) {
   const [expanded, setExpanded] = useState(false)
-  const [viewing, setViewing] = useState<number | null>(null)
-  const images = post.files.filter((f) => PREVIEWABLE.has(f.mime))
-  const others = post.files.filter((f) => !PREVIEWABLE.has(f.mime))
-  const long = post.body.length > 240 || post.body.split("\n").length > 5
-  const total = post.files.reduce((s, f) => s + f.size, 0)
-  const lightbox: FileInfo[] = images.map((f) => ({ ...f, kind: null, uploaderId: post.authorId, createdAt: post.createdAt }))
-
-  const downloadAll = async () => {
-    for (const f of post.files) {
-      await downloadLargeFile(f.id, f.name)
-      await sleep(400)
-    }
-  }
+  const long = post.body.length > 120 || post.body.split("\n").length > 3
+  const files: FileInfo[] = post.files.map((f) => ({ ...f, kind: null, uploaderId: post.authorId, createdAt: post.createdAt }))
 
   return (
-    <li className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+    <li className="col-span-12 flex flex-col gap-3 rounded-xl border bg-card p-4 md:col-span-6 xl:col-span-4">
       <div className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">{post.category || NO_CATEGORY}</span>
-            <h3 className="min-w-0 font-semibold break-keep">{post.title}</h3>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span>{post.authorName}</span>
-            <span className="tabular-nums">{formatDateTime(new Date(post.createdAt))}</span>
-            {post.updatedAt - post.createdAt > 60_000 && <span>(수정됨)</span>}
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-xs text-muted-foreground">{post.category || NO_CATEGORY}</span>
+          <span className="truncate font-medium" title={post.title}>
+            {post.title}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span className="flex items-center gap-1">
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">올림</span>
+              <span>{post.authorName}</span>
+            </span>
+            <span className="text-muted-foreground tabular-nums">
+              {formatDateTime(new Date(post.createdAt))}
+              {post.updatedAt - post.createdAt > 60_000 && " (수정됨)"}
+            </span>
+          </span>
         </div>
-        {post.files.length > 1 && (
-          <Button variant="outline" size="sm" onClick={() => void downloadAll()}>
-            <Download data-icon="inline-start" />
-            전체 받기
-            <span className="text-muted-foreground tabular-nums">{formatBytes(total)}</span>
-          </Button>
-        )}
+        {post.files.length > 0 && <DownloadMenu files={post.files} />}
         {canEdit && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="글 메뉴">
+              <Button variant="ghost" size="icon-sm" className="-mr-1 shrink-0" aria-label="글 메뉴">
                 <EllipsisVertical />
               </Button>
             </DropdownMenuTrigger>
@@ -416,7 +403,7 @@ function PostCard({ post, canEdit, onEdit, onRemove }: { post: SharePost; canEdi
 
       {post.body && (
         <div className="flex flex-col items-start gap-1">
-          <p className={`text-sm break-keep whitespace-pre-line ${long && !expanded ? "line-clamp-5" : ""}`}>{post.body}</p>
+          <p className={`text-sm break-keep whitespace-pre-line text-muted-foreground ${long && !expanded ? "line-clamp-3" : ""}`}>{post.body}</p>
           {long && (
             <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setExpanded((v) => !v)}>
               {expanded ? "접기" : "더 보기"}
@@ -425,44 +412,45 @@ function PostCard({ post, canEdit, onEdit, onRemove }: { post: SharePost; canEdi
         </div>
       )}
 
-      {images.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-          {images.map((f, i) => (
-            <button
-              key={f.id}
-              type="button"
-              className="aspect-square overflow-hidden rounded-lg border bg-muted/50"
-              onClick={() => setViewing(i)}
-              title={f.name}
-            >
-              <AuthImage fileId={f.id} size="thumb" alt={f.name} className="size-full object-cover" />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {others.length > 0 && (
-        <ul className="flex flex-col divide-y rounded-lg border">
-          {others.map((f) => (
-            <li key={f.id}>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50"
-                onClick={() => void downloadLargeFile(f.id, f.name)}
-                title={`${f.name} 내려받기`}
-              >
-                <TypeBadge name={f.name} className="h-5 min-w-9 shrink-0 px-1 text-[10px]" />
-                <span className="min-w-0 flex-1 truncate text-sm">{f.name}</span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(f.size)}</span>
-                <Download className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <ImageLightbox images={lightbox} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />
+      <FileGallery files={files} maxImages={4} />
     </li>
+  )
+}
+
+// 카드 제목 오른쪽 다운로드 버튼: 전체 다운로드 + 파일마다 다운로드
+function DownloadMenu({ files }: { files: ShareFile[] }) {
+  const downloadAll = async () => {
+    for (const f of files) {
+      await downloadLargeFile(f.id, f.name)
+      await sleep(400)
+    }
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="shrink-0" aria-label="파일 다운로드">
+          <Download data-icon="inline-start" />
+          다운로드
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72 p-0" data-lenis-prevent>
+        <SmoothScrollArea className="max-h-96 overflow-y-auto p-1">
+          <DropdownMenuItem onSelect={() => void downloadAll()}>
+            <Download />
+            <span className="font-medium">전체 다운로드</span>
+            <span className="ml-auto text-xs text-muted-foreground tabular-nums">{files.length}개</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {files.map((f) => (
+            <DropdownMenuItem key={f.id} onSelect={() => void downloadLargeFile(f.id, f.name)}>
+              {f.mime.startsWith("image/") ? <ImageIcon /> : <FileText />}
+              <span className="min-w-0 flex-1 truncate">{f.name}</span>
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(f.size)}</span>
+            </DropdownMenuItem>
+          ))}
+        </SmoothScrollArea>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
