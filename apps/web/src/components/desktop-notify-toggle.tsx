@@ -1,7 +1,8 @@
 import { BellRing } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { disableDesktop, enableDesktop, testDesktop, useDesktopNotify } from "@/lib/desktop-notify"
+import { useDesktopTest } from "@/components/desktop-test-dialog"
+import { disableDesktop, enableDesktop, useDesktopNotify } from "@/lib/desktop-notify"
 
 const DESCRIPTION = {
   unsupported: "이 브라우저는 PC 알림을 지원하지 않습니다. Chrome·Edge 로 열어 주세요.",
@@ -13,12 +14,14 @@ const DESCRIPTION = {
 // PC 알림 켜기/끄기. compact 는 알림함 위 안내 줄(켜져 있으면 숨긴다).
 export function DesktopNotifyToggle({ compact = false }: { compact?: boolean }) {
   const state = useDesktopNotify()
+  // 테스트 알림: 보낸 결과와 안 뜰 때 확인할 곳을 창으로 보여 준다(헤더의 PC 알림 테스트와 같다)
+  const test = useDesktopTest()
   if (compact && (state === "on" || state === "unsupported")) return null
 
   const button =
     state === "on" ? (
       <div className="flex gap-2">
-        <Button size="sm" onClick={testDesktop}>
+        <Button size="sm" onClick={test.run}>
           <BellRing data-icon="inline-start" />
           테스트 알림
         </Button>
@@ -47,6 +50,7 @@ export function DesktopNotifyToggle({ compact = false }: { compact?: boolean }) 
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">{DESCRIPTION[state]}</p>
       {button && <div>{button}</div>}
+      {test.dialog}
     </div>
   )
 }

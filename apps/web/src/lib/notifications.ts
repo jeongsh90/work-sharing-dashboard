@@ -48,15 +48,36 @@ function notifyDesktop(fresh: AppNotification[]) {
   for (const n of fresh) showDesktop('디자인 요청·작업 관리 시스템', n.message, () => open(n), `wsd-${n.id}`)
 }
 
+// 마지막으로 본 알림 번호(탭마다). 화면이 새로 고쳐져도(3분 쉬면 자동 새로 고침) 그 사이에 온 알림을 놓치지 않게
+// 첫 목록도 이 번호보다 새 알림은 PC 알림으로 띄운다. 처음 로그인한 탭은 번호가 없어 쌓여 있던 알림을 띄우지 않는다.
+let userKey = ''
+const seenKey = () => `wsd-notify-seen-${userKey}`
+function readSeen() {
+  try {
+    const v = Number(sessionStorage.getItem(seenKey()))
+    return Number.isFinite(v) && v > 0 ? v : null
+  } catch {
+    return null
+  }
+}
+function writeSeen(id: number) {
+  try {
+    sessionStorage.setItem(seenKey(), String(id))
+  } catch {
+    // 저장할 수 없으면 새로 고칠 때 그 사이 알림을 띄우지 못할 뿐이다.
+  }
+}
+
 function setItems(next: AppNotification[]) {
-  const newest = items[0]?.id ?? 0
-  const fresh = loaded ? next.filter((n) => n.id > newest && !n.read) : []
+  const newest = loaded ? (items[0]?.id ?? 0) : readSeen()
+  const fresh = newest !== null ? next.filter((n) => n.id > newest && !n.read) : []
   if (fresh.length > 0) {
     invalidate()
     notifyDesktop(fresh)
   }
   loaded = true
   items = next
+  if (next[0]) writeSeen(Math.max(next[0].id, newest ?? 0))
   emit()
 }
 
@@ -74,6 +95,7 @@ export function useNotificationSync(userId: string | null) {
   useEffect(() => {
     items = []
     loaded = false
+    userKey = userId ?? ''
     emit()
     if (!userId) return
     fetchNotifications()

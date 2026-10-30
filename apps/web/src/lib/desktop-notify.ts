@@ -67,10 +67,12 @@ export function disableDesktop() {
 const ICON = `${import.meta.env.BASE_URL}favicon.svg`
 
 // 알림을 띄웠으면 true. 꺼져 있거나 만들지 못하면 false
+// tag 가 같은 알림은 알림 센터에서 하나로 합쳐지는데, 그대로 두면 두 번째부터는 화면에 다시 뜨지 않고 조용히 바뀌기만 한다.
+// 그래서 같은 tag 로 다시 보낼 때도 다시 뜨게(renotify) 한다.
 export function showDesktop(title: string, body: string, onClick: () => void, tag?: string) {
   if (currentState() !== 'on') return false
   try {
-    const n = new Notification(title, { body, icon: ICON, tag })
+    const n = new Notification(title, { body, icon: ICON, tag, ...(tag && { renotify: true }) } as NotificationOptions)
     n.onclick = () => {
       window.focus()
       onClick()
@@ -96,9 +98,9 @@ export function useAskOnFirstClick(active: boolean) {
   }, [active])
 }
 
-// 내 정보의 "테스트 알림" 버튼: Windows 에서 알림이 보이는지 바로 확인한다.
+// 테스트 알림: Windows 에서 알림이 보이는지 바로 확인한다. 누를 때마다 새 알림으로 뜨게 tag 를 매번 바꾼다.
 export function testDesktop() {
-  return showDesktop('테스트 알림', '이 알림이 보이면 PC 알림이 잘 동작합니다.', () => {}, 'wsd-test')
+  return showDesktop('테스트 알림', '이 알림이 보이면 PC 알림이 잘 동작합니다.', () => {}, `wsd-test-${Date.now()}`)
 }
 
 // 지금 권한 상태(await 뒤에 다시 읽으려고 함수로 둔다)
