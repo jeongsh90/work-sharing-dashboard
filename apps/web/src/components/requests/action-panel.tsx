@@ -19,7 +19,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { BottomBar } from "@/components/bottom-bar"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { FilePicker } from "@/components/requests/file-picker"
-import { api, ApiError, uploadAll } from "@/lib/api"
+import { Progress } from "@/components/ui/progress"
+import { api, ApiError, formatBytes, uploadFileWithProgress } from "@/lib/api"
 import { ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
 import { invalidate, isDesignWorker, useUsers } from "@/lib/store"
 
@@ -336,6 +337,8 @@ function ActionDialog({
   const filesRequired = spec.files?.required && (!spec.original || kind === "file")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [sent, setSent] = useState<number | null>(null) // 올린 양(바이트). 올리는 중이 아니면 null
+  const totalBytes = Math.max(1, files.reduce((s, f) => s + f.size, 0))
 
   // 담당 후보: 작업자(디자인팀 관리자 포함) 전체와 이미 담당인 사람
   const candidates = users?.filter((u) => u.active && u.approved && (isDesignWorker(u) || detail.designers.includes(u.id))) ?? []
@@ -350,7 +353,15 @@ function ActionDialog({
     setPending(true)
     setError(null)
     try {
-      const uploaded = await uploadAll(files)
+      // 파일마다 차례로 올리며 지금까지 올라간 양(바이트)을 센다
+      const uploaded = []
+      let done = 0
+      setSent(0)
+      for (const file of files) {
+        uploaded.push(await uploadFileWithProgress(file, (r) => setSent(done + file.size * r)))
+        done += file.size
+        setSent(done)
+      }
       await onConfirm({
         note,
         fileIds: uploaded.map((f) => f.id),
@@ -360,6 +371,7 @@ function ActionDialog({
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "처리하지 못했습니다.")
       setPending(false)
+      setSent(null)
     }
   }
 
@@ -478,13 +490,23 @@ function ActionDialog({
             </Field>
           )}
           {error && <FieldError>{error}</FieldError>}
+          {/* 큰 파일은 몇 분씩 걸리므로 얼마나 올라갔는지 보여 준다 */}
+          {sent !== null && files.length > 0 && (
+            <Field>
+              <Progress value={(sent / totalBytes) * 100} />
+              <FieldDescription className="tabular-nums">
+                {formatBytes(sent)} / {formatBytes(totalBytes)} ({Math.floor((sent / totalBytes) * 100)}%) 올리는 중… 다 올라갈 때까지 창을 닫거나
+                새로 고치지 마세요.
+              </FieldDescription>
+            </Field>
+          )}
         </FieldGroup>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={pending}>
             닫기
           </Button>
           <Button variant={spec.destructive ? "destructive" : "default"} onClick={confirm} disabled={pending}>
-            {pending ? "처리 중…" : spec.original && kind !== "file" ? "완료 처리" : spec.confirm}
+            {pending ? (sent !== null && sent < totalBytes ? "올리는 중…" : "처리 중…") : spec.original && kind !== "file" ? "완료 처리" : spec.confirm}
           </Button>
         </DialogFooter>
       </DialogContent>

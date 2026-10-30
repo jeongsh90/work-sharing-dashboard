@@ -670,6 +670,11 @@ const server = createServer(async (req, res) => {
   }
 })
 
+// Node 는 요청 하나를 5분(requestTimeout 기본값) 안에 다 받지 못하면 끊는다.
+// 바깥(Funnel)에서는 올리는 속도가 초당 수백 KB 라 수백 MB 짜리 작업 원본(FIG·PSD)이 중간에 끊겼다. 받는 시간 제한은 없앤다.
+// 머리글(headersTimeout)은 그대로 두어, 머리글만 보내고 버티는 연결은 계속 끊긴다.
+server.requestTimeout = 0
+
 // 외장 하드 백업(BACKUP_DIR 이 있을 때만)
 if (BACKUP_DIR) startBackupSchedule()
 
