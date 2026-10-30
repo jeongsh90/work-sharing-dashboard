@@ -14,6 +14,7 @@ export const CHANGELOG: Release[] = [
     version: '0.6.4',
     date: '2026-10-30',
     changes: [
+      '계정 전환: 애찬_Ai(owenfood_ai) 계정 추가',
       '요청 상세: 오른쪽 핀 댓글 목록이 하단 버튼 막대에 가리지 않게(막대 높이만큼 목록 높이를 줄임)',
     ],
   },

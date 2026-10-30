@@ -47,4 +47,4 @@ export function hiddenFromOrg(u: { id: string; department: string }) {
   return u.id === 'admin' || u.id.startsWith('test') || u.department.replace(/\s+/g, '') === '테스트'
 }
 
-export const SWITCH_ACCOUNTS = ['admin', 'test1', 'test2', 'test3', '49634613@owenfood.com']
+export const SWITCH_ACCOUNTS = ['admin', 'test1', 'test2', 'test3', '49634613@owenfood.com', 'owenfood_ai']
