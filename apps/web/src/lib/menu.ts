@@ -3,6 +3,7 @@ import {
   CalendarDays,
   FilePlus2,
   FolderArchive,
+  FolderOpen,
   House,
   Inbox,
   Library,
@@ -44,6 +45,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "my-requests", title: "내 요청", icon: ListChecks, roles: ["requester", ...MANAGERS] },
       { id: "schedule", title: "디자인팀 일정", icon: CalendarDays },
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
+      // 파일공유자료실: 누구나 글·파일을 올려 함께 본다
+      { id: "share", title: "파일공유자료실", icon: FolderOpen },
       // 디자인팀 자료실: 작업에 쓰는 자료(PSD·AI·FIG 등)를 올려 두고 함께 쓴다. 작업자·관리자
       { id: "library", title: "디자인팀 자료실", icon: Library, roles: TEAM },
       { id: "org", title: "조직도", icon: Network },

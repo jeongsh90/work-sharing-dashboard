@@ -31,6 +31,7 @@ import { api, ApiError, downloadLargeFile, formatBytes, uploadFileWithProgress }
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
+import { OTHER, PREVIEWABLE, TYPES, TypeBadge, typeOf } from "@/components/file-type"
 import { invalidate, useApi } from "@/lib/store"
 
 // 디자인팀 자료실: 작업할 때 쓰는 자료(PSD·AI·FIG 템플릿, 로고, 폰트, 이미지 소스 등)를 올려 두고 함께 내려받는다.
@@ -51,32 +52,6 @@ type LibraryItem = {
 const DEFAULT_CATEGORIES = ["템플릿", "로고·CI", "폰트", "이미지 소스", "아이콘·일러스트", "가이드", "기타"]
 const NEW_CATEGORY = "__new__"
 const NO_CATEGORY = "미분류"
-
-// 파일 형식 표시(확장자 기준). 색은 각 프로그램의 대표 색에 맞췄다.
-const TYPES: { key: string; label: string; exts: string[]; className: string }[] = [
-  { key: "psd", label: "PSD", exts: ["psd", "psb"], className: "bg-[#001e36] text-[#31a8ff]" },
-  { key: "ai", label: "AI", exts: ["ai", "eps"], className: "bg-[#330000] text-[#ff9a00]" },
-  { key: "fig", label: "FIG", exts: ["fig"], className: "bg-[#1e1e1e] text-[#a259ff] ring-1 ring-white/15" },
-  { key: "pdf", label: "PDF", exts: ["pdf"], className: "bg-red-600 text-white" },
-  { key: "image", label: "이미지", exts: ["jpg", "jpeg", "png", "gif", "webp", "svg", "tif", "tiff", "bmp", "heic"], className: "bg-emerald-600 text-white" },
-  { key: "font", label: "폰트", exts: ["ttf", "otf", "woff", "woff2"], className: "bg-slate-700 text-white" },
-  { key: "zip", label: "압축", exts: ["zip", "rar", "7z", "alz", "egg"], className: "bg-amber-600 text-white" },
-]
-const OTHER = { key: "etc", label: "기타", exts: [], className: "bg-muted text-muted-foreground" }
-
-const extOf = (name: string) => (name.includes(".") ? name.split(".").pop()!.toLowerCase() : "")
-const typeOf = (name: string) => TYPES.find((t) => t.exts.includes(extOf(name))) ?? OTHER
-const PREVIEWABLE = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
-
-function TypeBadge({ name, className = "" }: { name: string; className?: string }) {
-  const t = typeOf(name)
-  const ext = extOf(name)
-  return (
-    <span className={`flex items-center justify-center rounded-lg font-bold tracking-tight ${t.className} ${className}`}>
-      {(t === OTHER ? ext || "FILE" : t.key === "image" || t.key === "font" || t.key === "zip" ? ext : t.label).toUpperCase().slice(0, 5)}
-    </span>
-  )
-}
 
 export function LibraryPage({ session }: { session: Session }) {
   const { data, error } = useApi<LibraryItem[]>("/library", 60_000)

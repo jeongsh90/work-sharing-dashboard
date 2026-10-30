@@ -49,6 +49,7 @@ import { holidays } from './holidays.ts'
 import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, schedulePlans, updatePlanLine } from './schedule-plans.ts'
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
+import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
   approveUser,
@@ -214,7 +215,7 @@ async function handleFile(
   // 디자인 툴 히스토리 이미지(kind 'tool')는 디자인팀 누구나 본다
   const toolFile = file?.kind === 'tool' && canSeeToolFile(user)
   // 디자인팀 자료실 파일(kind 'library')은 디자인팀·관리자가 본다
-  const libraryFile = (file?.kind === 'library' && canUseLibrary(user)) || (file?.kind === 'notice' && canSeeNoticeFile(user))
+  const libraryFile = (file?.kind === 'library' && canUseLibrary(user)) || (file?.kind === 'notice' && canSeeNoticeFile(user)) || (file?.kind === 'share' && canSeeShareFile(user))
   if (!file || (file.request_id === null && file.kind !== 'avatar' && !toolFile && !libraryFile && file.uploader_id !== user.id)) {
     throw new HttpError(404, '파일을 찾을 수 없습니다.')
   }
@@ -501,6 +502,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/library\/(\d+)$/))) {
     if (method === 'PATCH') return sendJson(res, 200, updateLibraryItem(user, Number(m[1]), await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, await deleteLibraryItem(user, Number(m[1])))
+  }
+
+  // ── 파일공유자료실 ──
+  if (path === '/api/share') {
+    if (method === 'GET') return sendJson(res, 200, listShare(user))
+    if (method === 'POST') return sendJson(res, 201, createSharePost(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/share\/(\d+)$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, await updateSharePost(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, await deleteSharePost(user, Number(m[1])))
   }
 
   // ── 건의게시판 ──

@@ -31,7 +31,7 @@ import {
 // 메뉴 N 표시: 다른 사람이 새로 올린 내용이 있으면 하루 동안 N 을 띄운다. 그 메뉴를 열어 보면 꺼진다.
 // (버전 정보는 아직 보지 않은 새 버전이 있으면)
 const DAY = 24 * 60 * 60 * 1000
-const TRACKED = ["notices", "inbox", "my-requests", "files", "library", "feedback", "notifications"] as const
+const TRACKED = ["notices", "inbox", "my-requests", "files", "share", "library", "feedback", "notifications"] as const
 
 function useFreshMenus(session: Session, activeId: string) {
   const userId = session.id
@@ -40,6 +40,7 @@ function useFreshMenus(session: Session, activeId: string) {
   const { data: suggestions } = useApi<{ authorId: string; createdAt: number }[]>("/suggestions", 60_000)
   const { data: notices } = useApi<NoticeSummary[]>("/notices", 60_000)
   const { data: library } = useApi<{ uploaderId: string; createdAt: number }[]>(team ? "/library" : null, 60_000)
+  const { data: share } = useApi<{ authorId: string; createdAt: number }[]>("/share", 60_000)
   const { items: notifications } = useNotifications()
   const seenVersion = useSeen(userId, "version")
   // 메뉴마다 마지막으로 연 때(이 브라우저)
@@ -62,6 +63,7 @@ function useFreshMenus(session: Session, activeId: string) {
     "my-requests": latest((requests ?? []).filter((r) => r.requesterId === userId && r.updatedAt - r.createdAt > 5_000).map((r) => r.updatedAt)),
     // 최종 파일 보관함: 새로 완료된 작업
     files: latest((requests ?? []).filter((r) => r.completedAt).map((r) => r.completedAt!)),
+    share: latest((share ?? []).filter((s) => s.authorId !== userId).map((s) => s.createdAt)),
     library: latest((library ?? []).filter((l) => l.uploaderId !== userId).map((l) => l.createdAt)),
     feedback: latest((suggestions ?? []).filter((x) => x.authorId !== userId).map((x) => x.createdAt)),
     notifications: latest(notifications.filter((n) => !n.read).map((n) => n.createdAt)),

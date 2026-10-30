@@ -27,6 +27,7 @@ function lazyPage<M, C extends ComponentType<any>>(load: () => Promise<M>, pick:
 const FeedbackPage = lazyPage(() => import('@/components/feedback-page'), (m) => m.FeedbackPage)
 const FilesPage = lazyPage(() => import('@/components/files-page'), (m) => m.FilesPage)
 const LibraryPage = lazyPage(() => import('@/components/library-page'), (m) => m.LibraryPage)
+const SharePage = lazyPage(() => import('@/components/share-page'), (m) => m.SharePage)
 const NoticeListPage = lazyPage(() => import('@/components/notices/notice-list-page'), (m) => m.NoticeListPage)
 const NoticeDetailPage = lazyPage(() => import('@/components/notices/notice-detail-page'), (m) => m.NoticeDetailPage)
 const NoticeEditPage = lazyPage(() => import('@/components/notices/notice-edit-page'), (m) => m.NoticeEditPage)
@@ -211,6 +212,8 @@ export default function App() {
         return <NoticeDetailPage id={route.id!} session={session} />
       case 'notice-edit':
         return <NoticeEditPage id={route.id!} />
+      case 'share':
+        return <SharePage session={session} />
       case 'library':
         return <LibraryPage session={session} />
       case 'notifications':

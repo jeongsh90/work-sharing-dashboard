@@ -209,6 +209,8 @@ export function RequestForm({
   const [pending, setPending] = useState(false)
   // 새 요청은 오늘 이전 날짜를 고를 수 없다. 기준 날짜는 화면을 열 때 한 번 잡는다.
   const [today] = useState(() => startOfDay(new Date()))
+  const sameDay =
+    !ongoing && range?.from?.getTime() === today.getTime() && (range.to ?? range.from).getTime() === today.getTime()
   // 보내기 막대는 화면 하단 고정(BottomBar, 폼 바깥에 그려진다)이라 form 속성으로 이 폼에 연결한다.
   const formId = useId()
   // 대신 작성(새 요청만): 말·전화 등으로 받은 요청을 작업자·관리자가 옮겨 적는다. 작업자는 늘 대신 작성이다.
@@ -424,6 +426,18 @@ export function RequestForm({
                     보류
                   </Label>
                 )}
+                {/* 당일: 오늘 시작해 오늘 마감. 기간이 오늘 하루면 저절로 체크된다. 끄면 기본 기간으로 */}
+                <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                  <Checkbox
+                    checked={sameDay}
+                    onCheckedChange={(v) => {
+                      setOngoing(false)
+                      setRange(v === true ? { from: today, to: today } : defaultRange())
+                      clear("period")
+                    }}
+                  />
+                  당일
+                </Label>
                 <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
                   <Checkbox
                     checked={ongoing}
