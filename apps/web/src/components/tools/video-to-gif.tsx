@@ -19,7 +19,7 @@ const WIDTHS = [
   { value: "320", label: "320px" },
   { value: "0", label: "원본 크기" },
 ]
-const FPS = ["10", "12", "15", "20", "24"]
+const FPS = ["10", "12", "15", "20", "24", "25", "30"]
 const COLORS = [
   { value: "256", label: "고화질 (256색)" },
   { value: "128", label: "보통 (128색)" },
@@ -212,7 +212,7 @@ export function VideoToGifTool() {
   const [source, setSource] = useState<Source | null>(null)
   const [range, setRange] = useState<[number, number]>([0, 0])
   const [width, setWidth] = useState("860")
-  const [fps, setFps] = useState("15")
+  const [fps, setFps] = useState("25")
   const [colors, setColors] = useState("256")
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")

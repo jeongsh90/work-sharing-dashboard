@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { LayoutGrid, Link2, PenTool, Undo2, Upload, type LucideIcon } from "lucide-react"
+import { FileX, LayoutGrid, Link2, PenTool, Undo2, Upload, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { BottomBar } from "@/components/bottom-bar"
+import { confirmDialog } from "@/components/confirm-dialog"
 import { FilePicker } from "@/components/requests/file-picker"
 import { api, ApiError, uploadAll } from "@/lib/api"
 import { ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
@@ -35,7 +36,7 @@ type DialogSpec = {
   original?: boolean // 작업 원본 형태 고르기(파일·Figma·디자인 툴·기타 링크)
 }
 
-const ORIGINAL_ICON: Record<OriginalKind, LucideIcon> = { file: Upload, figma: PenTool, tool: LayoutGrid, link: Link2 }
+const ORIGINAL_ICON: Record<OriginalKind, LucideIcon> = { file: Upload, figma: PenTool, tool: LayoutGrid, link: Link2, none: FileX }
 
 type ActionSpec = { label: string; dialog?: DialogSpec }
 
@@ -215,6 +216,25 @@ export function ActionPanel({
     }
   }
 
+  // 원본 없이 완료(컨펌 뒤 원본 대기에서): 남길 원본이 없는 작업은 아무것도 올리지 않고 바로 완료한다
+  const completeWithoutSource = async () => {
+    const ok = await confirmDialog({
+      title: "원본 없이 완료할까요?",
+      description: "작업 원본을 올리지 않고 최종 완료합니다. 요청자에게 완료 알림이 갑니다.",
+      confirmText: "원본 없이 완료",
+    })
+    if (!ok) return
+    setPending("upload-source")
+    setError(null)
+    try {
+      await perform("upload-source", { originalKind: "none" })
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "처리하지 못했습니다.")
+    } finally {
+      setPending(null)
+    }
+  }
+
   const available = ORDER.filter((a) => detail.actions.includes(a) && ACTIONS[a])
   const spec: ActionSpec | null | undefined =
     open === "undo"
@@ -253,6 +273,12 @@ export function ActionPanel({
               </Button>
             )
           })}
+          {detail.actions.includes("upload-source") && (
+            <Button variant="outline" className={BAR_BUTTON} disabled={pending !== null} onClick={() => void completeWithoutSource()}>
+              <FileX data-icon="inline-start" />
+              원본 없이 완료
+            </Button>
+          )}
           {detail.actions.includes("edit") && (
             <Button variant="outline" className={BAR_BUTTON} onClick={onEdit}>
               요청 수정
@@ -374,7 +400,7 @@ function ActionDialog({
             <Field>
               <FieldLabel>원본 형태</FieldLabel>
               <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="원본 형태">
-                {(Object.keys(ORIGINAL_LABEL) as OriginalKind[]).map((k) => {
+                {(Object.keys(ORIGINAL_LABEL) as OriginalKind[]).filter((k) => k !== "none").map((k) => {
                   const Icon = ORIGINAL_ICON[k]
                   return (
                     <Button

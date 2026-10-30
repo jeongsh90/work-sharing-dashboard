@@ -37,12 +37,13 @@ export type DesignRequest = {
 }
 
 // 작업 원본 형태: 파일이 없는 작업(Figma 로 작업, 수매확인서처럼 디자인 툴로 제작)도 어디서 만들었는지 남긴다
-export type OriginalKind = "file" | "figma" | "tool" | "link"
+export type OriginalKind = "file" | "figma" | "tool" | "link" | "none" // none: 원본 없이 완료
 export const ORIGINAL_LABEL: Record<OriginalKind, string> = {
   file: "파일 업로드",
   figma: "Figma 로 작업",
   tool: "디자인 툴로 제작",
   link: "기타 링크",
+  none: "원본 없음",
 }
 // 고를 수 있는 디자인 툴(메뉴의 디자인 툴 이름)
 export const ORIGINAL_TOOLS = ["수매확인서", "상품정보고시", "동영상 → GIF", "메일 서명", "기타 툴"]

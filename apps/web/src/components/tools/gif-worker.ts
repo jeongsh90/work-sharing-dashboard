@@ -13,8 +13,48 @@ export type GifWorkerOut = { type: "frame-done"; index: number } | { type: "done
 
 // 색 줄이기에 Floyd–Steinberg 디더링: 가장 가까운 색으로 바꾸며 생긴 차이를 옆·아래 점에 나눠 준다.
 // 그냥 가까운 색으로만 바꾸면(gifenc applyPalette) 그라데이션·피부색이 계단처럼 뭉개진다.
-// 차이를 다 넘기면 자글자글해지고 용량도 커져 조금 덜(STRENGTH) 넘긴다.
-const STRENGTH = 0.8
+// 차이를 다 넘기면 자글자글해지고 용량도 커져 조금만(STRENGTH) 넘긴다(실제 영상으로 비교해 원본과 가장 닮은 값).
+const STRENGTH = 0.4
+
+// gifenc 색표는 색을 5·6·5비트로 묶어 고르므로 조금씩 어긋난다. 실제 점들에 맞춰 두 번 다듬는다(k-means).
+// 각 색을 "그 색으로 바뀌는 점들의 평균"으로 옮긴다. 4점 중 1점만 봐서 빠르다.
+function refine(rgba: Uint8Array, palette: number[][], iterations = 2) {
+  const n = palette.length
+  let p = palette.map((c) => [c[0], c[1], c[2]])
+  for (let it = 0; it < iterations; it++) {
+    const sum = new Float64Array(n * 3)
+    const count = new Float64Array(n)
+    const cache = new Int16Array(32768).fill(-1)
+    for (let i = 0; i < rgba.length; i += 16) {
+      const r = rgba[i]
+      const g = rgba[i + 1]
+      const b = rgba[i + 2]
+      const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)
+      let k = cache[key]
+      if (k < 0) {
+        let bestD = Infinity
+        for (let j = 0; j < n; j++) {
+          const q = p[j]
+          const dr = r - q[0]
+          const dg = g - q[1]
+          const db = b - q[2]
+          const d = dr * dr * 2 + dg * dg * 4 + db * db * 3
+          if (d < bestD) {
+            bestD = d
+            k = j
+          }
+        }
+        cache[key] = k
+      }
+      sum[k * 3] += r
+      sum[k * 3 + 1] += g
+      sum[k * 3 + 2] += b
+      count[k]++
+    }
+    p = p.map((c, j) => (count[j] ? [Math.round(sum[j * 3] / count[j]), Math.round(sum[j * 3 + 1] / count[j]), Math.round(sum[j * 3 + 2] / count[j])] : c))
+  }
+  return p
+}
 function dither(rgba: Uint8Array, palette: number[][], w: number, h: number) {
   const index = new Uint8Array(w * h)
   // 가까운 색 찾기는 RGB 각 5비트(32768칸)로 묶어 한 번 찾은 값을 다시 쓴다
@@ -92,7 +132,7 @@ self.onmessage = (e: MessageEvent<GifWorkerIn>) => {
   if (msg.type === "frame") {
     const rgba = new Uint8Array(msg.data)
     // 장마다 색표를 따로 만들어 장면이 바뀌어도 색이 덜 뭉개지게 한다
-    const palette = quantize(rgba, opts.colors)
+    const palette = refine(rgba, quantize(rgba, opts.colors))
     const index = dither(rgba, palette, opts.width, opts.height)
     encoder.writeFrame(index, opts.width, opts.height, { palette, delay: opts.delay, repeat: opts.repeat })
     count++

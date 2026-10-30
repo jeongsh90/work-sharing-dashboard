@@ -329,9 +329,9 @@ function claimFiles(
 
 // ── 조회 ──────────────────────────────────────────────
 
-export const ORIGINAL_KINDS = ['file', 'figma', 'tool', 'link'] as const
+export const ORIGINAL_KINDS = ['file', 'figma', 'tool', 'link', 'none'] as const
 type OriginalKind = (typeof ORIGINAL_KINDS)[number]
-const ORIGINAL_LABEL: Record<OriginalKind, string> = { file: '파일', figma: 'Figma 로 작업', tool: '디자인 툴로 제작', link: '링크' }
+const ORIGINAL_LABEL: Record<OriginalKind, string> = { file: '파일', figma: 'Figma 로 작업', tool: '디자인 툴로 제작', link: '링크', none: '원본 없음' }
 const isHttpUrl = (v: string) => {
   try {
     const u = new URL(v)
@@ -758,7 +758,8 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         return
       }
       case 'upload-source': {
-        // 원본 형태: 파일이 없는 작업(Figma 로 작업, 수매확인서 같은 디자인 툴로 제작)도 완료할 수 있다
+        // 원본 형태: 파일이 없는 작업(Figma 로 작업, 수매확인서 같은 디자인 툴로 제작)도 완료할 수 있다.
+        // none(원본 없이 완료): 남길 원본이 없는 작업(간단 수정 등)은 아무것도 올리지 않고 완료한다
         const kind = ORIGINAL_KINDS.includes(body.originalKind as OriginalKind) ? (body.originalKind as OriginalKind) : 'file'
         const link = text(body.originalLink, '링크', { max: 500 })
         const tool = text(body.originalTool, '디자인 툴', { max: 40 })
@@ -776,7 +777,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         setStatus(req, 'done')
         const what = [ORIGINAL_LABEL[kind] + (kind === 'tool' ? `(${tool})` : ''), count > 0 ? `원본 ${count}개` : '', note].filter(Boolean).join(' · ')
         logEvent(id, user.id, action, req.status, 'done', what)
-        notify([req.requester_id], user.id, id, `작업 원본 파일이 등록되었습니다: ${req.title}`)
+        notify([req.requester_id], user.id, id, kind === 'none' ? `작업이 완료되었습니다: ${req.title}` : `작업 원본 파일이 등록되었습니다: ${req.title}`)
         return
       }
       case 'ask-requester': {
