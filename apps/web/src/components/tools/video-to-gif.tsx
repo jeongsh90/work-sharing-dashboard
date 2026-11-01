@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { formatBytes } from "@/lib/api"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
+import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 
-// 동영상 → GIF: 동영상 파일(MP4·MOV·WebM)을 골라 구간·크기·초당 장수를 정하고 GIF 로 바꾼다.
-// 서버에 올리지 않고 이 브라우저 안에서 바꾼다. 장면을 한 장씩 뽑아(canvas) Web Worker 가 GIF 로 묶는다.
+// 동영상 → GIF · 동영상 → WebP: 동영상 파일(MP4·MOV·WebM)을 골라 구간·크기·초당 장수를 정하고 GIF(또는 움직이는 WebP)로 바꾼다.
+// 서버에 올리지 않고 이 브라우저 안에서 바꾼다. 장면을 한 장씩 뽑아(canvas) Web Worker 가 GIF·WebP 로 묶는다.
+// 두 도구는 화면이 같고 만드는 형식(FORMATS)만 다르다.
 
 const WIDTHS = [
   { value: "860", label: "860px (상세페이지)" },
@@ -25,7 +27,51 @@ const COLORS = [
   { value: "128", label: "보통 (128색)" },
   { value: "64", label: "작은 용량 (64색)" },
 ]
+// WebP 화질(압축 품질 0~1). GIF 와 달리 색 수 제한이 없어 같은 화질이면 훨씬 가볍다.
+const QUALITIES = [
+  { value: "0.9", label: "고화질" },
+  { value: "0.8", label: "보통" },
+  { value: "0.65", label: "작은 용량" },
+]
 const SPEEDS = ["0.5", "1", "1.5", "2"]
+
+type Format = "gif" | "webp"
+type EncoderOut = GifWorkerOut | WebpWorkerOut
+
+// 형식마다: 이름 · 화질 고르기 · 만드는 Worker · 시작 말 · 한 장 시간(ms)
+const FORMATS: Record<
+  Format,
+  {
+    label: string
+    mime: string
+    options: { value: string; label: string }[]
+    defaultOption: string
+    worker: () => Worker
+    start: (w: number, h: number, repeat: number, option: string, delay: number) => GifWorkerIn | WebpWorkerIn
+    delay: (fps: number, speed: number) => number
+  }
+> = {
+  gif: {
+    label: "GIF",
+    mime: "image/gif",
+    options: COLORS,
+    defaultOption: "256",
+    worker: () => new Worker(new URL("./gif-worker.ts", import.meta.url), { type: "module" }),
+    start: (width, height, repeat, option, delay) => ({ type: "start", width, height, repeat, colors: Number(option), delay }),
+    // GIF 한 장 시간은 10ms 단위. 20ms 보다 짧으면 브라우저가 느리게 틀어서 20ms 로 맞춘다.
+    delay: (fps, speed) => Math.max(20, Math.round(1000 / fps / speed / 10) * 10),
+  },
+  webp: {
+    label: "WebP",
+    mime: "image/webp",
+    options: QUALITIES,
+    defaultOption: "0.8",
+    worker: () => new Worker(new URL("./webp-worker.ts", import.meta.url), { type: "module" }),
+    start: (width, height, repeat, option, delay) => ({ type: "start", width, height, repeat, quality: Number(option), delay }),
+    // WebP 는 1ms 단위
+    delay: (fps, speed) => Math.max(20, Math.round(1000 / fps / speed)),
+  },
+}
 // 너무 길면 브라우저 메모리가 모자라고 GIF 도 수십 MB 가 된다
 const MAX_FRAMES = 900
 
@@ -52,23 +98,24 @@ function seek(video: HTMLVideoElement, t: number) {
   })
 }
 
-// 예상 용량: 고른 구간에서 고르게 몇 장만 뽑아 지금 설정으로 GIF 를 만들어 보고, 한 장 평균 크기를 잰다.
+// 예상 용량: 고른 구간에서 고르게 몇 장만 뽑아 지금 설정으로 GIF·WebP 를 만들어 보고, 한 장 평균 크기를 잰다.
 // 장마다 따로 압축되므로(앞 장과 차이만 남기지 않는다) 평균 × 전체 장수가 실제와 거의 같다.
 const SAMPLES = 6
 
 async function measurePerFrame(
+  format: Format,
   url: string,
   times: number[],
   w: number,
   h: number,
-  colors: number,
+  option: string,
   alive: () => boolean,
 ): Promise<number | null> {
   const video = document.createElement("video")
   video.muted = true
   video.preload = "auto"
   video.src = url
-  const worker = new Worker(new URL("./gif-worker.ts", import.meta.url), { type: "module" })
+  const worker = FORMATS[format].worker()
   try {
     await new Promise<void>((resolve, reject) => {
       video.onloadeddata = () => resolve()
@@ -79,10 +126,13 @@ async function measurePerFrame(
     canvas.height = h
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!
     ctx.imageSmoothingQuality = "high"
-    const done = new Promise<ArrayBuffer>((resolve) => {
-      worker.onmessage = (e: MessageEvent<GifWorkerOut>) => e.data.type === "done" && resolve(e.data.bytes)
+    const done = new Promise<ArrayBuffer>((resolve, reject) => {
+      worker.onmessage = (e: MessageEvent<EncoderOut>) => {
+        if (e.data.type === "done") resolve(e.data.bytes)
+        if (e.data.type === "error") reject(new Error(e.data.message))
+      }
     })
-    worker.postMessage({ type: "start", width: w, height: h, repeat: 0, colors, delay: 70 } satisfies GifWorkerIn)
+    worker.postMessage(FORMATS[format].start(w, h, 0, option, 70))
     for (const t of times) {
       if (!alive()) return null
       await seek(video, t)
@@ -208,12 +258,17 @@ function FrameStrip({
   )
 }
 
-export function VideoToGifTool() {
+export const VideoToGifTool = () => <VideoConvertTool format="gif" />
+export const VideoToWebpTool = () => <VideoConvertTool format="webp" />
+
+function VideoConvertTool({ format }: { format: Format }) {
+  const F = FORMATS[format]
   const [source, setSource] = useState<Source | null>(null)
   const [range, setRange] = useState<[number, number]>([0, 0])
   const [width, setWidth] = useState("860")
   const [fps, setFps] = useState("25")
-  const [colors, setColors] = useState("256")
+  // 화질: GIF 는 색 수, WebP 는 압축 품질
+  const [colors, setColors] = useState(F.defaultOption)
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")
   const [error, setError] = useState<string | null>(null)
@@ -374,7 +429,7 @@ export function VideoToGifTool() {
     let alive = true
     const timer = setTimeout(() => {
       const times = Array.from({ length: SAMPLES }, (_, i) => Math.min(range[0] + ((i + 0.5) * length) / SAMPLES, source.duration - 0.001))
-      measurePerFrame(source.url, times, outW, outH, Number(colors), () => alive).then(
+      measurePerFrame(format, source.url, times, outW, outH, colors, () => alive).then(
         (bytes) => alive && bytes !== null && setPerFrame({ key: sampleKey, bytes }),
         () => {},
       )
@@ -396,7 +451,7 @@ export function VideoToGifTool() {
     setResult(null)
     preview.current?.pause()
     let cancelled = false
-    const worker = new Worker(new URL("./gif-worker.ts", import.meta.url), { type: "module" })
+    const worker = F.worker()
     const video = document.createElement("video")
     video.muted = true
     video.preload = "auto"
@@ -416,18 +471,17 @@ export function VideoToGifTool() {
       canvas.height = outH
       const ctx = canvas.getContext("2d", { willReadFrequently: true })!
       ctx.imageSmoothingQuality = "high"
-      // GIF 한 장 시간은 10ms 단위. 20ms 보다 짧으면 브라우저가 느리게 틀어서 20ms 로 맞춘다.
-      const delay = Math.max(20, Math.round(1000 / Number(fps) / Number(speed) / 10) * 10)
-      const finished = new Promise<ArrayBuffer>((resolve) => {
-        worker.onmessage = (e: MessageEvent<GifWorkerOut>) => {
+      const delay = F.delay(Number(fps), Number(speed))
+      const finished = new Promise<ArrayBuffer>((resolve, reject) => {
+        worker.onmessage = (e: MessageEvent<EncoderOut>) => {
           if (e.data.type === "frame-done") {
             const done = e.data.index
             setProgress({ step: done >= frames ? "마무리하는 중" : "변환하는 중", ratio: Math.min(done / frames, 0.99), done })
-          }
+          } else if (e.data.type === "error") reject(new Error(e.data.message))
           else resolve(e.data.bytes)
         }
       })
-      worker.postMessage({ type: "start", width: outW, height: outH, repeat: Number(repeat), colors: Number(colors), delay } satisfies GifWorkerIn)
+      worker.postMessage(F.start(outW, outH, Number(repeat), colors, delay))
       setProgress({ step: "변환하는 중", ratio: 0, done: 0 })
       for (let i = 0; i < frames; i++) {
         if (cancelled) return
@@ -439,9 +493,9 @@ export function VideoToGifTool() {
       worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
       const bytes = await finished
       if (cancelled) return
-      const blob = new Blob([bytes], { type: "image/gif" })
+      const blob = new Blob([bytes], { type: F.mime })
       const base = source.file.name.replace(/\.[^.]+$/, "")
-      const made = { url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.gif` }
+      const made = { url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.${format}` }
       setResult(made)
       // 변환이 끝나면 바로 내려받는다(결과 화면에서 다시 받을 수도 있다)
       const a = document.createElement("a")
@@ -571,7 +625,7 @@ export function VideoToGifTool() {
                     setSliding(false)
                     playRange(v[0])
                   }}
-                  aria-label="GIF 로 만들 구간"
+                  aria-label={`${F.label} 로 만들 구간`}
                   className="py-2"
                 />
                 <div className="flex flex-wrap gap-2">
@@ -643,7 +697,7 @@ export function VideoToGifTool() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {COLORS.map((c) => (
+                      {F.options.map((c) => (
                         <SelectItem key={c.value} value={c.value}>
                           {c.label}
                         </SelectItem>
@@ -689,7 +743,7 @@ export function VideoToGifTool() {
                   aria-live="polite"
                 >
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-xs text-muted-foreground">예상 GIF 용량</span>
+                    <span className="text-xs text-muted-foreground">예상 {F.label} 용량</span>
                     <span className="flex items-center gap-2 text-lg font-semibold tabular-nums">
                       {estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}
                       {estimating && estimate !== null && (
@@ -729,12 +783,12 @@ export function VideoToGifTool() {
                     </Button>
                   </div>
                   <Progress value={progress.ratio * 100} className="h-2" />
-                  <span className="text-xs text-muted-foreground">끝나면 GIF 가 바로 내려받아집니다.</span>
+                  <span className="text-xs text-muted-foreground">끝나면 {F.label} 가 바로 내려받아집니다.</span>
                 </div>
               ) : (
                 <Button size="lg" className="w-full" disabled={tooMany || length <= 0} onClick={() => void convert()}>
                   <Wand2 data-icon="inline-start" />
-                  GIF 로 변환 후 내려받기
+                  {F.label} 로 변환 후 내려받기
                 </Button>
               )}
             </>
@@ -749,7 +803,7 @@ export function VideoToGifTool() {
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="mr-auto font-semibold">
-                  결과 GIF
+                  결과 {F.label}
                   <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
                     {result.width}×{result.height} · {result.frames}장 · {formatBytes(result.size)}
                   </span>
@@ -760,7 +814,7 @@ export function VideoToGifTool() {
                 </Button>
                 <Button size="sm" onClick={download}>
                   <Download data-icon="inline-start" />
-                  GIF 내려받기
+                  {F.label} 내려받기
                 </Button>
               </div>
               <div className="flex justify-center overflow-hidden rounded-xl border bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-4">
