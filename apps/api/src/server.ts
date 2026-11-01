@@ -50,7 +50,7 @@ import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, scheduleP
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
-import { lanAddress, startLan } from './lan.ts'
+import { deleteLanDevice, lanAddress, lanWhoami, listLanDevices, registerLanDevice, startLan } from './lan.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -106,7 +106,7 @@ function applyCors(req: IncomingMessage, res: ServerResponse) {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Vary', 'Origin')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-File-Name, X-Lan-Device')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
     // Tailscale 에 연결된 PC 에서는 ts.net 주소가 내부망(100.x)으로 풀린다.
     // 공개 사이트(GitHub Pages)에서 오는 요청을 브라우저가 내부망 요청으로 보고 확인을 요구하므로 허용한다.
@@ -313,6 +313,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   const user = requireUser(req)
   touchSeen(user.id)
   let m: RegExpMatchArray | null
+
+  // ── 사내망 직통 PC 등록(관리 → 사내망 직통, lan.ts) ──
+  if (path === '/api/lan/whoami' && method === 'GET') return sendJson(res, 200, lanWhoami(req))
+  if (path === '/api/lan/devices') {
+    if (method === 'GET') return sendJson(res, 200, listLanDevices(user))
+    if (method === 'POST') return sendJson(res, 201, registerLanDevice(user, req, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/lan\/devices\/([0-9a-f-]{36})$/)) && method === 'DELETE') {
+    return sendJson(res, 200, deleteLanDevice(user, m[1]))
+  }
 
   // ── 서버 드라이브 남은 용량(정상훈·슈퍼관리자만). 다른 계정은 null ──
   if (path === '/api/disk' && method === 'GET') {

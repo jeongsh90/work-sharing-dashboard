@@ -16,6 +16,7 @@ import {
   Network,
   UserRound,
   Users,
+  Zap,
   type LucideIcon,
 } from "lucide-react"
 
@@ -56,7 +57,11 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
   },
   {
     label: "관리",
-    items: [{ id: "team", title: "팀 관리", icon: Users, roles: MANAGERS }],
+    items: [
+      { id: "team", title: "팀 관리", icon: Users, roles: MANAGERS },
+      // 사내망 직통: 같은 사무실 PC 를 등록해 파일을 서버로 바로 주고받게 한다
+      { id: "lan", title: "사내망 직통", icon: Zap, roles: MANAGERS },
+    ],
   },
   {
     label: "개인",

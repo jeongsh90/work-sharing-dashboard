@@ -28,6 +28,7 @@ const FeedbackPage = lazyPage(() => import('@/components/feedback-page'), (m) =>
 const FilesPage = lazyPage(() => import('@/components/files-page'), (m) => m.FilesPage)
 const LibraryPage = lazyPage(() => import('@/components/library-page'), (m) => m.LibraryPage)
 const SharePage = lazyPage(() => import('@/components/share-page'), (m) => m.SharePage)
+const LanPage = lazyPage(() => import('@/components/lan-page'), (m) => m.LanPage)
 const NoticeListPage = lazyPage(() => import('@/components/notices/notice-list-page'), (m) => m.NoticeListPage)
 const NoticeDetailPage = lazyPage(() => import('@/components/notices/notice-detail-page'), (m) => m.NoticeDetailPage)
 const NoticeEditPage = lazyPage(() => import('@/components/notices/notice-edit-page'), (m) => m.NoticeEditPage)
@@ -220,6 +221,8 @@ export default function App() {
         return <NotificationsPage />
       case 'me':
         return <MePage session={session} onSessionChange={setSession} />
+      case 'lan':
+        return <LanPage />
       case 'team':
         return <TeamPage session={session} />
       case 'feedback':

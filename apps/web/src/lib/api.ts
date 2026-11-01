@@ -38,18 +38,47 @@ export class ApiError extends Error {
 // 사내망 직통(서버 apps/api/src/lan.ts): 같은 사무실 PC 는 바깥 중계(Funnel, 초당 2.5MB 안팎) 대신 서버 PC 로 바로 파일을 주고받는다.
 // 서버가 알려 준 사내망 주소에 닿으면 올리기·큰 파일 받기를 그쪽으로 보낸다. 회사 밖이면 닿지 않아 그대로 중계를 쓴다.
 // (처음 한 번 브라우저가 "로컬 네트워크 접근"을 물을 수 있다. 허용하면 다음부터 빠른 길을 쓴다)
+// 관리 → 사내망 직통에서 등록한 PC 만 쓴다. 등록하면 이 브라우저에 열쇠를 두고, 사내망 주소로 보낼 때 X-Lan-Device 머리글로 보낸다.
 let lanUrl: string | null = null
 let lanChecked = 0
 let lanProbe: Promise<string | null> | null = null
+
+const LAN_DEVICE_KEY = 'wsd-lan-device'
+export function lanDeviceToken() {
+  try {
+    return localStorage.getItem(LAN_DEVICE_KEY)
+  } catch {
+    return null
+  }
+}
+export function setLanDeviceToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(LAN_DEVICE_KEY, token)
+    else localStorage.removeItem(LAN_DEVICE_KEY)
+  } catch {
+    // 저장할 수 없으면 이 PC 는 바깥 중계를 쓴다
+  }
+  // 등록·해제하면 바로 다시 확인한다
+  lanProbe = null
+  lanUrl = null
+  void probeLan()
+}
+// 사내망 주소로 보내는 요청에 붙일 머리글
+const lanHeaders = (base: string): Record<string, string> => {
+  const token = lanDeviceToken()
+  return base !== API_BASE && token ? { 'X-Lan-Device': token } : {}
+}
 
 function probeLan() {
   // 닿지 않았으면 1분 뒤 다시 본다(허용을 늦게 눌렀거나 사무실에 막 들어온 경우)
   if (lanProbe && (lanUrl || Date.now() - lanChecked < 60_000)) return lanProbe
   lanProbe = (async () => {
     try {
+      // 등록하지 않은 PC 는 확인하지 않는다
+      if (!lanDeviceToken()) return null
       const { url } = (await (await fetch(`${API_BASE}/api/lan`)).json()) as { url: string | null }
       if (!url) return null
-      const res = await fetch(`${url}/api/lan`, { signal: AbortSignal.timeout(8000) })
+      const res = await fetch(`${url}/api/lan`, { headers: lanHeaders(url), signal: AbortSignal.timeout(8000) })
       return res.ok ? url : null
     } catch {
       return null
@@ -134,6 +163,7 @@ function uploadWhole(base: string, file: File, onProgress: (ratio: number) => vo
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
     xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name))
+    for (const [k, v] of Object.entries(lanHeaders(base))) xhr.setRequestHeader(k, v)
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     xhr.onload = () => {
       let body: { error?: string } | null = null
@@ -161,6 +191,7 @@ function sendChunk(base: string, id: string, offset: number, blob: Blob, onProgr
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', `${base}/api/uploads/chunked/${id}?offset=${offset}`)
+    for (const [k, v] of Object.entries(lanHeaders(base))) xhr.setRequestHeader(k, v)
     const token = storedToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
     xhr.setRequestHeader('Content-Type', 'application/octet-stream')
@@ -307,7 +338,7 @@ export async function downloadLargeFile(id: string, name: string) {
   // 사내망이면 사내망 주소에서 받는다(빠름). 그쪽이 끊기면 늘 쓰는 주소로 다시 받는다
   const base = await fileBase()
   const token = storedToken()
-  const get = (b: string) => fetch(`${b}/api/files/${id}?download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  const get = (b: string) => fetch(`${b}/api/files/${id}?download`, { headers: { ...lanHeaders(b), ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
   let res: Response
   try {
     res = await get(base)
