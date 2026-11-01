@@ -35,6 +35,42 @@ export class ApiError extends Error {
   }
 }
 
+// 사내망 직통(서버 apps/api/src/lan.ts): 같은 사무실 PC 는 바깥 중계(Funnel, 초당 2.5MB 안팎) 대신 서버 PC 로 바로 파일을 주고받는다.
+// 서버가 알려 준 사내망 주소에 닿으면 올리기·큰 파일 받기를 그쪽으로 보낸다. 회사 밖이면 닿지 않아 그대로 중계를 쓴다.
+// (처음 한 번 브라우저가 "로컬 네트워크 접근"을 물을 수 있다. 허용하면 다음부터 빠른 길을 쓴다)
+let lanUrl: string | null = null
+let lanChecked = 0
+let lanProbe: Promise<string | null> | null = null
+
+function probeLan() {
+  // 닿지 않았으면 1분 뒤 다시 본다(허용을 늦게 눌렀거나 사무실에 막 들어온 경우)
+  if (lanProbe && (lanUrl || Date.now() - lanChecked < 60_000)) return lanProbe
+  lanProbe = (async () => {
+    try {
+      const { url } = (await (await fetch(`${API_BASE}/api/lan`)).json()) as { url: string | null }
+      if (!url) return null
+      const res = await fetch(`${url}/api/lan`, { signal: AbortSignal.timeout(8000) })
+      return res.ok ? url : null
+    } catch {
+      return null
+    } finally {
+      lanChecked = Date.now()
+    }
+  })().then((url) => (lanUrl = url))
+  return lanProbe
+}
+if (typeof window !== 'undefined') void probeLan()
+
+// 파일을 주고받을 서버 주소. 사내망 확인이 늦으면(1.5초) 기다리지 않고 중계로 보낸다.
+async function fileBase() {
+  await Promise.race([probeLan(), new Promise((r) => setTimeout(r, 1500))])
+  return lanUrl ?? API_BASE
+}
+// 사내망 주소로 보내다 연결이 끊기면 이번 화면에서는 중계로 돌아간다
+function lanFailed(base: string) {
+  if (base !== API_BASE && base === lanUrl) lanUrl = null
+}
+
 // 로그인이 풀리면(401) 화면을 로그인으로 돌린다. App 이 이 이벤트를 듣는다.
 export const UNAUTHORIZED_EVENT = 'wsd-unauthorized'
 
@@ -71,30 +107,29 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 export type UploadedFile = { id: string; name: string; mime: string; size: number }
 
 // 파일 하나를 올린다. 올린 뒤 받은 id 를 요청·컨펌 요청·완료 처리에 붙인다.
-export async function uploadFile(file: File): Promise<UploadedFile> {
-  if (file.size > CHUNKED_FROM) return uploadChunked(file, () => {})
-  let res: Response
-  try {
-    res = await apiFetch('/uploads', {
-      method: 'POST',
-      body: file,
-      headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
-    })
-  } catch {
-    throw new ApiError(0, `파일을 올리지 못했습니다: ${file.name}`)
-  }
-  const body = await res.json().catch(() => null)
-  if (!res.ok) throw new ApiError(res.status, body?.error ?? `파일을 올리지 못했습니다: ${file.name}`)
-  return body
+export function uploadFile(file: File): Promise<UploadedFile> {
+  return uploadFileWithProgress(file, () => {})
 }
 
 // 큰 파일(PSD 등)을 올리며 진행률(0~1)을 알려 준다. fetch 는 올리는 진행률을 못 받아 XMLHttpRequest 를 쓴다.
-// CHUNKED_FROM 보다 크면 나눠서 여러 연결로 함께 올린다(uploadChunked).
-export function uploadFileWithProgress(file: File, onProgress: (ratio: number) => void): Promise<UploadedFile> {
+// CHUNKED_FROM 보다 크면 나눠서 여러 연결로 함께 올린다(uploadChunked). 사내망이면 사내망 주소로 보낸다.
+export async function uploadFileWithProgress(file: File, onProgress: (ratio: number) => void): Promise<UploadedFile> {
   if (file.size > CHUNKED_FROM) return uploadChunked(file, onProgress)
+  const base = await fileBase()
+  try {
+    return await uploadWhole(base, file, onProgress)
+  } catch (e) {
+    // 사내망 주소로 보내다 연결이 끊기면 중계로 한 번 더 보낸다
+    if (!(e instanceof ApiError && e.status === 0) || base === API_BASE) throw e
+    lanFailed(base)
+    return uploadWhole(API_BASE, file, onProgress)
+  }
+}
+
+function uploadWhole(base: string, file: File, onProgress: (ratio: number) => void): Promise<UploadedFile> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API_BASE}/api/uploads`)
+    xhr.open('POST', `${base}/api/uploads`)
     const token = storedToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
@@ -122,10 +157,10 @@ const CHUNK = 8 * 1024 * 1024
 const PARALLEL = 6
 const RETRIES = 4
 
-function sendChunk(id: string, offset: number, blob: Blob, onProgress: (loaded: number) => void) {
+function sendChunk(base: string, id: string, offset: number, blob: Blob, onProgress: (loaded: number) => void) {
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('PUT', `${API_BASE}/api/uploads/chunked/${id}?offset=${offset}`)
+    xhr.open('PUT', `${base}/api/uploads/chunked/${id}?offset=${offset}`)
     const token = storedToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
     xhr.setRequestHeader('Content-Type', 'application/octet-stream')
@@ -149,6 +184,8 @@ async function uploadChunked(file: File, onProgress: (ratio: number) => void): P
   const { id } = await api<{ id: string }>('/uploads/chunked', {
     body: { name: file.name, mime: file.type || 'application/octet-stream', size: file.size },
   })
+  // 시작·마무리는 늘 쓰는 주소로, 조각은 사내망이면 사내망 주소로 보낸다(같은 서버라 섞여도 된다)
+  await fileBase()
   const offsets = Array.from({ length: Math.ceil(file.size / CHUNK) }, (_, i) => i * CHUNK)
   const loaded = new Map<number, number>() // 조각마다 올라간 양
   const report = () => onProgress([...loaded.values()].reduce((s, v) => s + v, 0) / file.size)
@@ -159,10 +196,17 @@ async function uploadChunked(file: File, onProgress: (ratio: number) => void): P
       const blob = file.slice(offset, offset + CHUNK)
       for (let attempt = 1; ; attempt++) {
         try {
-          await sendChunk(id, offset, blob, (n) => {
-            loaded.set(offset, n)
-            report()
-          })
+          const base = lanUrl ?? API_BASE
+          try {
+            await sendChunk(base, id, offset, blob, (n) => {
+              loaded.set(offset, n)
+              report()
+            })
+          } catch (e) {
+            // 사내망 주소에서 끊기면 남은 조각은 중계로 보낸다
+            if (e instanceof ApiError && e.status === 0) lanFailed(base)
+            throw e
+          }
           loaded.set(offset, blob.size)
           report()
           break
@@ -260,7 +304,18 @@ export async function downloadFile(id: string, name: string) {
 
 // 큰 파일 내려받기: 받아 둔 주소를 남겨 두지 않는다(PSD 처럼 큰 파일이 메모리에 계속 남지 않게)
 export async function downloadLargeFile(id: string, name: string) {
-  const res = await apiFetch(`/files/${id}?download`)
+  // 사내망이면 사내망 주소에서 받는다(빠름). 그쪽이 끊기면 늘 쓰는 주소로 다시 받는다
+  const base = await fileBase()
+  const token = storedToken()
+  const get = (b: string) => fetch(`${b}/api/files/${id}?download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  let res: Response
+  try {
+    res = await get(base)
+  } catch {
+    if (base === API_BASE) throw new ApiError(0, '파일을 내려받지 못했습니다.')
+    lanFailed(base)
+    res = await get(API_BASE)
+  }
   if (!res.ok) throw new ApiError(res.status, '파일을 내려받지 못했습니다.')
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')

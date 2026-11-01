@@ -50,6 +50,7 @@ import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, scheduleP
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
+import { lanAddress, startLan } from './lan.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -300,6 +301,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   if (method === 'POST' && path === '/api/login') return handleLogin(req, res)
   if (method === 'POST' && path === '/api/signup') return handleSignup(req, res)
+  // 사내망 직통 주소(lan.ts). 화면이 이 주소의 /api/lan 에 닿으면 같은 사무실이라 보고 파일을 그쪽으로 주고받는다.
+  if (method === 'GET' && path === '/api/lan') return sendJson(res, 200, { url: lanAddress() })
 
   if (method === 'POST' && path === '/api/logout') {
     const token = bearer(req)
@@ -656,7 +659,7 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-const server = createServer(async (req, res) => {
+const handler = async (req: IncomingMessage, res: ServerResponse) => {
   requestOf.set(res, req)
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -676,7 +679,10 @@ const server = createServer(async (req, res) => {
     console.error(error)
     if (!res.headersSent) sendJson(res, 500, { error: '서버 오류가 발생했습니다.' })
   }
-})
+}
+const server = createServer(handler)
+// 사내망 직통(https, data/lan.json 이 있을 때만). 같은 요청 처리를 쓴다.
+void startLan(handler)
 
 // Node 는 요청 하나를 5분(requestTimeout 기본값) 안에 다 받지 못하면 끊는다.
 // 바깥(Funnel)에서는 올리는 속도가 초당 수백 KB 라 수백 MB 짜리 작업 원본(FIG·PSD)이 중간에 끊겼다. 받는 시간 제한은 없앤다.

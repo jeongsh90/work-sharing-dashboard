@@ -19,7 +19,8 @@ export const PORT = Number(process.env.PORT ?? 4173)
 export const COMPANY_EMAIL_DOMAIN = 'owenfood.com'
 
 // 다른 주소에서 띄운 화면이 이 API 를 부를 수 있게 허용한다.
-export const ALLOWED_ORIGINS = ['https://jeongsh90.github.io', 'http://localhost:5173']
+// ts.net 은 사내망 직통 주소(lan.ts, 다른 주소)로 파일을 주고받을 때 필요하다.
+export const ALLOWED_ORIGINS = ['https://jeongsh90.github.io', 'http://localhost:5173', 'https://desktop-ai8fjlj.tail1460cb.ts.net']
 
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 // 로그인 화면에서 "로그인 상태 유지"를 고르면 이 기간 동안 다시 로그인하지 않아도 된다.
