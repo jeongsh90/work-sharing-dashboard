@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.5',
+    date: '2026-11-02',
+    changes: [
+      '파일 올리기 속도 개선: 16MB 넘는 파일은 8MB 조각으로 나눠 여러 연결(6개)로 함께 올림(바깥 접속에서 몇 배 빠름), 끊긴 조각만 다시 보내 중간에 실패해도 처음부터 다시 올리지 않음. 설치할 것 없이 모든 화면(작업 원본·시안·참고 자료·자료실·공지 첨부)에 적용',
+    ],
+  },
+  {
     version: '0.6.4',
     date: '2026-10-30',
     changes: [

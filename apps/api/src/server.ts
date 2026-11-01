@@ -49,6 +49,7 @@ import { holidays } from './holidays.ts'
 import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, schedulePlans, updatePlanLine } from './schedule-plans.ts'
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
+import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -465,6 +466,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   // ── 파일·핀 ──
   if (path === '/api/uploads' && method === 'POST') return handleUpload(req, res, user)
+  if (path === '/api/uploads/chunked' && method === 'POST') return sendJson(res, 201, await startChunked(user, await readJson(req)))
+  if ((m = path.match(/^\/api\/uploads\/chunked\/([0-9a-f-]{36})$/)) && method === 'PUT') {
+    return sendJson(res, 200, await putChunk(req, user, m[1], Number(url.searchParams.get('offset'))))
+  }
+  if ((m = path.match(/^\/api\/uploads\/chunked\/([0-9a-f-]{36})\/finish$/)) && method === 'POST') {
+    return sendJson(res, 201, await finishChunked(user, m[1]))
+  }
   if ((m = path.match(/^\/api\/files\/([0-9a-f-]{36})$/)) && method === 'GET') {
     return handleFile(req, res, user, m[1], url.searchParams.has('download'), url.searchParams.get('size'))
   }

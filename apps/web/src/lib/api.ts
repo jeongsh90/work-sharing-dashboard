@@ -72,6 +72,7 @@ export type UploadedFile = { id: string; name: string; mime: string; size: numbe
 
 // 파일 하나를 올린다. 올린 뒤 받은 id 를 요청·컨펌 요청·완료 처리에 붙인다.
 export async function uploadFile(file: File): Promise<UploadedFile> {
+  if (file.size > CHUNKED_FROM) return uploadChunked(file, () => {})
   let res: Response
   try {
     res = await apiFetch('/uploads', {
@@ -88,7 +89,9 @@ export async function uploadFile(file: File): Promise<UploadedFile> {
 }
 
 // 큰 파일(PSD 등)을 올리며 진행률(0~1)을 알려 준다. fetch 는 올리는 진행률을 못 받아 XMLHttpRequest 를 쓴다.
+// CHUNKED_FROM 보다 크면 나눠서 여러 연결로 함께 올린다(uploadChunked).
 export function uploadFileWithProgress(file: File, onProgress: (ratio: number) => void): Promise<UploadedFile> {
+  if (file.size > CHUNKED_FROM) return uploadChunked(file, onProgress)
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE}/api/uploads`)
@@ -110,6 +113,73 @@ export function uploadFileWithProgress(file: File, onProgress: (ratio: number) =
     xhr.onerror = () => reject(new ApiError(0, `파일을 올리지 못했습니다: ${file.name}`))
     xhr.send(file)
   })
+}
+
+// 나눠 올리기(서버 apps/api/src/chunked-upload.ts). 바깥(Funnel)에서는 연결 하나가 초당 수백 KB 로 느려서,
+// 파일을 CHUNK 크기로 나눠 PARALLEL 개씩 함께 보낸다(재 보니 연결 8개 안팎에서 3~5배). 끊긴 조각은 그 조각만 다시 보낸다.
+const CHUNKED_FROM = 16 * 1024 * 1024
+const CHUNK = 8 * 1024 * 1024
+const PARALLEL = 6
+const RETRIES = 4
+
+function sendChunk(id: string, offset: number, blob: Blob, onProgress: (loaded: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', `${API_BASE}/api/uploads/chunked/${id}?offset=${offset}`)
+    const token = storedToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    xhr.upload.onprogress = (e) => onProgress(e.loaded)
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve()
+      let message: string | undefined
+      try {
+        message = JSON.parse(xhr.responseText)?.error
+      } catch {
+        message = undefined
+      }
+      reject(new ApiError(xhr.status, message ?? '조각을 올리지 못했습니다.'))
+    }
+    xhr.onerror = () => reject(new ApiError(0, '연결이 끊겼습니다.'))
+    xhr.send(blob)
+  })
+}
+
+async function uploadChunked(file: File, onProgress: (ratio: number) => void): Promise<UploadedFile> {
+  const { id } = await api<{ id: string }>('/uploads/chunked', {
+    body: { name: file.name, mime: file.type || 'application/octet-stream', size: file.size },
+  })
+  const offsets = Array.from({ length: Math.ceil(file.size / CHUNK) }, (_, i) => i * CHUNK)
+  const loaded = new Map<number, number>() // 조각마다 올라간 양
+  const report = () => onProgress([...loaded.values()].reduce((s, v) => s + v, 0) / file.size)
+  let next = 0
+  const worker = async () => {
+    while (next < offsets.length) {
+      const offset = offsets[next++]
+      const blob = file.slice(offset, offset + CHUNK)
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await sendChunk(id, offset, blob, (n) => {
+            loaded.set(offset, n)
+            report()
+          })
+          loaded.set(offset, blob.size)
+          report()
+          break
+        } catch (e) {
+          loaded.set(offset, 0)
+          report()
+          // 서버가 거절한 것(404 등)은 다시 보내도 안 되므로 바로 멈춘다
+          if (attempt >= RETRIES || (e instanceof ApiError && e.status >= 400 && e.status < 500)) {
+            throw new ApiError(e instanceof ApiError ? e.status : 0, `파일을 올리지 못했습니다: ${file.name}`)
+          }
+          await new Promise((r) => setTimeout(r, 1000 * attempt))
+        }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, offsets.length) }, worker))
+  return api<UploadedFile>(`/uploads/chunked/${id}/finish`, { body: {} })
 }
 
 // 고른 파일을 차례로 올린다.

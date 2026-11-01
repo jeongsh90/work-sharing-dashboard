@@ -92,7 +92,8 @@ export async function runBackup() {
     let uploads = 0
     if (await exists(UPLOAD_DIR)) {
       for (const entry of await readdir(UPLOAD_DIR, { withFileTypes: true })) {
-        if (entry.name === 'resized') continue
+        // 올리는 중인 조각 파일(*.part)은 아직 완성되지 않아 뺀다
+        if (entry.name === 'resized' || entry.name.endsWith('.part')) continue
         const src = join(UPLOAD_DIR, entry.name)
         const dst = join(BACKUP_DIR, 'uploads', entry.name)
         if (entry.isDirectory()) uploads += await syncFolder(src, dst)
