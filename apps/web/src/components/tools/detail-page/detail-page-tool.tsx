@@ -50,6 +50,7 @@ import {
   type Picture,
   type Planned,
   type Section,
+  type ShipProduct,
 } from "./sections"
 import iceboxUrl from "./assets/icebox.png"
 import logoUrl from "./assets/logo.svg"
@@ -196,7 +197,7 @@ export function DetailPageTool() {
       const s = p.section
       const n = `${i + 1}번 ${KIND_LABEL[s.kind]}`
       if ((s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) out.push(`${n}: 그림을 넣어 주세요.`)
-      if (s.kind === "ship" && s.products.some((pr) => !pr.image)) out.push(`${n}: 내용량 사진을 넣어 주세요.`)
+      if (s.kind === "ship" && [...s.products, ...s.ice].some((pr) => !pr.image)) out.push(`${n}: 내용량·아이스박스 포장의 빈 사진 칸에 사진을 넣거나 칸을 빼 주세요.`)
       if (s.kind === "common" && s.which === "url" && !/^https?:\/\//.test(s.url.trim())) out.push(`${n}: 공통 이미지 주소를 넣어 주세요.`)
       if (s.kind === "common" && s.which === "url" && !s.alt.trim()) out.push(`${n}: 공통 이미지 alt 를 넣어 주세요.`)
       if (p.file && !altOf(p, product).replace(/[-\s]/g, "")) out.push(`${n}: alt 가 비었습니다.`)
@@ -216,7 +217,7 @@ export function DetailPageTool() {
       for (const p of planned) {
         const s = p.section
         const pics: (Picture | null)[] =
-          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products.map((pr) => pr.image), s.ice] : []
+          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products, ...s.ice].map((pr) => pr.image) : []
         for (const pic of pics) if (pic && !urls.has(pic)) urls.set(pic, await toDataUrl(pic))
       }
       const assets = await assetDataUrls()
@@ -265,9 +266,8 @@ export function DetailPageTool() {
         <Preview doc={doc} empty={sections.length === 0} />
       </div>
 
-      {/* 섹션 추가 도구 막대: 넓은 화면은 화면 오른쪽 끝에 세로로 고정, 좁은 화면은 가로로 늘어놓음 */}
-      <div className="flex shrink-0 flex-col gap-1 lg:fixed lg:top-1/2 lg:right-4 lg:z-20 lg:-translate-y-1/2" role="toolbar" aria-label="섹션 추가">
-        <span className="text-center text-xs font-medium text-muted-foreground">추가</span>
+      {/* 섹션 추가 도구 막대: 넓은 화면은 화면 오른쪽 위(입력 칸 위쪽과 같은 높이)에 세로로 고정, 좁은 화면은 가로로 늘어놓음 */}
+      <div className="flex shrink-0 flex-col gap-1 lg:fixed lg:top-[85px] lg:right-4 lg:z-20" role="toolbar" aria-label="섹션 추가">
         <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 lg:w-[76px] lg:flex-col">
           {ADD.map((a) => (
             <Button
@@ -663,47 +663,25 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
     case "ship":
       return (
         <FieldGroup>
-          <Field>
-            <FieldLabel>내용량 (정사각형 사진 + 사진 아래 글, 최대 {SHIP_MAX}개)</FieldLabel>
-            {s.products.map((pr, k) => (
-              <div key={pr.id} className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <PicturePicker value={pr.image} onChange={(image) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, image } : x)) })} label="제품 사진" />
-                </div>
-                <Input value={pr.cap} onChange={(e) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, cap: e.target.value } : x)) })} placeholder="예: 225g" className="w-28" aria-label={`사진 ${k + 1} 아래 글`} />
-                <Button variant="ghost" size="icon-xs" aria-label="빼기" disabled={s.products.length === 1} onClick={() => onChange({ products: s.products.filter((x) => x.id !== pr.id) })}>
-                  <X />
-                </Button>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              className="self-start"
-              disabled={s.products.length >= SHIP_MAX}
-              onClick={() => onChange({ products: [...s.products, { id: nextId(), image: null, cap: "" }] })}
-            >
-              <Plus data-icon="inline-start" />
-              사진 추가 ({s.products.length}/{SHIP_MAX})
-            </Button>
-            <FieldDescription>사진은 가운데를 기준으로 정사각형으로 잘려 보입니다.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-pn`}>내용량 안내 (※, 없으면 비움)</FieldLabel>
-            <Textarea id={`${id}-pn`} value={s.productNote} onChange={(e) => onChange({ productNote: e.target.value })} className="min-h-16 break-keep" />
-          </Field>
-          <Field>
-            <FieldLabel>아이스박스 포장 사진</FieldLabel>
-            <PicturePicker value={s.ice} onChange={(ice) => onChange({ ice })} label="사진 바꾸기 (비우면 기본 아이스박스 사진)" />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-ic`}>사진 아래 글</FieldLabel>
-            <Input id={`${id}-ic`} value={s.iceCap} onChange={(e) => onChange({ iceCap: e.target.value })} placeholder="없으면 비움 (사진이 가운데에 놓입니다)" />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-in`}>아이스박스 안내 (※, 없으면 비움)</FieldLabel>
-            <Input id={`${id}-in`} value={s.iceNote} onChange={(e) => onChange({ iceNote: e.target.value })} />
-          </Field>
+          <ShipGroup
+            id={`${id}-p`}
+            label="내용량"
+            items={s.products}
+            note={s.productNote}
+            capHint="예: 225g"
+            onItems={(products) => onChange({ products })}
+            onNote={(productNote) => onChange({ productNote })}
+          />
+          <ShipGroup
+            id={`${id}-i`}
+            label="아이스박스 포장"
+            items={s.ice}
+            note={s.iceNote}
+            capHint="없으면 비움"
+            onItems={(ice) => onChange({ ice })}
+            onNote={(iceNote) => onChange({ iceNote })}
+            preset
+          />
           {common}
         </FieldGroup>
       )
@@ -749,6 +727,74 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
         </FieldGroup>
       )
   }
+}
+
+// 이렇게 보내드려요의 한 칸(내용량·아이스박스 포장 같은 모양): 정사각형 사진(최대 SHIP_MAX) + 사진 아래 글 + ※ 안내
+// preset: 기본 아이스박스 사진을 바로 넣는 버튼
+function ShipGroup({
+  id,
+  label,
+  items,
+  note,
+  capHint,
+  onItems,
+  onNote,
+  preset = false,
+}: {
+  id: string
+  label: string
+  items: ShipProduct[]
+  note: string
+  capHint: string
+  onItems: (items: ShipProduct[]) => void
+  onNote: (note: string) => void
+  preset?: boolean
+}) {
+  const set = (pid: number, patch: Partial<ShipProduct>) => onItems(items.map((x) => (x.id === pid ? { ...x, ...patch } : x)))
+  const usePreset = async () => {
+    const blob = await (await fetch(iceboxUrl)).blob()
+    const pic = await readPicture(new File([blob], "icebox.png", { type: blob.type }))
+    const empty = items.find((x) => !x.image)
+    if (empty) set(empty.id, { image: pic })
+    else if (items.length < SHIP_MAX) onItems([...items, { id: nextId(), image: pic, cap: "" }])
+  }
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-3">
+      <Field>
+        <FieldLabel>
+          {label} <span className="font-normal text-muted-foreground">(정사각형 사진 + 사진 아래 글, 최대 {SHIP_MAX}개)</span>
+        </FieldLabel>
+        {items.map((pr, k) => (
+          <div key={pr.id} className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <PicturePicker value={pr.image} onChange={(image) => set(pr.id, { image })} label="사진" />
+            </div>
+            <Input value={pr.cap} onChange={(e) => set(pr.id, { cap: e.target.value })} placeholder={capHint} className="w-28" aria-label={`${label} 사진 ${k + 1} 아래 글`} />
+            <Button variant="ghost" size="icon-xs" aria-label="빼기" disabled={items.length === 1} onClick={() => onItems(items.filter((x) => x.id !== pr.id))}>
+              <X />
+            </Button>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" disabled={items.length >= SHIP_MAX} onClick={() => onItems([...items, { id: nextId(), image: null, cap: "" }])}>
+            <Plus data-icon="inline-start" />
+            사진 추가 ({items.length}/{SHIP_MAX})
+          </Button>
+          {preset && (
+            <Button variant="ghost" size="sm" disabled={items.every((x) => x.image) && items.length >= SHIP_MAX} onClick={() => void usePreset()}>
+              <Package data-icon="inline-start" />
+              기본 아이스박스 사진 넣기
+            </Button>
+          )}
+        </div>
+        <FieldDescription>사진은 가운데를 기준으로 정사각형으로 잘려 보입니다. 아래 글이 없으면 사진만 박스 가운데에 놓입니다.</FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${id}-note`}>{label} 안내 (※, 없으면 비움)</FieldLabel>
+        <Textarea id={`${id}-note`} value={note} onChange={(e) => onNote(e.target.value)} className="min-h-16 break-keep" />
+      </Field>
+    </div>
+  )
 }
 
 // 사진 표기(오른쪽 아래): 없음 / 연출 이미지 / 이해를 돕기 위한 이미지
