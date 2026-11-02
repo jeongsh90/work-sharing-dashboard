@@ -44,6 +44,7 @@ import {
   newSection,
   nextId,
   PHOTO_TAGS,
+  SHIP_MAX,
   plan,
   type Kind,
   type Picture,
@@ -215,7 +216,7 @@ export function DetailPageTool() {
       for (const p of planned) {
         const s = p.section
         const pics: (Picture | null)[] =
-          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? s.products.map((pr) => pr.image) : []
+          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products.map((pr) => pr.image), s.ice] : []
         for (const pic of pics) if (pic && !urls.has(pic)) urls.set(pic, await toDataUrl(pic))
       }
       const assets = await assetDataUrls()
@@ -662,29 +663,44 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
       return (
         <FieldGroup>
           <Field>
-            <FieldLabel>내용량 (제품 사진 + 용량)</FieldLabel>
+            <FieldLabel>내용량 (정사각형 사진 + 사진 아래 글, 최대 {SHIP_MAX}개)</FieldLabel>
             {s.products.map((pr, k) => (
               <div key={pr.id} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <PicturePicker value={pr.image} onChange={(image) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, image } : x)) })} label="제품 사진" />
                 </div>
-                <Input value={pr.cap} onChange={(e) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, cap: e.target.value } : x)) })} placeholder="225g" className="w-24" aria-label={`용량 ${k + 1}`} />
+                <Input value={pr.cap} onChange={(e) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, cap: e.target.value } : x)) })} placeholder="예: 225g" className="w-28" aria-label={`사진 ${k + 1} 아래 글`} />
                 <Button variant="ghost" size="icon-xs" aria-label="빼기" disabled={s.products.length === 1} onClick={() => onChange({ products: s.products.filter((x) => x.id !== pr.id) })}>
                   <X />
                 </Button>
               </div>
             ))}
-            <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ products: [...s.products, { id: nextId(), image: null, cap: "" }] })}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              disabled={s.products.length >= SHIP_MAX}
+              onClick={() => onChange({ products: [...s.products, { id: nextId(), image: null, cap: "" }] })}
+            >
               <Plus data-icon="inline-start" />
-              용량 추가
+              사진 추가 ({s.products.length}/{SHIP_MAX})
             </Button>
+            <FieldDescription>사진은 가운데를 기준으로 정사각형으로 잘려 보입니다.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor={`${id}-pn`}>내용량 안내 (※, 없으면 비움)</FieldLabel>
             <Textarea id={`${id}-pn`} value={s.productNote} onChange={(e) => onChange({ productNote: e.target.value })} className="min-h-16 break-keep" />
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${id}-in`}>아이스박스 안내 (※)</FieldLabel>
+            <FieldLabel>아이스박스 포장 사진</FieldLabel>
+            <PicturePicker value={s.ice} onChange={(ice) => onChange({ ice })} label="사진 바꾸기 (비우면 기본 아이스박스 사진)" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-ic`}>사진 아래 글</FieldLabel>
+            <Input id={`${id}-ic`} value={s.iceCap} onChange={(e) => onChange({ iceCap: e.target.value })} placeholder="없으면 비움 (사진이 가운데에 놓입니다)" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-in`}>아이스박스 안내 (※, 없으면 비움)</FieldLabel>
             <Input id={`${id}-in`} value={s.iceNote} onChange={(e) => onChange({ iceNote: e.target.value })} />
           </Field>
           {common}

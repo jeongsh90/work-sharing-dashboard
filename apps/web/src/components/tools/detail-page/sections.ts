@@ -26,7 +26,7 @@ export type Section = Base &
     | { kind: "gif"; image: Picture | null; desc: string }
     | { kind: "qa"; header: string; items: QaItem[] }
     | { kind: "recipe"; no: string; title: string; body: string }
-    | { kind: "ship"; products: ShipProduct[]; productNote: string; iceNote: string }
+    | { kind: "ship"; products: ShipProduct[]; productNote: string; ice: Picture | null; iceCap: string; iceNote: string }
     | { kind: "notice"; image: Picture | null }
     | { kind: "common"; which: CommonKey; url: string }
   )
@@ -46,6 +46,8 @@ const TAIL = [
 ]
 
 export const PHOTO_TAGS = ["연출 이미지", "이해를 돕기 위한 이미지"]
+// 이렇게 보내드려요 내용량 사진 최대 수(4장이면 한 줄에 들어가게 줄인다)
+export const SHIP_MAX = 4
 export const CATEGORIES = [
   { value: "KI", label: "KI 김치" },
   { value: "CR", label: "CR 게장" },
@@ -86,7 +88,7 @@ export function newSection(kind: Kind): Section {
     case "recipe":
       return { ...base, kind, no: "", title: "", body: "" }
     case "ship":
-      return { ...base, kind, products: [{ id: nextId(), image: null, cap: "" }], productNote: "", iceNote: "아이스박스에 아이스팩을 넣어 신선하게 배송해 드립니다." }
+      return { ...base, kind, products: [{ id: nextId(), image: null, cap: "" }], productNote: "", ice: null, iceCap: "", iceNote: "아이스박스에 아이스팩을 넣어 신선하게 배송해 드립니다." }
     case "notice":
       return { ...base, kind, image: null }
     case "common":
@@ -220,20 +222,31 @@ ${s.items
   <div class="t-h3">${esc(s.title.trim())}</div>
   <div class="t-body2 body">${rich(s.body, "ink")}</div>
 </section>`
-    case "ship":
+    case "ship": {
+      // 내용량 사진은 정사각형. 3장까지는 템플릿 크기(210), 4장이면 한 줄(720 칸)에 들어가게 152 로 줄인다
+      const size = s.products.length >= 4 ? 152 : 210
+      const sq = `width:${size}px;height:${size}px;`
+      const product = (pr: ShipProduct) => {
+        const src = pictureUrl(pr.image, urls)
+        const img = src ? `<img src="${src}" alt="" style="${sq}">` : `<div class="ph-empty" style="${sq}"></div>`
+        return `      <div class="product">${img}${pr.cap.trim() ? `<div class="cap">${esc(pr.cap.trim())}</div>` : ""}</div>`
+      }
+      // 아이스박스: 사진 아래 글이 없으면 사진만(박스 위아래 여백이 같아 세로 가운데)
+      const ice = pictureUrl(s.ice, urls) || asset(iceboxUrl)
       return `<section${out}${idx} class="ship">
   <div class="t-section">이렇게 보내드려요</div>
   <div class="group">
     <div class="label t-label">내용량</div>
     <div class="box"><div class="products">
-${s.products.map((pr) => `      <div class="product"><img src="${pictureUrl(pr.image, urls)}" alt=""><div class="cap">${esc(pr.cap)}</div></div>`).join("\n")}
+${s.products.map(product).join("\n")}
     </div></div>${s.productNote.trim() ? `\n    <div class="notes"><div class="note t-body3"><span class="mark">※</span><span class="pre">${esc(s.productNote.trim())}</span></div></div>` : ""}
   </div>
   <div class="group">
     <div class="label t-label">아이스박스 포장</div>
-    <div class="box"><img class="wide" src="${asset(iceboxUrl)}" alt=""></div>${s.iceNote.trim() ? `\n    <div class="notes"><div class="note t-body3"><span class="mark">※</span><span>${esc(s.iceNote.trim())}</span></div></div>` : ""}
+    <div class="box"><img class="wide" src="${ice}" alt="">${s.iceCap.trim() ? `<div class="ice-cap">${esc(s.iceCap.trim())}</div>` : ""}</div>${s.iceNote.trim() ? `\n    <div class="notes"><div class="note t-body3"><span class="mark">※</span><span>${esc(s.iceNote.trim())}</span></div></div>` : ""}
   </div>
 </section>`
+    }
     case "notice": {
       const img = pictureUrl(s.image, urls)
       if (!img) return `<section${out}${idx} class="photo"><div class="empty">상품정보고시 이미지를 넣어 주세요</div></section>`
@@ -275,6 +288,8 @@ export function buildDocument(
 .common img { display: block; width: 860px; height: auto; }
 .common-badge { position: absolute; left: 12px; top: 12px; background: rgba(17,17,17,.75); color: #fff; font-size: 18px; line-height: 28px; padding: 2px 10px; }
 .hero { background-color: #c9c9cf; }
+.ph-empty { display: block; background: repeating-linear-gradient(45deg, #f4f4f6 0 12px, #ececf0 12px 24px); }
+.ice-cap { font-size: 28px; line-height: 46px; letter-spacing: -0.02em; color: var(--ink); }
 ${opts.preview ? `section, .common { cursor: pointer; } [data-idx="${opts.selected ?? -1}"] { outline: 6px solid #3b82f6; outline-offset: -6px; }` : ".common { display: none; }"}`
   const script = opts.preview
     ? `<script>document.addEventListener('click', function (e) { var el = e.target.closest('[data-idx]'); if (el) parent.postMessage({ detailPageSelect: Number(el.getAttribute('data-idx')) }, '*'); });</script>`
@@ -310,7 +325,7 @@ export function autoAlt(p: Planned, productName: string): string {
       return `Recipe ${s.no.trim() || String(recipeNo(p)).padStart(2, "0")} ${plain(s.title)} - ${plain(s.body)}`
     case "ship": {
       const caps = s.products.map((pr) => plain(pr.cap)).filter(Boolean).join(", ")
-      return `이렇게 보내드려요 - 내용량: ${caps}${s.productNote.trim() ? ` ${plain(s.productNote)}` : ""} / 아이스박스 포장: ${plain(s.iceNote)}`
+      return `이렇게 보내드려요 - 내용량: ${caps}${s.productNote.trim() ? ` ${plain(s.productNote)}` : ""} / 아이스박스 포장: ${[plain(s.iceCap), plain(s.iceNote)].filter(Boolean).join(" ")}`
     }
     case "notice":
       return `${name} 상품정보고시`
