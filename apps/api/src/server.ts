@@ -50,6 +50,7 @@ import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, scheduleP
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
+import { renderDetail } from './detail-render.ts'
 import { addLanIp, deleteLanIp, lanAddress, listLanIps, startLan, updateLanIp } from './lan.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
@@ -559,6 +560,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       chunks.push(chunk as Buffer)
     }
     return sendJson(res, 200, await analyzePurchaseCert(Buffer.concat(chunks)))
+  }
+
+  // ── 디자인 툴 > 상세페이지: 섹션 HTML 을 Edge 로 찍어 860 폭 JPG 로 돌려준다(detail-render.ts). 그림이 data: 로 들어 있어 크다 ──
+  if (path === '/api/tools/detail-render' && method === 'POST') {
+    return sendJson(res, 200, await renderDetail(await readJson(req, 150 * 1024 * 1024)))
   }
 
   // ── 디자인 툴 히스토리(만든 이미지 남기기·찾기·지우기) ──

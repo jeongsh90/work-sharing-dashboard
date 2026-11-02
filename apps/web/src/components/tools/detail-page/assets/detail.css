@@ -1,0 +1,181 @@
+/* 셰프애찬 상세페이지 리뉴얼 템플릿 — Figma '상세페이지 양식'(fZfX5aalvG1rGlMZSsshoD / 154:2) 규칙을 그대로 옮긴 값.
+   2026-10-19 닭가슴살맵짤이(SI/62)·불닭맵짤이(SI/69) Figma 내보내기와 픽셀 비교로 맞춤(높이 ±1px).
+   숫자를 바꾸지 말 것. 새 섹션이 필요하면 아래 토큰(글자 스타일·여백)만 조합한다.
+   폭 860 고정, 1px = 1px. render.ps1 이 섹션(<section data-out>)마다 Edge 로 찍어 JPG 로 만든다. */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=block');
+
+:root {
+  --orange: #ff4d00;      /* color/brand/primary (POINT 배지, 강조 제목, 고시 라벨) */
+  --orange-500: #f97316;  /* orange/500 (Recipe 라벨, A 배지, 영양 % 강조) */
+  --ink: #111111;         /* 제목·강조 본문 */
+  --body: #555555;        /* 읽는 글 (최소 #555) */
+  --charcoal: #161312;    /* Q 배지 */
+  --line: #e5e5ec;        /* color/border/middle 1px 선 */
+  --alt: #f2f2f2;         /* color/bg/section-alt */
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #00ff01; } /* 마커색: 섹션 바깥 → render.ps1 이 잘라냄. 섹션에는 꼭 배경을 준다 */
+body { width: 860px; font-family: 'Noto Sans KR', sans-serif; font-weight: 500; -webkit-font-smoothing: antialiased;
+  word-break: keep-all; overflow-wrap: normal;
+  word-spacing: -0.045em; /* Figma 띄어쓰기 폭 보정(Edge 가 띄어쓰기 한 칸당 0.045em 넓음 — 한글 폭은 같음) */ }
+section { width: 860px; position: relative; overflow: hidden; background: #fff; }
+.pre { white-space: pre-line; }   /* 원문 줄바꿈(\n) 유지, 나머지는 띄어쓰기에서만 자동 줄바꿈 */
+.w { white-space: nowrap; }       /* detail.js 가 낱말마다 감싼다 → 괄호·하이픈에서 끊기지 않음(Figma keep-all 과 같게) */
+b, .b { font-weight: 700; }
+
+/* ── 글자 스타일 (detail-page 텍스트 스타일). 행간은 Figma 처럼 정수 px ─────────── */
+.hero-sub   { font-size: 38px; line-height: 53px;  letter-spacing: -0.025em; }
+.hero-name  { font-size: 110px; line-height: 132px; letter-spacing: -0.03em; font-weight: 900; }
+.hero-desc  { font-size: 36px; line-height: 54px;  letter-spacing: -0.025em; }
+.t-section  { font-size: 52px; line-height: 68px;  letter-spacing: -0.03em; font-weight: 700; color: var(--ink); }  /* Headline 1: 섹션 제목 */
+.t-point    { font-size: 52px; line-height: 73px;  letter-spacing: -0.025em; color: var(--ink); }                   /* Headline 1 크기: POINT 제목 (둘째 줄 <span class="em">) — 2026-10-23 44→52 */
+.t-h3       { font-size: 36px; line-height: 50px;  letter-spacing: -0.025em; font-weight: 700; color: var(--ink); }  /* Headline 3: 레시피 제목, Q 질문 */
+.t-label    { font-size: 32px; line-height: 45px;  letter-spacing: -0.02em; font-weight: 700; color: var(--orange); } /* Title 1: 소제목 라벨 */
+.t-body1    { font-size: 30px; line-height: 49px;  letter-spacing: -0.02em; color: var(--body); }   /* Body 1: POINT 본문 */
+.t-body2    { font-size: 28px; line-height: 46px;  letter-spacing: -0.02em; color: var(--body); }   /* Body 2: 레시피·답변 본문 */
+.t-body3    { font-size: 26px; line-height: 43px;  letter-spacing: -0.015em; color: var(--body); }  /* Body 3: 표 내용, ※ 안내 */
+.t-body4    { font-size: 24px; line-height: 41px;  letter-spacing: -0.015em; color: var(--body); }  /* Body 4: 고시 주의 문구 */
+.t-th       { font-size: 28px; line-height: 39px;  letter-spacing: -0.02em; font-weight: 700; color: var(--ink); }
+.t-cap3     { font-size: 20px; line-height: 32px;  letter-spacing: 0; }   /* Caption 3: 사진 표기, Recipe 라벨 */
+.em  { font-weight: 700; color: var(--orange); }     /* 주황 강조 */
+.ink { font-weight: 700; color: var(--ink); }        /* 검정 굵게 강조 */
+
+/* ── 01 메인(d): 글자 지운 사진 위에 로고·제목 ───────────────────────────── */
+.hero { padding: 140px 48px 0; background-size: 860px auto; background-repeat: no-repeat; color: #fff; }
+.hero .head { display: flex; flex-direction: column; gap: 28px; }
+.hero .logo { width: 61px; height: 56px; display: block; }
+.hero .text { display: flex; flex-direction: column; gap: 40px; }
+/* 히어로(썸네일) 글자 가독용 그라데이션: 위 검정 60% → 55% 지점 32% → 900px 에서 투명 (Figma hero 433:213 의 text-gradient 레이어) */
+.hero.grad::before { content: ""; position: absolute; left: 0; top: 0; width: 860px; height: 900px; background: linear-gradient(to bottom, rgba(0,0,0,.6) 0%, rgba(0,0,0,.32) 55%, rgba(0,0,0,0) 100%); }
+.hero.grad .text { position: relative; z-index: 1; }
+
+/* ── POINT (g/h/i): 패턴 배경, 가운데 정렬 ──────────────────────────────── */
+.point { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 40px; text-align: center; background: url('point-pattern.png') repeat; background-size: 124px 124px; }
+.point .badge { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.point .badge .word { font-size: 22px; line-height: 35px; letter-spacing: -0.01em; font-weight: 700; color: var(--orange); }
+.point .badge .num { width: 64px; height: 64px; border-radius: 50%; background: var(--orange); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 32px; line-height: 45px; letter-spacing: -0.025em; font-weight: 700; }
+.point.kick { gap: 40px; }   /* 셰프의 킥처럼 제목만 있는 강조 띠 (배지 없음) */
+
+/* ── 비교 카드 2장 (예: 일반 고추기름 vs 셰프애찬 고추기름) — .point 안에 넣는다 ── */
+.compare { display: flex; gap: 16px; }
+.card { width: 352px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.card .ph { display: block; width: 352px; height: 316px; object-fit: cover; }
+.pill { padding: 8px 18px; border-radius: 999px; font-size: 22px; line-height: 35px; letter-spacing: -0.01em; font-weight: 700; }
+.pill.base { background: #fff; border: 1px solid #d9d9db; color: #545454; }
+.pill.brand { background: var(--orange-500); color: #fff; }
+
+/* ── 사진 칸: 860 폭 그대로, 표기는 오른쪽 40·아래 40 ───────────────────── */
+.photo { background: #fff; }
+.photo img { display: block; width: 860px; height: auto; }
+.photo .tag { position: absolute; right: 40px; bottom: 40px; color: rgba(255,255,255,.9); text-shadow: 0 1px 4px rgba(0,0,0,.35); font-size: 20px; line-height: 32px; font-weight: 500; }
+
+/* ── 레시피 글 칸 (Recipe NN / 제목 / 본문, 왼쪽 정렬) ───────────────────── */
+.recipe { padding: 100px 70px 60px; display: flex; flex-direction: column; gap: 12px; }
+.recipe .eyebrow { font-size: 20px; line-height: 32px; font-weight: 700; color: var(--orange-500); }
+.recipe .body { width: 720px; }
+
+/* ── Q&A (o) ────────────────────────────────────────────────────────────── */
+.qa { padding: 120px 70px; display: flex; flex-direction: column; gap: 80px; }
+.qa .header { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.qa .bubble { width: 136px; height: 70px; position: relative; }
+.qa .bubble img { position: absolute; left: 0; top: 0; width: 142px; height: 75px; }
+.qa .item { display: flex; flex-direction: column; gap: 20px; }
+.qa .q { display: flex; align-items: center; gap: 12px; }
+.badge-q, .badge-a { width: 38px; height: 38px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 30px; line-height: 42px; letter-spacing: -0.02em; font-weight: 700; }
+.badge-q { background: var(--charcoal); }
+.badge-a { background: var(--orange-500); }
+.qa .answers { display: flex; flex-direction: column; gap: 32px; }
+.qa .a { display: flex; align-items: flex-start; gap: 12px; }
+.qa .a .slot { width: 38px; height: 46px; display: flex; align-items: center; justify-content: center; flex: none; } /* 첫 줄이 28px 본문 */
+.qa .a .slot.l30 { height: 42px; }                                                                                      /* 첫 줄이 .lead(30px) */
+.qa .a .txt { width: 670px; font-size: 28px; line-height: 46px; letter-spacing: -0.02em; color: var(--body); }
+.qa .a .txt .lead { display: block; font-size: 30px; line-height: 44px; font-weight: 700; color: var(--orange); }  /* 답변 첫 핵심 문장(뒤에 줄바꿈) */
+.qa .a .txt .em30 { font-size: 30px; font-weight: 700; color: var(--orange); }  /* 문장 중간 핵심 구절 (30px) */
+.qa .a .txt .em28 { font-weight: 700; color: var(--orange); }                   /* 문장 안 강조어 (28px) */
+.qa .chart { padding-left: 50px; }
+.qa .chart img { display: block; width: 668px; height: 320px; }
+
+/* ── 이렇게 보내드려요 (p) ──────────────────────────────────────────────── */
+.ship { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 60px; }
+.group { width: 720px; display: flex; flex-direction: column; gap: 20px; }
+.label { display: flex; align-items: center; gap: 12px; }
+.label::before { content: ''; width: 4px; height: 24px; background: var(--orange); flex: none; }
+.box { border: 1px solid var(--line); padding: 40px 0; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.products { display: flex; gap: 24px; }
+.product { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.product img { display: block; width: 210px; height: 210px; object-fit: cover; }
+.product .cap { font-size: 28px; line-height: 46px; letter-spacing: -0.02em; color: var(--ink); }
+.box > img.wide { display: block; width: 320px; height: 260px; object-fit: cover; }
+.notes { display: flex; flex-direction: column; gap: 10px; }
+.note { display: flex; gap: 8px; }
+.note .mark { flex: none; }
+
+/* ── 상품정보고시 (r): 흰 배경 + 위쪽 1px 선. 다른 상품 고시가 이어지면 같은 .notice 를 반복 ── */
+.notice { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 48px; border-top: 1px solid var(--line); }
+.gosi { width: 720px; border-top: 2px solid var(--ink); }
+.gosi .row { display: flex; gap: 24px; padding: 16px; border-bottom: 1px solid var(--line); }
+.gosi .row .th { width: 110px; flex: none; }
+.gosi .row .td { flex: 1; }
+.notice .notes { width: 720px; }
+.notice .notes .note { gap: 7px; }
+.notice .notes .note .mark { width: 24px; }
+.nutri { width: 720px; display: flex; flex-direction: column; gap: 12px; }
+.ntable { border-top: 2px solid var(--ink); }
+.ntable .row { display: flex; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.ntable .row > div { width: 224px; }
+.ntable .row > div:nth-child(2), .ntable .row > div:nth-child(3) { text-align: right; }
+.ntable .row .v { color: var(--ink); }
+.ntable .row .pct { font-weight: 700; color: var(--orange-500); }
+.nutri .notes .note { gap: 10px; }
+.nutri .notes .note .mark { width: 20px; }
+
+/* ── 이유 3가지 (예: 많은 분들은 why? ○○을 찾을까?) — 사진 + 번호 제목 + 설명, 좌우 번갈아 ── */
+.why { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 80px; }
+.why .header { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.why .big { font-size: 96px; line-height: 115px; letter-spacing: -0.03em; font-weight: 900; color: var(--orange); }
+.why .vline { width: 2px; height: 60px; background: var(--ink); }
+.why .t-section.m { font-weight: 500; }            /* 제목 중 일부만 굵게: <b>상품명</b>을 찾을까? */
+.reasons { width: 720px; display: flex; flex-direction: column; gap: 60px; }
+.reason { display: flex; align-items: center; gap: 32px; }
+.reason img { display: block; width: 320px; height: 280px; object-fit: cover; flex: none; }
+.reason .txt { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.reason.rev { flex-direction: row-reverse; }
+.reason .no { font-size: 32px; line-height: 45px; letter-spacing: -0.02em; font-weight: 700; color: var(--orange); }
+
+/* ── Q&A 답변 아래 사진 ── */
+.qa .media { padding-left: 50px; }
+.qa .media img { display: block; max-width: 670px; height: auto; }
+
+/* ── 주의사항 (예: 굴 섭취 시 주의사항) — 주황 제목 띠 + 가운데 본문 ── */
+.caution { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 40px; text-align: center; }
+.caution .bar { width: 720px; background: var(--orange); color: #fff; padding: 28px 0; font-size: 52px; line-height: 68px; letter-spacing: -0.03em; font-weight: 700; }
+.caution .src { width: 720px; text-align: right; font-size: 20px; line-height: 32px; color: var(--body); margin-bottom: -24px; }
+
+/* ── 후기 카드 (예: 엄청난 후기가 증명하는 맛!) — #F2F2F2 섹션 위 흰 카드 ── */
+.reviews { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 24px; background: var(--alt); }
+.reviews .bar { width: 720px; background: var(--orange); color: #fff; padding: 20px 0; text-align: center; font-size: 44px; line-height: 62px; letter-spacing: -0.025em; font-weight: 700; }
+.reviews .t-section { margin-bottom: 16px; }
+.review { width: 720px; background: #fff; border: 1px solid var(--line); box-shadow: 0 12px 40px rgba(0,0,0,.08); padding: 28px 32px; display: flex; flex-direction: column; gap: 6px; }
+.review .who { font-size: 22px; line-height: 35px; color: var(--body); }
+.review .who .stars { color: var(--orange-500); letter-spacing: 2px; margin-left: 8px; }
+
+/* ── 2×2 카드 (예: 양념 활용, 포장 종류) ── */
+.grid2 { width: 720px; display: grid; grid-template-columns: 348px 348px; gap: 48px 24px; }
+.cell { display: flex; flex-direction: column; gap: 12px; }
+.cell .ph { position: relative; }
+.cell .ph img { display: block; width: 348px; height: 236px; object-fit: cover; }
+.cell .ph .pill { position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%); white-space: nowrap; }
+.cell .cap { text-align: center; }
+.checkline { display: flex; align-items: center; gap: 12px; }
+.checkline .box-ck { width: 30px; height: 30px; background: var(--orange); color: #fff; font-size: 22px; line-height: 30px; text-align: center; font-weight: 700; flex: none; }
+
+/* ── 셰프 말풍선 (예: 어떻게 만드나요?) ── */
+.chef-talk { width: 720px; display: flex; align-items: center; gap: 24px; }
+.chef-talk img { display: block; width: 128px; height: 160px; object-fit: contain; flex: none; }
+.chef-talk .say { flex: 1; background: var(--alt); padding: 28px 32px; }
+.hero .tag { position: absolute; right: 40px; bottom: 40px; color: rgba(255,255,255,.9); text-shadow: 0 1px 4px rgba(0,0,0,.35); font-size: 20px; line-height: 32px; }
+
+/* ── [선택] 활용 레시피 소개 (Figma 315:142 recipe-header / 공통 레이아웃 규칙 433:212) ── */
+.recipe-head { padding: 120px 70px 60px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.recipe-head .eyebrow { font-size: 18px; line-height: 27px; letter-spacing: 0.15em; font-weight: 500; color: var(--orange-500); }
+.recipe-head .desc { width: 720px; }

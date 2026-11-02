@@ -9,6 +9,7 @@ import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PurchaseCertTool } from "@/components/tools/purchase-cert"
 import { ProductNoticeTool } from "@/components/tools/product-notice"
 import { VideoToGifTool, VideoToWebpTool } from "@/components/tools/video-to-gif"
+import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
@@ -44,9 +45,10 @@ const TOOLS: Tool[] = [
   {
     id: "detail-page",
     name: "상세페이지",
-    description: "상품 상세페이지를 만들고 정리하는 도구",
+    description: "섹션(썸네일·타이틀·이미지·움짤·Q&A 등)을 더해 상세페이지 이미지와 관리자용 HTML 을 만드는 도구",
     icon: LayoutTemplate,
     color: "from-sky-400 to-indigo-600",
+    body: <DetailPageTool />,
   },
   {
     id: "video-to-gif",

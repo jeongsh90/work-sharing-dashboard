@@ -1,0 +1,751 @@
+import { useEffect, useMemo, useRef, useState } from "react"
+import { zipSync } from "fflate"
+import {
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Download,
+  Film,
+  HelpCircle,
+  Image as ImageIcon,
+  ImagePlus,
+  LayoutTemplate,
+  Link2,
+  LoaderCircle,
+  Package,
+  Plus,
+  Trash2,
+  Type,
+  UtensilsCrossed,
+  Wand2,
+  X,
+  type LucideIcon,
+} from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { confirmDialog } from "@/components/confirm-dialog"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { SortableList } from "@/components/sortable-list"
+import { EmphasisTextarea } from "@/components/tools/emphasis-textarea"
+import { api, ApiError, formatBytes } from "@/lib/api"
+import {
+  altOf,
+  autoAlt,
+  buildContentHtml,
+  buildDocument,
+  CATEGORIES,
+  COMMON,
+  KIND_LABEL,
+  newSection,
+  nextId,
+  PHOTO_TAGS,
+  plan,
+  type Kind,
+  type Picture,
+  type Planned,
+  type Section,
+} from "./sections"
+import iceboxUrl from "./assets/icebox.png"
+import logoUrl from "./assets/logo.svg"
+import patternUrl from "./assets/point-pattern.png"
+import bubbleUrl from "./assets/qa-bubble.svg"
+
+// 디자인 툴 > 상세페이지: 섹션을 하나씩 더해 상세페이지를 만든다(상세페이지 스킬 디자인 그대로).
+// 왼쪽 = 미리보기(860 폭을 줄여 보여 줌, 누르면 그 섹션 입력으로), 오른쪽 = 입력(위 버튼으로 섹션 추가).
+// "제작 완료"를 누르면 서버가 Edge 로 섹션마다 860 폭 JPG 를 찍고, 파일(NN_이름) + 관리자용 content.html 을 zip 으로 받는다.
+// 공통 이미지는 주소만 넣고, 맨 아래 공통(about8·award8·고객센터 z8)은 미리보기에 보이지 않고 완성 HTML 끝에 늘 붙는다.
+
+const ADD: { kind: Kind; label: string; icon: LucideIcon }[] = [
+  { kind: "hero", label: "썸네일", icon: LayoutTemplate },
+  { kind: "point", label: "타이틀", icon: Type },
+  { kind: "photo", label: "이미지", icon: ImageIcon },
+  { kind: "gif", label: "움짤(GIF)", icon: Film },
+  { kind: "qa", label: "Q&A", icon: HelpCircle },
+  { kind: "recipe", label: "레시피", icon: UtensilsCrossed },
+  { kind: "ship", label: "이렇게 보내드려요", icon: Package },
+  { kind: "notice", label: "상품정보고시", icon: ClipboardList },
+  { kind: "common", label: "공통 이미지", icon: Link2 },
+]
+
+// 고른 그림 파일 → 미리보기 주소 + 크기
+function readPicture(file: File): Promise<Picture> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => resolve({ url, name: file.name, width: img.naturalWidth, height: img.naturalHeight, file })
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error("그림을 열지 못했습니다."))
+    }
+    img.src = url
+  })
+}
+
+// 렌더용: 860 폭보다 크면 860 으로 줄인 JPG, 아니면 원본 그대로(data:)
+async function toDataUrl(p: Picture, max = 860): Promise<string> {
+  if (p.width <= max) {
+    return new Promise((resolve) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result))
+      r.readAsDataURL(p.file)
+    })
+  }
+  const img = new Image()
+  img.src = p.url
+  await img.decode()
+  const canvas = document.createElement("canvas")
+  canvas.width = max
+  canvas.height = Math.round((p.height * max) / p.width)
+  const ctx = canvas.getContext("2d")!
+  ctx.imageSmoothingQuality = "high"
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL("image/jpeg", 0.95)
+}
+
+async function assetDataUrls() {
+  const map = new Map<string, string>()
+  for (const u of [iceboxUrl, logoUrl, patternUrl, bubbleUrl]) {
+    const blob = await (await fetch(u)).blob()
+    map.set(u, await new Promise<string>((r) => {
+      const fr = new FileReader()
+      fr.onload = () => r(String(fr.result))
+      fr.readAsDataURL(blob)
+    }))
+  }
+  return map
+}
+
+const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+
+type Result = { files: { file: string; size: number }[]; zipUrl: string; zipName: string; html: string }
+
+export function DetailPageTool() {
+  const [product, setProduct] = useState("")
+  const [category, setCategory] = useState("")
+  const [number, setNumber] = useState("")
+  const [sections, setSections] = useState<Section[]>([])
+  const [selected, setSelected] = useState<number | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<Result | null>(null)
+  const cards = useRef(new Map<number, HTMLDivElement>())
+
+  const planned = useMemo(() => plan(sections), [sections])
+  const folder = category && number.trim() ? `${category}/${Number(number.trim())}` : ""
+
+  // 미리보기 문서: 입력이 멈춘 뒤(0.25초) 다시 만든다
+  const [doc, setDoc] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDoc(buildDocument(planned, { preview: true, selected })), 250)
+    return () => clearTimeout(t)
+  }, [planned, selected])
+
+  // 미리보기에서 섹션을 누르면 오른쪽 입력으로
+  useEffect(() => {
+    const on = (e: MessageEvent) => {
+      const i = (e.data as { detailPageSelect?: number })?.detailPageSelect
+      if (typeof i !== "number") return
+      const s = sections[i]
+      if (!s) return
+      setSelected(i)
+      cards.current.get(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+    window.addEventListener("message", on)
+    return () => window.removeEventListener("message", on)
+  }, [sections])
+
+  useEffect(() => () => void (result && URL.revokeObjectURL(result.zipUrl)), [result])
+
+  const add = (kind: Kind) => {
+    const s = newSection(kind)
+    // 고른 섹션 바로 뒤에, 없으면 맨 끝에
+    const at = selected !== null && selected < sections.length ? selected + 1 : sections.length
+    setSections((list) => [...list.slice(0, at), s, ...list.slice(at)])
+    setSelected(at)
+    requestAnimationFrame(() => cards.current.get(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
+  const update = (id: number, patch: Partial<Section>) =>
+    setSections((list) => list.map((s) => (s.id === id ? ({ ...s, ...patch } as Section) : s)))
+  const remove = async (s: Section) => {
+    if (!(await confirmDialog({ title: `${KIND_LABEL[s.kind]} 섹션을 지울까요?`, confirmText: "삭제", destructive: true }))) return
+    setSections((list) => list.filter((x) => x.id !== s.id))
+    setSelected(null)
+  }
+  const move = (i: number, d: -1 | 1) =>
+    setSections((list) => {
+      const j = i + d
+      if (j < 0 || j >= list.length) return list
+      const next = [...list]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      setSelected(j)
+      return next
+    })
+
+  // 빠진 것 확인
+  const problems = useMemo(() => {
+    const out: string[] = []
+    if (!product.trim()) out.push("상품명을 입력해 주세요.")
+    if (!folder) out.push("업로드 폴더(카테고리·번호)를 정해 주세요.")
+    if (planned.every((p) => !p.file)) out.push("섹션을 하나 이상 추가해 주세요.")
+    planned.forEach((p, i) => {
+      const s = p.section
+      const n = `${i + 1}번 ${KIND_LABEL[s.kind]}`
+      if ((s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) out.push(`${n}: 그림을 넣어 주세요.`)
+      if (s.kind === "ship" && s.products.some((pr) => !pr.image)) out.push(`${n}: 내용량 사진을 넣어 주세요.`)
+      if (s.kind === "common" && s.which === "url" && !/^https?:\/\//.test(s.url.trim())) out.push(`${n}: 공통 이미지 주소를 넣어 주세요.`)
+      if (s.kind === "common" && s.which === "url" && !s.alt.trim()) out.push(`${n}: 공통 이미지 alt 를 넣어 주세요.`)
+      if (p.file && !altOf(p, product).replace(/[-\s]/g, "")) out.push(`${n}: alt 가 비었습니다.`)
+    })
+    const names = planned.map((p) => p.file).filter(Boolean)
+    if (new Set(names).size !== names.length) out.push("파일 이름이 겹칩니다. 섹션의 파일 이름을 바꿔 주세요.")
+    return out
+  }, [planned, product, folder])
+
+  const finish = async () => {
+    if (problems.length) return setError(problems[0])
+    setError(null)
+    setResult(null)
+    try {
+      setBusy("그림 준비 중")
+      const urls = new Map<Picture, string>()
+      for (const p of planned) {
+        const s = p.section
+        const pics: (Picture | null)[] =
+          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? s.products.map((pr) => pr.image) : []
+        for (const pic of pics) if (pic && !urls.has(pic)) urls.set(pic, await toDataUrl(pic))
+      }
+      const assets = await assetDataUrls()
+      // 움짤은 찍지 않는다(파일 그대로 올림)
+      const rendered = planned.filter((p) => p.file && p.section.kind !== "gif")
+      const html = buildDocument(rendered, { urls, assetUrl: (u) => assets.get(u) ?? u })
+      setBusy("서버에서 섹션을 이미지로 만드는 중")
+      const shots = await api<{ file: string; data: string }[]>("/tools/detail-render", { body: { html } })
+      setBusy("zip 만드는 중")
+      const files: Record<string, Uint8Array> = {}
+      const list: Result["files"] = []
+      const shotOf = new Map(shots.map((s) => [s.file, s.data]))
+      for (const p of planned) {
+        if (!p.file) continue
+        const s = p.section
+        const bytes = s.kind === "gif" ? new Uint8Array(await s.image!.file.arrayBuffer()) : b64ToBytes(shotOf.get(p.file) ?? "")
+        if (!bytes.length) throw new Error(`${p.file} 를 만들지 못했습니다.`)
+        files[`${folder}/${p.file}`] = bytes
+        list.push({ file: p.file, size: bytes.length })
+      }
+      const content = buildContentHtml(planned, product, folder)
+      files["content.html"] = new TextEncoder().encode(content)
+      const zip = zipSync(files, { level: 0 })
+      const zipName = `상세페이지_${product.trim()}_${folder.replace("/", "")}.zip`
+      const zipUrl = URL.createObjectURL(new Blob([zip], { type: "application/zip" }))
+      setResult({ files: list, zipUrl, zipName, html: content })
+      const a = document.createElement("a")
+      a.href = zipUrl
+      a.download = zipName
+      a.click()
+    } catch (e) {
+      setError(e instanceof ApiError || e instanceof Error ? e.message : "만들지 못했습니다.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="grid w-full grid-cols-12 gap-6 p-4 md:p-6">
+      {/* 왼쪽: 미리보기 */}
+      <div className="col-span-12 flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:col-span-7 lg:self-start">
+        <div className="flex items-center gap-2">
+          <h3 className="mr-auto font-semibold">미리보기</h3>
+          <span className="text-xs text-muted-foreground">섹션을 누르면 오른쪽 입력으로 갑니다 · 하단 공통 영역은 완성할 때 자동으로 붙습니다</span>
+        </div>
+        <Preview doc={doc} empty={sections.length === 0} />
+      </div>
+
+      {/* 오른쪽: 입력 */}
+      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-5">
+        <FieldGroup className="rounded-xl border p-4">
+          <Field>
+            <FieldLabel htmlFor="dp-product">상품명</FieldLabel>
+            <Input id="dp-product" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="예: 통영생굴무침" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field>
+              <FieldLabel htmlFor="dp-cat">카테고리</FieldLabel>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger id="dp-cat" className="w-full">
+                  <SelectValue placeholder="고르기" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="dp-num">번호</FieldLabel>
+              <Input id="dp-num" value={number} onChange={(e) => setNumber(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="예: 88" />
+            </Field>
+          </div>
+          <FieldDescription className="break-all">
+            업로드 폴더: {folder ? `https://yorihaeyou.cafe24.com/detail_page/${folder}/` : "카테고리·번호를 정하면 보입니다"} (기존 상세 이미지 폴더 번호를 따릅니다. 예: /co/co_088 → CO 88)
+          </FieldDescription>
+        </FieldGroup>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">섹션 추가 {selected !== null && sections[selected] && <span className="font-normal text-muted-foreground">(고른 섹션 뒤에 들어갑니다)</span>}</span>
+          <div className="grid grid-cols-3 gap-2">
+            {ADD.map((a) => (
+              <Button key={a.kind} variant="outline" size="sm" className="justify-start" onClick={() => add(a.kind)}>
+                <a.icon data-icon="inline-start" />
+                {a.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {sections.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-8 text-center text-sm break-keep text-muted-foreground">
+            위 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
+          </p>
+        ) : (
+          <SortableList
+            items={sections}
+            onReorder={(next) => {
+              setSections(next)
+              setSelected(null)
+            }}
+            className="flex flex-col gap-3"
+            renderItem={(s, handle) => {
+              const i = sections.indexOf(s)
+              const p = planned[i]
+              return (
+                <div
+                  ref={(el) => void (el ? cards.current.set(s.id, el) : cards.current.delete(s.id))}
+                  className={`scroll-mt-4 rounded-xl border bg-card ${selected === i ? "border-primary ring-2 ring-primary/30" : ""}`}
+                  onFocusCapture={() => setSelected(i)}
+                >
+                  <div className="flex items-center gap-1 border-b px-2 py-1.5">
+                    {handle}
+                    <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelected(selected === i ? null : i)}>
+                      <span className="text-sm font-medium">
+                        {i + 1}. {KIND_LABEL[s.kind]}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground tabular-nums">{p.file ?? "공통 · 번호 없음"}</span>
+                    </button>
+                    <Button variant="ghost" size="icon-xs" aria-label="위로" disabled={i === 0} onClick={() => move(i, -1)}>
+                      <ChevronUp />
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" aria-label="아래로" disabled={i === sections.length - 1} onClick={() => move(i, 1)}>
+                      <ChevronDown />
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" aria-label="섹션 지우기" onClick={() => void remove(s)}>
+                      <Trash2 />
+                    </Button>
+                  </div>
+                  <div className="p-3">
+                    <SectionEditor p={p} product={product} onChange={(patch) => update(s.id, patch)} />
+                  </div>
+                </div>
+              )
+            }}
+          />
+        )}
+
+        <div className="sticky bottom-0 flex flex-col gap-2 rounded-xl border bg-background/95 p-3 backdrop-blur">
+          {error && <FieldError>{error}</FieldError>}
+          {!error && problems.length > 0 && sections.length > 0 && <p className="text-xs text-muted-foreground">남은 것: {problems[0]}</p>}
+          <Button size="lg" disabled={busy !== null} onClick={() => void finish()}>
+            {busy ? <LoaderCircle data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <Wand2 data-icon="inline-start" />}
+            {busy ? `${busy}…` : "제작 완료 (이미지 + HTML 내려받기)"}
+          </Button>
+          {result && (
+            <div className="flex flex-col gap-2 rounded-lg bg-muted/50 p-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">완성 · 파일 {result.files.length}개 + content.html</span>
+                <Button variant="outline" size="xs" className="ml-auto" asChild>
+                  <a href={result.zipUrl} download={result.zipName}>
+                    <Download data-icon="inline-start" />
+                    다시 받기
+                  </a>
+                </Button>
+              </div>
+              <SmoothScrollArea className="max-h-40 overflow-y-auto" contentClassName="flex flex-col gap-0.5 text-xs tabular-nums">
+                {result.files.map((f) => (
+                  <div key={f.file} className="flex justify-between gap-2">
+                    <span>
+                      {folder}/{f.file}
+                    </span>
+                    <span className="text-muted-foreground">{formatBytes(f.size)}</span>
+                  </div>
+                ))}
+              </SmoothScrollArea>
+              <p className="text-xs break-keep text-muted-foreground">
+                zip 의 {folder} 폴더를 카페24(yorihaeyou) /detail_page/{category}/ 에 올리고, content.html 을 관리자 상세설명에 넣으면 됩니다(맨 위 이벤트 배너는 관리자에서 그대로 둠).
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 미리보기: 860 폭 문서를 칸 너비에 맞춰 줄여 보여 준다
+function Preview({ doc, empty }: { doc: string; empty: boolean }) {
+  const box = useRef<HTMLDivElement>(null)
+  const frame = useRef<HTMLIFrameElement>(null)
+  const [scale, setScale] = useState(0.6)
+  const [height, setHeight] = useState(400)
+
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setScale(Math.min(1, el.clientWidth / 860)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // 문서 높이를 따라간다(웹폰트·그림이 늦게 들어와도)
+  const measure = () => {
+    const d = frame.current?.contentDocument
+    if (!d?.body) return
+    setHeight(d.documentElement.scrollHeight)
+    const ro = new ResizeObserver(() => setHeight(d.documentElement.scrollHeight))
+    ro.observe(d.body)
+  }
+
+  return (
+    <SmoothScrollArea className="max-h-[calc(100svh-9rem)] overflow-y-auto rounded-xl border bg-[#444]" contentClassName="p-0">
+      <div ref={box} className="w-full">
+        {empty ? (
+          <div className="flex h-80 flex-col items-center justify-center gap-2 text-sm text-white/70">
+            <ImagePlus className="size-8" />
+            오른쪽에서 섹션을 추가하면 여기에 보입니다
+          </div>
+        ) : (
+          <div style={{ height: height * scale }} className="overflow-hidden">
+            <iframe
+              ref={frame}
+              title="상세페이지 미리보기"
+              srcDoc={doc}
+              onLoad={measure}
+              style={{ width: 860, height, transform: `scale(${scale})`, transformOrigin: "0 0", border: 0, display: "block" }}
+            />
+          </div>
+        )}
+      </div>
+    </SmoothScrollArea>
+  )
+}
+
+// 그림 넣기 칸
+function PicturePicker({ value, onChange, accept = "image/*", label = "그림 넣기" }: { value: Picture | null; onChange: (p: Picture | null) => void; accept?: string; label?: string }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const take = async (file?: File) => {
+    if (!file) return
+    try {
+      onChange(await readPicture(file))
+    } catch {
+      // 열 수 없는 파일은 무시
+    }
+  }
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-lg border border-dashed p-2 ${dragging ? "border-primary bg-primary/5" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragging(false)
+        void take(e.dataTransfer.files[0])
+      }}
+    >
+      <input ref={input} type="file" accept={accept} hidden onChange={(e) => void take(e.target.files?.[0]).then(() => (e.target.value = ""))} />
+      {value ? (
+        <>
+          <img src={value.url} alt="" className="size-14 shrink-0 rounded object-cover" />
+          <div className="flex min-w-0 flex-1 flex-col text-xs">
+            <span className="truncate font-medium">{value.name}</span>
+            <span className="text-muted-foreground tabular-nums">
+              {value.width}×{value.height} · {formatBytes(value.file.size)}
+            </span>
+          </div>
+          <Button variant="ghost" size="xs" onClick={() => input.current?.click()}>
+            바꾸기
+          </Button>
+          <Button variant="ghost" size="icon-xs" aria-label="그림 빼기" onClick={() => onChange(null)}>
+            <X />
+          </Button>
+        </>
+      ) : (
+        <button type="button" className="flex w-full items-center justify-center gap-2 py-3 text-sm text-muted-foreground" onClick={() => input.current?.click()}>
+          <ImagePlus className="size-4" />
+          {label} (끌어 놓아도 됩니다)
+        </button>
+      )}
+    </div>
+  )
+}
+
+function SectionEditor({ p, product, onChange }: { p: Planned; product: string; onChange: (patch: Partial<Section>) => void }) {
+  const s = p.section
+  const id = `dp-${s.id}`
+  const common = (
+    <>
+      {p.file && (
+        <Field>
+          <FieldLabel htmlFor={`${id}-layer`}>파일 이름</FieldLabel>
+          <Input id={`${id}-layer`} value={s.layer} onChange={(e) => onChange({ layer: e.target.value.replace(/[^\w-]/g, "") })} placeholder={`자동: ${p.layer}`} className="tabular-nums" />
+          <FieldDescription>비우면 자동({p.file}). 원본 상세 이미지 이름을 따르려면 바꿔 주세요.</FieldDescription>
+        </Field>
+      )}
+      <Field>
+        <FieldLabel htmlFor={`${id}-alt`}>alt</FieldLabel>
+        <Textarea id={`${id}-alt`} value={s.alt} onChange={(e) => onChange({ alt: e.target.value })} placeholder={autoAlt(p, product) || "이미지 내용을 적어 주세요"} className="min-h-16 text-xs break-keep" />
+        <FieldDescription>비우면 입력한 글자로 자동(회색 글). 긴 내용도 alt 하나에 넣습니다.</FieldDescription>
+      </Field>
+    </>
+  )
+
+  switch (s.kind) {
+    case "hero":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>배경 사진 (글자 지운 메인 사진, 860 폭)</FieldLabel>
+            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-sub`}>윗줄</FieldLabel>
+            <Input id={`${id}-sub`} value={s.sub} onChange={(e) => onChange({ sub: e.target.value })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-name`}>상품명</FieldLabel>
+            <Input id={`${id}-name`} value={s.name} onChange={(e) => onChange({ name: e.target.value })} placeholder={product || "상품명"} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-desc`}>설명</FieldLabel>
+            <Textarea id={`${id}-desc`} value={s.desc} onChange={(e) => onChange({ desc: e.target.value })} className="min-h-20 break-keep" placeholder="줄을 바꾸면 그대로 줄이 바뀝니다" />
+          </Field>
+          <div className="flex flex-wrap gap-4">
+            <Label className="flex items-center gap-2 font-normal">
+              <Checkbox checked={s.grad} onCheckedChange={(v) => onChange({ grad: v === true })} />
+              글자 뒤 어둡게(그라데이션)
+            </Label>
+            <TagSelect value={s.tag} onChange={(tag) => onChange({ tag })} />
+          </div>
+          {common}
+        </FieldGroup>
+      )
+    case "point":
+      return (
+        <FieldGroup>
+          <Label className="flex items-center gap-2 font-normal">
+            <Checkbox checked={s.kick} onCheckedChange={(v) => onChange({ kick: v === true })} />
+            제목만 있는 강조 띠(POINT 번호 없음, 예: 셰프의 킥)
+          </Label>
+          <Field>
+            <FieldLabel htmlFor={`${id}-t1`}>제목 1줄</FieldLabel>
+            <Input id={`${id}-t1`} value={s.title1} onChange={(e) => onChange({ title1: e.target.value })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-t2`}>제목 2줄 (주황 굵게)</FieldLabel>
+            <Input id={`${id}-t2`} value={s.title2} onChange={(e) => onChange({ title2: e.target.value })} />
+          </Field>
+          {!s.kick && (
+            <Field>
+              <FieldLabel htmlFor={`${id}-body`}>본문</FieldLabel>
+              <EmphasisTextarea id={`${id}-body`} value={s.body} onValueChange={(body) => onChange({ body })} className="min-h-28 break-keep" />
+              <FieldDescription>줄을 바꾸면 그대로 줄이 바뀝니다. 글을 골라 강조(Ctrl+B)하면 검정 굵게.</FieldDescription>
+            </Field>
+          )}
+          {common}
+        </FieldGroup>
+      )
+    case "photo":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>사진 (860 폭으로 맞춰짐)</FieldLabel>
+            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} />
+          </Field>
+          <TagSelect value={s.tag} onChange={(tag) => onChange({ tag })} />
+          <Field>
+            <FieldLabel htmlFor={`${id}-desc`}>장면 설명 (alt)</FieldLabel>
+            <Input id={`${id}-desc`} value={s.desc} onChange={(e) => onChange({ desc: e.target.value })} placeholder="예: 흰쌀밥 위에 올린 굴무침" />
+          </Field>
+          {common}
+        </FieldGroup>
+      )
+    case "gif":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>움짤 파일 (GIF 또는 WebP)</FieldLabel>
+            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} accept="image/gif,image/webp" label="움짤 넣기" />
+            <FieldDescription>동영상은 디자인 툴의 "동영상 → WebP"(또는 GIF)로 만든 뒤 넣어 주세요. 그대로 올라가고, 이름은 .gif 로 맞춥니다.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-desc`}>장면 설명 (alt)</FieldLabel>
+            <Input id={`${id}-desc`} value={s.desc} onChange={(e) => onChange({ desc: e.target.value })} placeholder="예: 굴무침을 젓가락으로 집어 올리는" />
+          </Field>
+          {common}
+        </FieldGroup>
+      )
+    case "qa":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${id}-head`}>머리 문구</FieldLabel>
+            <Input id={`${id}-head`} value={s.header} onChange={(e) => onChange({ header: e.target.value })} />
+          </Field>
+          {s.items.map((it, k) => (
+            <div key={it.id} className="flex flex-col gap-2 rounded-lg border p-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">질문 {k + 1}</span>
+                <Button variant="ghost" size="icon-xs" className="ml-auto" aria-label="질문 빼기" disabled={s.items.length === 1} onClick={() => onChange({ items: s.items.filter((x) => x.id !== it.id) })}>
+                  <X />
+                </Button>
+              </div>
+              <Input value={it.q} onChange={(e) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, q: e.target.value } : x)) })} placeholder="Q. 질문" aria-label={`질문 ${k + 1}`} />
+              <Input value={it.lead} onChange={(e) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, lead: e.target.value } : x)) })} placeholder="A. 첫 핵심 문장(주황 굵게, 없어도 됨)" aria-label={`답변 ${k + 1} 핵심 문장`} />
+              <EmphasisTextarea value={it.a} onValueChange={(a) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, a } : x)) })} className="min-h-20 break-keep" placeholder="답변 본문 (골라서 강조하면 주황 굵게)" aria-label={`답변 ${k + 1}`} />
+            </div>
+          ))}
+          <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ items: [...s.items, { id: nextId(), q: "", lead: "", a: "" }] })}>
+            <Plus data-icon="inline-start" />
+            질문 추가
+          </Button>
+          {common}
+        </FieldGroup>
+      )
+    case "recipe":
+      return (
+        <FieldGroup>
+          <div className="grid grid-cols-[6rem_1fr] gap-3">
+            <Field>
+              <FieldLabel htmlFor={`${id}-no`}>번호</FieldLabel>
+              <Input id={`${id}-no`} value={s.no} onChange={(e) => onChange({ no: e.target.value })} placeholder="자동" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${id}-title`}>메뉴 이름</FieldLabel>
+              <Input id={`${id}-title`} value={s.title} onChange={(e) => onChange({ title: e.target.value })} />
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel htmlFor={`${id}-body`}>설명</FieldLabel>
+            <EmphasisTextarea id={`${id}-body`} value={s.body} onValueChange={(body) => onChange({ body })} className="min-h-20 break-keep" />
+            <FieldDescription>레시피 사진은 이 섹션 뒤에 "이미지"로 넣어 주세요.</FieldDescription>
+          </Field>
+          {common}
+        </FieldGroup>
+      )
+    case "ship":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>내용량 (제품 사진 + 용량)</FieldLabel>
+            {s.products.map((pr, k) => (
+              <div key={pr.id} className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <PicturePicker value={pr.image} onChange={(image) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, image } : x)) })} label="제품 사진" />
+                </div>
+                <Input value={pr.cap} onChange={(e) => onChange({ products: s.products.map((x) => (x.id === pr.id ? { ...x, cap: e.target.value } : x)) })} placeholder="225g" className="w-24" aria-label={`용량 ${k + 1}`} />
+                <Button variant="ghost" size="icon-xs" aria-label="빼기" disabled={s.products.length === 1} onClick={() => onChange({ products: s.products.filter((x) => x.id !== pr.id) })}>
+                  <X />
+                </Button>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ products: [...s.products, { id: nextId(), image: null, cap: "" }] })}>
+              <Plus data-icon="inline-start" />
+              용량 추가
+            </Button>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-pn`}>내용량 안내 (※, 없으면 비움)</FieldLabel>
+            <Textarea id={`${id}-pn`} value={s.productNote} onChange={(e) => onChange({ productNote: e.target.value })} className="min-h-16 break-keep" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-in`}>아이스박스 안내 (※)</FieldLabel>
+            <Input id={`${id}-in`} value={s.iceNote} onChange={(e) => onChange({ iceNote: e.target.value })} />
+          </Field>
+          {common}
+        </FieldGroup>
+      )
+    case "notice":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>상품정보고시 이미지</FieldLabel>
+            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} />
+            <FieldDescription>디자인 툴 "상품정보고시"로 만든 세로형 이미지(r.jpg)를 넣어 주세요. alt 는 그 도구의 "alt 복사" 내용을 붙여 넣으면 됩니다(고시 탭 자동 입력에 쓰이니 원문 그대로).</FieldDescription>
+          </Field>
+          {common}
+        </FieldGroup>
+      )
+    case "common":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>공통 이미지</FieldLabel>
+            <Select value={s.which} onValueChange={(v) => onChange({ which: v as typeof s.which })}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="b">{COMMON.b.label}</SelectItem>
+                <SelectItem value="series">{COMMON.series.label}</SelectItem>
+                <SelectItem value="url">직접 주소 넣기 (수매확인서 등)</SelectItem>
+              </SelectContent>
+            </Select>
+            <FieldDescription>서버에 이미 있는 이미지라 만들지 않고 주소만 넣습니다(번호도 쓰지 않음).</FieldDescription>
+          </Field>
+          {s.which === "url" && (
+            <Field>
+              <FieldLabel htmlFor={`${id}-url`}>이미지 주소</FieldLabel>
+              <Input id={`${id}-url`} value={s.url} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://owenfood.speedgabia.com/_dt_test/2026/2026.jpg" />
+            </Field>
+          )}
+          {s.which === "url" ? (
+            common
+          ) : (
+            <p className="text-xs break-keep text-muted-foreground">alt: {COMMON[s.which].alt.slice(0, 80)}…</p>
+          )}
+        </FieldGroup>
+      )
+  }
+}
+
+// 사진 표기(오른쪽 아래): 없음 / 연출 이미지 / 이해를 돕기 위한 이미지
+function TagSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Field className="w-auto">
+      <FieldLabel>사진 표기</FieldLabel>
+      <Select value={value || "none"} onValueChange={(v) => onChange(v === "none" ? "" : v)}>
+        <SelectTrigger className="w-56">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">표기 없음</SelectItem>
+          {PHOTO_TAGS.map((t) => (
+            <SelectItem key={t} value={t}>
+              {t}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  )
+}
