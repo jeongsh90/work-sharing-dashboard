@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { zipSync } from "fflate"
 import {
   ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   ChevronUp,
   ClipboardList,
   Download,
@@ -137,6 +139,14 @@ export function DetailPageTool() {
   const [result, setResult] = useState<Result | null>(null)
   const [draft, setDraft] = useState<CurrentDraft | null>(null)
   const cards = useRef(new Map<number, HTMLDivElement>())
+  // 접어 둔 섹션(id). 접으면 머리줄만 보이고 입력 칸은 숨긴다
+  const [folded, setFolded] = useState<Set<number>>(new Set())
+  const toggleFold = (id: number) =>
+    setFolded((f) => {
+      const next = new Set(f)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
 
   const planned = useMemo(() => plan(sections), [sections])
   const folder = category && number.trim() ? `${category}/${Number(number.trim())}` : ""
@@ -156,6 +166,7 @@ export function DetailPageTool() {
       const s = sections[i]
       if (!s) return
       setSelected(i)
+      setFolded((f) => (f.has(s.id) ? new Set([...f].filter((x) => x !== s.id)) : f))
       cards.current.get(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })
     }
     window.addEventListener("message", on)
@@ -341,6 +352,18 @@ export function DetailPageTool() {
             오른쪽 도구 막대의 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
           </p>
         ) : (
+          <>
+          {/* 모두 접기·펼치기 */}
+          <div className="-mb-1 flex justify-end gap-1">
+            <Button variant="ghost" size="xs" onClick={() => setFolded(new Set(sections.map((s) => s.id)))}>
+              <ChevronsDownUp data-icon="inline-start" />
+              모두 접기
+            </Button>
+            <Button variant="ghost" size="xs" onClick={() => setFolded(new Set())}>
+              <ChevronsUpDown data-icon="inline-start" />
+              모두 펼치기
+            </Button>
+          </div>
           <SortableList
             items={sections}
             onReorder={(next) => {
@@ -357,14 +380,20 @@ export function DetailPageTool() {
                   className={`scroll-mt-4 rounded-xl border bg-card ${selected === i ? "border-primary ring-2 ring-primary/30" : ""}`}
                   onFocusCapture={() => setSelected(i)}
                 >
-                  <div className="flex items-center gap-1 border-b px-2 py-1.5">
+                  <div className={`flex items-center gap-1 px-2 py-1.5 ${folded.has(s.id) ? "" : "border-b"}`}>
                     {handle}
                     <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelected(selected === i ? null : i)}>
-                      <span className="text-sm font-medium">
+                      <span className="shrink-0 text-sm font-medium">
                         {i + 1}. {KIND_LABEL[s.kind]}
                       </span>
-                      <span className="truncate text-xs text-muted-foreground tabular-nums">{p.file ?? "공통 · 번호 없음"}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{p.file ?? "공통 · 번호 없음"}</span>
+                      {/* 접었을 때는 무엇이 들어 있는지 한 줄로 */}
+                      {folded.has(s.id) && <span className="truncate text-xs text-muted-foreground">{altOf(p, product)}</span>}
                     </button>
+                    <Button variant="ghost" size="xs" aria-expanded={!folded.has(s.id)} onClick={() => toggleFold(s.id)}>
+                      {folded.has(s.id) ? <ChevronsUpDown data-icon="inline-start" /> : <ChevronsDownUp data-icon="inline-start" />}
+                      {folded.has(s.id) ? "펼치기" : "접기"}
+                    </Button>
                     <Button variant="ghost" size="icon-xs" aria-label="위로" disabled={i === 0} onClick={() => move(i, -1)}>
                       <ChevronUp />
                     </Button>
@@ -375,13 +404,16 @@ export function DetailPageTool() {
                       <Trash2 />
                     </Button>
                   </div>
-                  <div className="p-3">
-                    <SectionEditor p={p} product={product} onChange={(patch) => update(s.id, patch)} />
-                  </div>
+                  {!folded.has(s.id) && (
+                    <div className="p-3">
+                      <SectionEditor p={p} product={product} onChange={(patch) => update(s.id, patch)} />
+                    </div>
+                  )}
                 </div>
               )
             }}
           />
+          </>
         )}
 
         <div className="sticky bottom-0 flex flex-col gap-2 rounded-xl border bg-background/95 p-3 backdrop-blur">
