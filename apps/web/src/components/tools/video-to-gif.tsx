@@ -261,7 +261,7 @@ function FrameStrip({
 
 // 한 화면에서 위 토글로 GIF·WebP 를 고른다(고른 동영상·구간·크기는 그대로 둔다)
 export function VideoConvertTool() {
-  const [format, setFormat] = useState<Format>("gif")
+  const [format, setFormat] = useState<Format>("webp") // 기본은 WebP(같은 화질에 더 가벼움)
   const F = FORMATS[format]
   const [source, setSource] = useState<Source | null>(null)
   const [range, setRange] = useState<[number, number]>([0, 0])
@@ -561,11 +561,11 @@ export function VideoConvertTool() {
               }}
             >
               <TabsList className="w-full">
-                <TabsTrigger value="gif" disabled={busy}>
-                  GIF
-                </TabsTrigger>
                 <TabsTrigger value="webp" disabled={busy}>
                   WebP
+                </TabsTrigger>
+                <TabsTrigger value="gif" disabled={busy}>
+                  GIF
                 </TabsTrigger>
               </TabsList>
             </Tabs>

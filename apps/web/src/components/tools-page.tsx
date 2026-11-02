@@ -61,7 +61,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "video",
-    name: "동영상 → GIF·WebP",
+    name: "움짤",
     description: "동영상 파일(MP4·MOV·WebM)을 구간·크기·속도를 정해 GIF 또는 움직이는 WebP 로 바꾸는 도구(위 토글로 형식 선택)",
     icon: Clapperboard,
     color: "from-fuchsia-400 to-purple-600",
