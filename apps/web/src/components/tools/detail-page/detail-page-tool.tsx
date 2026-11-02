@@ -256,9 +256,9 @@ export function DetailPageTool() {
   }
 
   return (
-    <div className="grid w-full grid-cols-12 gap-6 p-4 md:p-6">
+    <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:flex-row lg:items-start">
       {/* 왼쪽: 미리보기 */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:col-span-7 lg:self-start">
+      <div className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:flex-[7]">
         <div className="flex items-center gap-2">
           <h3 className="mr-auto font-semibold">미리보기</h3>
           <span className="text-xs text-muted-foreground">섹션을 누르면 오른쪽 입력으로 갑니다 · 하단 공통 영역은 완성할 때 자동으로 붙습니다</span>
@@ -266,8 +266,27 @@ export function DetailPageTool() {
         <Preview doc={doc} empty={sections.length === 0} />
       </div>
 
+      {/* 가운데: 섹션 추가 도구 막대(넓은 화면은 세로, 좁은 화면은 가로로 늘어놓음) */}
+      <div className="flex shrink-0 flex-col gap-1 lg:sticky lg:top-0 lg:pt-8" role="toolbar" aria-label="섹션 추가">
+        <span className="text-center text-xs font-medium text-muted-foreground">추가</span>
+        <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 lg:w-[76px] lg:flex-col">
+          {ADD.map((a) => (
+            <Button
+              key={a.kind}
+              variant="ghost"
+              className="h-auto flex-col gap-1 px-1 py-2 text-[11px] leading-tight font-normal break-keep whitespace-normal lg:w-full"
+              title={`${a.label} 추가${selected !== null && sections[selected] ? " (고른 섹션 뒤에)" : ""}`}
+              onClick={() => add(a.kind)}
+            >
+              <a.icon className="size-5" />
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       {/* 오른쪽: 입력 */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-5">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-[5]">
         <FieldGroup className="rounded-xl border p-4">
           <Field>
             <FieldLabel htmlFor="dp-product">상품명</FieldLabel>
@@ -299,21 +318,10 @@ export function DetailPageTool() {
           </FieldDescription>
         </FieldGroup>
 
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium">섹션 추가 {selected !== null && sections[selected] && <span className="font-normal text-muted-foreground">(고른 섹션 뒤에 들어갑니다)</span>}</span>
-          <div className="grid grid-cols-3 gap-2">
-            {ADD.map((a) => (
-              <Button key={a.kind} variant="outline" size="sm" className="justify-start" onClick={() => add(a.kind)}>
-                <a.icon data-icon="inline-start" />
-                {a.label}
-              </Button>
-            ))}
-          </div>
-        </div>
 
         {sections.length === 0 ? (
           <p className="rounded-xl border border-dashed p-8 text-center text-sm break-keep text-muted-foreground">
-            위 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
+            왼쪽 도구 막대의 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
           </p>
         ) : (
           <SortableList
