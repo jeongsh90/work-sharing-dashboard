@@ -20,7 +20,8 @@ type Base = { id: number; layer: string; alt: string } // layer·alt 가 비면 
 export type Section = Base &
   (
     | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string }
-    | { kind: "point"; title1: string; title2: string; body: string; kick: boolean }
+    // em1·em2: 그 제목 줄을 주황 굵게(강조). 없으면(예전 저장본) 제목 2만 강조
+    | { kind: "point"; title1: string; title2: string; body: string; kick: boolean; em1?: boolean; em2?: boolean }
     | { kind: "photo"; image: Picture | null; tag: string; desc: string }
     | { kind: "gif"; image: Picture | null; desc: string }
     | { kind: "qa"; header: string; items: QaItem[] }
@@ -79,7 +80,7 @@ export function newSection(kind: Kind): Section {
     case "hero":
       return { ...base, kind, image: null, sub: "셰프의 반찬, 셰프애찬", name: "", desc: "", grad: true, tag: "" }
     case "point":
-      return { ...base, kind, title1: "", title2: "", body: "", kick: false }
+      return { ...base, kind, title1: "", title2: "", body: "", kick: false, em1: false, em2: true }
     case "photo":
       return { ...base, kind, image: null, tag: "연출 이미지", desc: "" }
     case "gif":
@@ -191,7 +192,9 @@ function sectionHtml(p: Planned, urls: Map<Picture, string> | null, asset: (u: s
     }
     case "point": {
       const no = String(pointNo(p)).padStart(2, "0")
-      const title = `<div class="t-point pre">${esc(s.title1.trim())}${s.title2.trim() ? `\n<span class="em">${esc(s.title2.trim())}</span>` : ""}</div>`
+      const line = (text: string, em: boolean) => (em ? `<span class="em">${esc(text)}</span>` : esc(text))
+      const lines = [s.title1.trim() && line(s.title1.trim(), s.em1 ?? false), s.title2.trim() && line(s.title2.trim(), s.em2 ?? true)]
+      const title = `<div class="t-point pre">${lines.filter(Boolean).join("\n")}</div>`
       if (s.kick) return `<section${out}${idx} class="point kick">\n  ${title}\n</section>`
       return `<section${out}${idx} class="point">
   <div class="badge"><div class="word">POINT</div><div class="num">${no}</div></div>

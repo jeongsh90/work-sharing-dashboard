@@ -51,6 +51,7 @@ import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } fr
 import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateLibraryItem } from './library.ts'
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { renderDetail } from './detail-render.ts'
+import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, updateDetailDraft } from './detail-drafts.ts'
 import { addLanIp, deleteLanIp, lanAddress, listLanIps, startLan, updateLanIp } from './lan.ts'
 import {
   addFtpServer,
@@ -600,6 +601,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   // ── 디자인 툴 > 상세페이지: 섹션 HTML 을 Edge 로 찍어 860 폭 JPG 로 돌려준다(detail-render.ts). 그림이 data: 로 들어 있어 크다 ──
   if (path === '/api/tools/detail-render' && method === 'POST') {
     return sendJson(res, 200, await renderDetail(await readJson(req, 150 * 1024 * 1024)))
+  }
+  // 상세페이지 임시 저장(detail-drafts.ts)
+  if (path === '/api/tools/detail-drafts') {
+    if (method === 'GET') return sendJson(res, 200, listDetailDrafts(user))
+    if (method === 'POST') return sendJson(res, 201, addDetailDraft(user, await readJson(req, 4 * 1024 * 1024)))
+  }
+  if ((m = path.match(/^\/api\/tools\/detail-drafts\/([0-9a-f-]{36})$/))) {
+    if (method === 'GET') return sendJson(res, 200, getDetailDraft(user, m[1]))
+    if (method === 'PUT') return sendJson(res, 200, await updateDetailDraft(user, m[1], await readJson(req, 4 * 1024 * 1024)))
+    if (method === 'DELETE') return sendJson(res, 200, await deleteDetailDraft(user, m[1]))
   }
 
   // ── 디자인 툴 히스토리(만든 이미지 남기기·찾기·지우기) ──

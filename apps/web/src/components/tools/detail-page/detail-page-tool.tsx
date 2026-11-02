@@ -52,6 +52,7 @@ import {
   type Section,
   type ShipProduct,
 } from "./sections"
+import { DraftBar, type CurrentDraft } from "./drafts"
 import iceboxUrl from "./assets/icebox.png"
 import logoUrl from "./assets/logo.svg"
 import patternUrl from "./assets/point-pattern.png"
@@ -134,6 +135,7 @@ export function DetailPageTool() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
+  const [draft, setDraft] = useState<CurrentDraft | null>(null)
   const cards = useRef(new Map<number, HTMLDivElement>())
 
   const planned = useMemo(() => plan(sections), [sections])
@@ -287,6 +289,22 @@ export function DetailPageTool() {
       {/* 오른쪽: 입력 */}
       <div className="flex min-w-0 flex-col gap-4 lg:flex-[5]">
         <FieldGroup className="rounded-xl border p-4">
+          {/* 중간 저장: 본사 자료를 기다리는 동안 만든 내용을 저장해 두고 나중에 이어서 */}
+          <DraftBar
+            state={{ product, category, number, sections }}
+            current={draft}
+            onSaved={setDraft}
+            onLoad={(st, d) => {
+              setProduct(st.product)
+              setCategory(st.category)
+              setNumber(st.number)
+              setSections(st.sections)
+              setSelected(null)
+              setResult(null)
+              setError(null)
+              setDraft(d)
+            }}
+          />
           <Field>
             <FieldLabel htmlFor="dp-product">상품명</FieldLabel>
             <Input id="dp-product" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="예: 통영생굴무침" />
@@ -564,14 +582,27 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
             <Checkbox checked={s.kick} onCheckedChange={(v) => onChange({ kick: v === true })} />
             제목만 있는 강조 띠(POINT 번호 없음, 예: 셰프의 킥)
           </Label>
-          <Field>
-            <FieldLabel htmlFor={`${id}-t1`}>제목 1줄</FieldLabel>
-            <Input id={`${id}-t1`} value={s.title1} onChange={(e) => onChange({ title1: e.target.value })} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-t2`}>제목 2줄 (주황 굵게)</FieldLabel>
-            <Input id={`${id}-t2`} value={s.title2} onChange={(e) => onChange({ title2: e.target.value })} />
-          </Field>
+          {/* 제목 줄마다 강조(주황 굵게)를 체크로 고른다. 기본은 제목 2만 */}
+          {([
+            ["title1", "em1", "제목 1줄", s.em1 ?? false],
+            ["title2", "em2", "제목 2줄", s.em2 ?? true],
+          ] as const).map(([key, em, label, on]) => (
+            <Field key={key}>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel htmlFor={`${id}-${key}`}>{label}</FieldLabel>
+                <Label className="flex items-center gap-1.5 text-xs font-normal">
+                  <Checkbox checked={on} onCheckedChange={(v) => onChange({ [em]: v === true })} />
+                  <span className={on ? "font-bold text-[#ff4d00]" : "text-muted-foreground"}>강조 (주황 굵게)</span>
+                </Label>
+              </div>
+              <Input
+                id={`${id}-${key}`}
+                value={s[key]}
+                onChange={(e) => onChange({ [key]: e.target.value })}
+                className={on ? "font-bold text-[#ff4d00]" : ""}
+              />
+            </Field>
+          ))}
           {!s.kick && (
             <Field>
               <FieldLabel htmlFor={`${id}-body`}>본문</FieldLabel>
