@@ -22,6 +22,29 @@ function withPercent(v: string) {
   return /^\d+(\.\d+)?$/.test(v) ? `${v}%` : v
 }
 
+// 함량 단위: 성분마다 정해져 있어 숫자만 적으면 단위를 붙인다(예 160 → 160kcal). 모르는 성분은 적은 그대로
+const NUTRI_UNIT: Record<string, { unit: string; example: string }> = {
+  열량: { unit: "kcal", example: "160" },
+  나트륨: { unit: "mg", example: "520" },
+  탄수화물: { unit: "g", example: "12" },
+  당류: { unit: "g", example: "5" },
+  지방: { unit: "g", example: "8" },
+  트랜스지방: { unit: "g", example: "0" },
+  포화지방: { unit: "g", example: "1.5" },
+  콜레스테롤: { unit: "mg", example: "30" },
+  단백질: { unit: "g", example: "10" },
+}
+const unitOf = (name: string) => NUTRI_UNIT[name.replace(/\s+/g, "")]
+function withUnit(name: string, v: string) {
+  const u = unitOf(name)
+  return u && /^\d[\d,]*(\.\d+)?$/.test(v) ? `${v}${u.unit}` : v
+}
+// 입력 칸에는 단위를 떼고 보여 준다(단위는 칸 오른쪽에 표시)
+const stripUnit = (name: string, v: string) => {
+  const u = unitOf(name)
+  return u ? v.replace(new RegExp(`\\s*${u.unit}$`, "i"), "") : v
+}
+
 type NutriRow = { id: number; name: string; amount: string; ratio: string }
 
 const W = 860
@@ -88,7 +111,7 @@ function contentOf(f: Form) {
   const rows = f.rows.map((r) => ({ label: tidy(r.label), value: tidy(r.value) })).filter((r) => r.label || r.value)
   const notes = noteLines(f.notes)
   const nutri = f.nutri
-    .map((n) => ({ name: tidy(n.name), amount: tidy(n.amount), ratio: withPercent(tidy(n.ratio)) }))
+    .map((n) => ({ name: tidy(n.name), amount: withUnit(tidy(n.name), tidy(n.amount)), ratio: withPercent(tidy(n.ratio)) }))
     .filter((n) => n.amount || n.ratio)
   const nutriNote = noteLines(f.nutriNote)
   return { rows, notes, nutri, nutriNote, nutriTitle: tidy(f.nutriTitle) }
@@ -443,7 +466,20 @@ export function ProductNoticeTool() {
               <div className="grid grid-cols-[1.25rem_1fr_1fr_1fr_2.25rem] items-center gap-2">
                 {handle}
                 <Input value={n.name} onChange={(e) => setNutri(n.id, { name: e.target.value })} placeholder="성분" aria-label="성분" />
-                <Input value={n.amount} onChange={(e) => setNutri(n.id, { amount: e.target.value })} placeholder="예: 160kcal" aria-label={`${n.name || "성분"} 함량`} />
+                {unitOf(n.name) ? (
+                  <div className="relative">
+                    <Input
+                      value={stripUnit(n.name, n.amount)}
+                      onChange={(e) => setNutri(n.id, { amount: stripUnit(n.name, e.target.value) })}
+                      placeholder={`예: ${unitOf(n.name)!.example}`}
+                      aria-label={`${n.name} 함량`}
+                      className="pr-12"
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">{unitOf(n.name)!.unit}</span>
+                  </div>
+                ) : (
+                  <Input value={n.amount} onChange={(e) => setNutri(n.id, { amount: e.target.value })} placeholder="예: 160kcal (단위까지)" aria-label={`${n.name || "성분"} 함량`} />
+                )}
                 <div className="relative">
                   <Input value={n.ratio.replace(/%/g, "")} onChange={(e) => setNutri(n.id, { ratio: e.target.value.replace(/%/g, "") })} placeholder="예: 95 (없으면 비움)" aria-label={`${n.name || "성분"} 비율`} className="pr-8" />
                   <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">%</span>
@@ -468,7 +504,7 @@ export function ProductNoticeTool() {
               성분 추가
             </Button>
           </div>
-          <FieldDescription>비율은 숫자만 적으면 % 가 붙습니다. 함량이나 비율을 적은 성분만 나옵니다. 하나도 없으면 영양정보 묶음 전체가 빠집니다.</FieldDescription>
+          <FieldDescription>함량은 숫자만 적으면 성분에 맞는 단위(열량 kcal, 나트륨·콜레스테롤 mg, 나머지 g)가, 비율은 % 가 붙습니다. 함량이나 비율을 적은 성분만 나옵니다. 하나도 없으면 영양정보 묶음 전체가 빠집니다.</FieldDescription>
         </Field>
 
         <Field>
