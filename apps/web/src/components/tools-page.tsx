@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ClipboardList, Clapperboard, FileCheck2, FileVideo, IdCard, LayoutTemplate, Mail, Package, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, FileCheck2, IdCard, LayoutTemplate, Mail, Package, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -8,7 +8,7 @@ import { DeskNameplateTool } from "@/components/tools/desk-nameplate"
 import { MailSignatureTool } from "@/components/tools/mail-signature"
 import { PurchaseCertTool } from "@/components/tools/purchase-cert"
 import { ProductNoticeTool } from "@/components/tools/product-notice"
-import { VideoToGifTool, VideoToWebpTool } from "@/components/tools/video-to-gif"
+import { VideoConvertTool } from "@/components/tools/video-to-gif"
 import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
 import { ShipTool } from "@/components/tools/detail-page/ship-tool"
 import { PAGE_GRID } from "@/lib/layout"
@@ -60,20 +60,12 @@ const TOOLS: Tool[] = [
     body: <DetailPageTool />,
   },
   {
-    id: "video-to-gif",
-    name: "동영상 → GIF",
-    description: "동영상 파일(MP4·MOV·WebM)을 구간·크기·속도를 정해 GIF 로 바꾸는 도구",
+    id: "video",
+    name: "동영상 → GIF·WebP",
+    description: "동영상 파일(MP4·MOV·WebM)을 구간·크기·속도를 정해 GIF 또는 움직이는 WebP 로 바꾸는 도구(위 토글로 형식 선택)",
     icon: Clapperboard,
     color: "from-fuchsia-400 to-purple-600",
-    body: <VideoToGifTool />,
-  },
-  {
-    id: "video-to-webp",
-    name: "동영상 → WebP",
-    description: "동영상 파일(MP4·MOV·WebM)을 구간·크기·속도를 정해 움직이는 WebP 로 바꾸는 도구(GIF 보다 화질 좋고 가벼움)",
-    icon: FileVideo,
-    color: "from-cyan-400 to-blue-600",
-    body: <VideoToWebpTool />,
+    body: <VideoConvertTool />,
   },
   {
     id: "mail-signature",

@@ -6,6 +6,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatBytes } from "@/lib/api"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
@@ -258,10 +259,9 @@ function FrameStrip({
   )
 }
 
-export const VideoToGifTool = () => <VideoConvertTool format="gif" />
-export const VideoToWebpTool = () => <VideoConvertTool format="webp" />
-
-function VideoConvertTool({ format }: { format: Format }) {
+// 한 화면에서 위 토글로 GIF·WebP 를 고른다(고른 동영상·구간·크기는 그대로 둔다)
+export function VideoConvertTool() {
+  const [format, setFormat] = useState<Format>("gif")
   const F = FORMATS[format]
   const [source, setSource] = useState<Source | null>(null)
   const [range, setRange] = useState<[number, number]>([0, 0])
@@ -422,7 +422,7 @@ function VideoConvertTool({ format }: { format: Format }) {
 
   // 설정을 바꾸면 잠깐 뒤(손을 멈춘 뒤) 한 장 평균 크기를 다시 잰다. 초당 장수·속도·반복은 장수만 바뀌어 다시 재지 않는다.
   const [perFrame, setPerFrame] = useState<{ key: string; bytes: number } | null>(null)
-  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${colors}` : ""
+  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}` : ""
   useEffect(() => {
     // 손잡이를 끄는 동안에는 재지 않는다(미리보기와 영상 읽기를 다투지 않게)
     if (!source || busy || sliding || length <= 0) return
@@ -547,6 +547,32 @@ function VideoConvertTool({ format }: { format: Format }) {
       {/* 동영상을 고르기 전에는 고르기 칸만 화면 가운데 */}
       <div className={source ? "col-span-12 lg:order-2 lg:col-span-5" : "col-span-12 md:col-span-8 md:col-start-3 lg:col-span-6 lg:col-start-4"}>
         <FieldGroup>
+          <Field>
+            <FieldLabel>만들 형식</FieldLabel>
+            <Tabs
+              value={format}
+              onValueChange={(v) => {
+                const next = v as Format
+                if (next === format || busy) return
+                setFormat(next)
+                // 화질 고르기는 형식마다 다르다(GIF 색 수 / WebP 압축 품질)
+                setColors(FORMATS[next].defaultOption)
+                setResult(null)
+              }}
+            >
+              <TabsList className="w-full">
+                <TabsTrigger value="gif" disabled={busy}>
+                  GIF
+                </TabsTrigger>
+                <TabsTrigger value="webp" disabled={busy}>
+                  WebP
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <FieldDescription>
+              {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 이름을 .gif 로 바꿔 올립니다."}
+            </FieldDescription>
+          </Field>
           <Field>
             <FieldLabel>동영상</FieldLabel>
             {source ? (

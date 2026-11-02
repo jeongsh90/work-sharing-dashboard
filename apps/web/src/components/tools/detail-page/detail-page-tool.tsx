@@ -603,7 +603,7 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
           <Field>
             <FieldLabel>움짤 파일 (GIF 또는 WebP)</FieldLabel>
             <PicturePicker value={s.image} onChange={(image) => onChange({ image })} accept="image/gif,image/webp" label="움짤 넣기" />
-            <FieldDescription>동영상은 디자인 툴의 "동영상 → WebP"(또는 GIF)로 만든 뒤 넣어 주세요. 그대로 올라가고, 이름은 .gif 로 맞춥니다.</FieldDescription>
+            <FieldDescription>동영상은 디자인 툴의 "동영상 → GIF·WebP"로 만든 뒤 넣어 주세요. 그대로 올라가고, 이름은 .gif 로 맞춥니다.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor={`${id}-desc`}>장면 설명 (alt)</FieldLabel>
