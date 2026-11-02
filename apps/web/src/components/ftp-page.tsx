@@ -21,11 +21,12 @@ import { useApi } from "@/lib/store"
 // 폴더를 눌러 들어가고, 파일을 끌어다 놓거나 "파일 업로드"로 올리고, 줄의 받기 버튼으로 내려받는다. 지우기는 관리자만.
 
 type Server = { id: string; name: string; root: string }
-type Item = { name: string; dir: boolean; size: number; modifiedAt: number | string | null }
-type Listing = { path: string; root: string; items: Item[] }
+type Item = { name: string; raw: string; dir: boolean; size: number; modifiedAt: number | string | null }
+// path·root·raw: FTP 의 실제 이름 바이트(base64url). 한 서버에 UTF-8·EUC-KR 이름이 섞여 있어도 그대로 지정한다
+type Listing = { path: string; root: string; display: string; crumbs: { label: string; path: string }[]; items: Item[] }
 type Upload = { key: string; name: string; ratio: number; error: string | null }
 
-const LAST_KEY = "wsd-ftp-last"
+const LAST_KEY = "wsd-ftp-last2"
 function readLast(): { server?: string; paths?: Record<string, string> } {
   try {
     return JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}")
@@ -42,13 +43,12 @@ function saveLast(server: string, path: string) {
   }
 }
 
-const join = (dir: string, name: string) => (dir === "/" ? `/${name}` : `${dir}/${name}`)
-const parent = (p: string) => p.replace(/\/[^/]+$/, "") || "/"
 
 export function FtpPage({ session }: { session: Session }) {
   const { data: servers, error } = useApi<Server[]>("/ftp/servers", 300_000)
   const [serverId, setServerId] = useState<string | null>(() => readLast().server ?? null)
-  const [path, setPath] = useState<string | null>(null)
+  // 다음에 열 폴더(목록 API 물음 줄: "" 시작 폴더, path=…, path=…&into=…, path=…&up)
+  const [nav, setNav] = useState<string | null>(null)
   const [listing, setListing] = useState<Listing | null>(null)
   const [loading, setLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -65,31 +65,32 @@ export function FtpPage({ session }: { session: Session }) {
   // 서버를 고르면 그 서버에서 마지막에 보던 폴더(없으면 시작 폴더)
   useEffect(() => {
     if (!server) return
-    setPath(readLast().paths?.[server.id] ?? server.root)
+    const last = readLast().paths?.[server.id]
+    setNav(last ? `path=${last}` : "")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server?.id])
 
-  const load = async (p = path) => {
-    if (!server || p === null) return
+  const load = async (q = nav) => {
+    if (!server || q === null) return
     setLoading(true)
     setListError(null)
     try {
-      const data = await api<Listing>(`/ftp/${server.id}/list?path=${encodeURIComponent(p)}`)
+      const data = await api<Listing>(`/ftp/${server.id}/list?${q}`)
       setListing(data)
       saveLast(server.id, data.path)
     } catch (e) {
       setListError(e instanceof ApiError ? e.message : "폴더를 열지 못했습니다.")
       // 마지막 폴더가 없어졌으면 시작 폴더로
-      if (p !== server.root) setPath(server.root)
+      if (q !== "") setNav("")
     } finally {
       setLoading(false)
     }
   }
   useEffect(() => {
     setQuery("")
-    void load(path)
+    void load(nav)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server?.id, path])
+  }, [server?.id, nav])
 
   if (!servers) return <PageState error={error} />
   if (servers.length === 0 || !server) {
@@ -100,11 +101,11 @@ export function FtpPage({ session }: { session: Session }) {
     )
   }
 
-  const current = listing?.path ?? path ?? server.root
+  const current = listing?.path ?? ""
+  const atRoot = !listing || listing.path === listing.root
   const items = (listing?.items ?? [])
     .filter((i) => !query.trim() || i.name.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name, "ko") : a.dir ? -1 : 1))
-  const crumbs = current === server.root ? [] : current.slice(server.root === "/" ? 1 : server.root.length + 1).split("/")
 
   const uploadFiles = async (files: File[]) => {
     if (files.length === 0) return
@@ -139,13 +140,13 @@ export function FtpPage({ session }: { session: Session }) {
       }
     }
     await Promise.all([worker(), worker()])
-    void load(dir)
+    void load(`path=${dir}`)
   }
 
   const download = async (item: Item) => {
     setBusy(item.name)
     try {
-      await ftpDownloadFile(server.id, join(current, item.name), item.name)
+      await ftpDownloadFile(server.id, current, item.raw, item.name)
     } catch (e) {
       setListError(e instanceof ApiError ? e.message : "내려받지 못했습니다.")
     } finally {
@@ -164,8 +165,8 @@ export function FtpPage({ session }: { session: Session }) {
     )
       return
     try {
-      await api(`/ftp/${server.id}/file?path=${encodeURIComponent(join(current, item.name))}${item.dir ? "&dir" : ""}`, { method: "DELETE" })
-      void load()
+      await api(`/ftp/${server.id}/file?path=${current}&name=${item.raw}${item.dir ? "&dir" : ""}`, { method: "DELETE" })
+      void load(`path=${current}`)
     } catch (e) {
       setListError(e instanceof ApiError ? e.message : "지우지 못했습니다.")
     }
@@ -210,7 +211,7 @@ export function FtpPage({ session }: { session: Session }) {
                 onClick={() => {
                   setServerId(s.id)
                   setListing(null)
-                  setPath(null)
+                  setNav(null)
                 }}
               >
                 {s.name}
@@ -224,27 +225,22 @@ export function FtpPage({ session }: { session: Session }) {
 
         {/* 경로 */}
         <div className="flex flex-wrap items-center gap-1 text-sm">
-          <Button variant="ghost" size="icon-sm" aria-label="위 폴더" disabled={current === server.root} onClick={() => setPath(parent(current))}>
+          <Button variant="ghost" size="icon-sm" aria-label="위 폴더" disabled={atRoot} onClick={() => setNav(`path=${current}&up`)}>
             <CornerLeftUp />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setPath(server.root)}>
+          <Button variant="ghost" size="sm" onClick={() => setNav("")}>
             {server.name}
             {server.root !== "/" && <span className="text-muted-foreground">{server.root}</span>}
           </Button>
-          {crumbs.map((c, i) => (
-            <span key={i} className="flex items-center gap-1">
+          {(listing?.crumbs ?? []).map((c, i, all) => (
+            <span key={c.path} className="flex items-center gap-1">
               <ChevronRight className="size-4 text-muted-foreground" />
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={i === crumbs.length - 1}
-                onClick={() => setPath(join(server.root, crumbs.slice(0, i + 1).join("/")).replace("//", "/"))}
-              >
-                {c}
+              <Button variant="ghost" size="sm" disabled={i === all.length - 1} onClick={() => setNav(`path=${c.path}`)}>
+                {c.label}
               </Button>
             </span>
           ))}
-          <Button variant="ghost" size="icon-sm" className="ml-auto" aria-label="새로고침" onClick={() => void load()}>
+          <Button variant="ghost" size="icon-sm" className="ml-auto" aria-label="새로고침" onClick={() => void load(`path=${current}`)}>
             <RefreshCw className={loading ? "animate-spin motion-reduce:animate-none" : ""} />
           </Button>
         </div>
@@ -325,7 +321,7 @@ export function FtpPage({ session }: { session: Session }) {
                   <TableRow
                     key={item.name}
                     className={item.dir ? "cursor-pointer" : ""}
-                    onClick={() => item.dir && setPath(join(current, item.name))}
+                    onClick={() => item.dir && setNav(`path=${current}&into=${item.raw}`)}
                   >
                     <TableCell>
                       <span className="flex min-w-0 items-center gap-2">
@@ -364,7 +360,7 @@ export function FtpPage({ session }: { session: Session }) {
           </Table>
           {dragging && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl text-sm font-medium text-primary">
-              놓으면 지금 폴더({current})에 올립니다
+              놓으면 지금 폴더({listing?.display})에 올립니다
             </div>
           )}
         </div>
@@ -375,12 +371,12 @@ export function FtpPage({ session }: { session: Session }) {
 
       <MkdirDialog
         open={mkdirOpen}
-        dir={current}
+        dir={listing?.display ?? ""}
         onClose={() => setMkdirOpen(false)}
         onCreate={async (name) => {
           await api(`/ftp/${server.id}/mkdir`, { body: { path: current, name } })
           setMkdirOpen(false)
-          void load()
+          void load(`path=${current}`)
         }}
       />
     </div>

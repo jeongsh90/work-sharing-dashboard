@@ -5,20 +5,22 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, formatBytes } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
-import { invalidate, useApi } from "@/lib/store"
+import { formatDateTime } from "@/lib/requests"
+import { invalidate, useApi, useUserNames } from "@/lib/store"
 
 // 관리 → FTP 서버(슈퍼관리자): FTP 메뉴에서 쓸 FTP 접속 정보를 넣는다(서버 apps/api/src/ftp.ts).
 // 비밀번호는 서버 PC 에 암호화해 두고 화면에는 다시 보여 주지 않는다. 고칠 때 비워 두면 원래 비밀번호를 그대로 쓴다.
 
-type FtpServer = { id: string; name: string; host: string; port: number; username: string; secure: boolean; root: string }
-type Body = { id?: string; name: string; host: string; port: string; username: string; password: string; secure: boolean; root: string }
+type FtpServer = { id: string; name: string; host: string; port: number; username: string; secure: boolean; root: string; encoding: string }
+type Body = { id?: string; name: string; host: string; port: string; username: string; password: string; secure: boolean; root: string; encoding: string }
 
 export function FtpAdminPage() {
   const { data, error } = useApi<FtpServer[]>("/ftp/servers")
@@ -66,6 +68,7 @@ export function FtpAdminPage() {
                     <TableCell className="text-muted-foreground">
                       {row.host}:{row.port}
                       {row.secure && " (FTPS)"}
+                      <span className="ml-1 text-xs">· {row.encoding === "utf8" ? "UTF-8" : "EUC-KR"}</span>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{row.username}</TableCell>
                     <TableCell className="text-muted-foreground">{row.root}</TableCell>
@@ -86,6 +89,8 @@ export function FtpAdminPage() {
           </div>
         )}
       </Section>
+
+      <FtpHistory />
 
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="sm:max-w-md">
@@ -129,12 +134,13 @@ function ServerForm({
   const [password, setPassword] = useState("")
   const [secure, setSecure] = useState(initial?.secure ?? false)
   const [root, setRoot] = useState(initial?.root ?? "/")
+  const [encoding, setEncoding] = useState(initial?.encoding ?? "euc-kr")
   const [pending, setPending] = useState<"save" | "test" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tested, setTested] = useState<string | null>(null)
   const id = initial ? "ftp-edit" : "ftp-add"
 
-  const body = (): Body => ({ id: initial?.id, name: name.trim(), host: host.trim(), port: port.trim(), username: username.trim(), password, secure, root: root.trim() })
+  const body = (): Body => ({ id: initial?.id, name: name.trim(), host: host.trim(), port: port.trim(), username: username.trim(), password, secure, root: root.trim(), encoding })
   const ready = name.trim() && host.trim() && username.trim() && (initial || password)
 
   const run = async (kind: "save" | "test") => {
@@ -159,6 +165,7 @@ function ServerForm({
         setPassword("")
         setSecure(false)
         setRoot("/")
+        setEncoding("euc-kr")
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : kind === "test" ? "접속하지 못했습니다." : "저장하지 못했습니다.")
@@ -225,6 +232,21 @@ function ServerForm({
             <Input id={`${id}-root`} value={root} onChange={(e) => setRoot(e.target.value)} placeholder="/" />
             <FieldDescription>FTP 메뉴에서 이 폴더 안만 볼 수 있습니다. 전체를 보려면 / 그대로.</FieldDescription>
           </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-enc`}>한글 파일 이름 인코딩</FieldLabel>
+            <Select value={encoding} onValueChange={setEncoding}>
+              <SelectTrigger id={`${id}-enc`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="euc-kr">EUC-KR (카페24·가비아 등 한국 호스팅)</SelectItem>
+                  <SelectItem value="utf8">UTF-8</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <FieldDescription>다른 FTP 프로그램에서 한글 이름이 깨져 보이면 바꿔 주세요.</FieldDescription>
+          </Field>
           <Field orientation="horizontal">
             <Switch id={`${id}-secure`} checked={secure} onCheckedChange={setSecure} />
             <FieldLabel htmlFor={`${id}-secure`}>암호화 접속(FTPS)</FieldLabel>
@@ -241,5 +263,105 @@ function ServerForm({
       </form>
       {footer && <DialogFooter>{buttons}</DialogFooter>}
     </>
+  )
+}
+
+// ── 기록: 누가 언제 어느 FTP 에 무엇을 올리고·받고·만들고·지웠는지(서버 ftp_logs, 최근 2000건) ──
+type FtpLog = { id: number; serverName: string; userId: string; action: string; path: string; size: number | null; at: number }
+
+const ACTION: Record<string, { label: string; className: string }> = {
+  upload: { label: "업로드", className: "bg-primary/10 text-primary" },
+  download: { label: "다운로드", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  mkdir: { label: "새 폴더", className: "bg-muted text-muted-foreground" },
+  delete: { label: "삭제", className: "bg-destructive/10 text-destructive" },
+}
+const PAGE = 30
+
+function FtpHistory() {
+  const { data, error } = useApi<FtpLog[]>("/ftp/logs", 60_000)
+  const userName = useUserNames()
+  const [action, setAction] = useState("all")
+  const [query, setQuery] = useState("")
+  const [shown, setShown] = useState(PAGE)
+
+  const q = query.trim().toLowerCase()
+  const rows = (data ?? []).filter(
+    (l) => (action === "all" || l.action === action) && (!q || l.path.toLowerCase().includes(q) || userName(l.userId).toLowerCase().includes(q)),
+  )
+
+  return (
+    <Section
+      title="사용 기록"
+      aside={<span className="text-sm text-muted-foreground tabular-nums">{rows.length}건</span>}
+      className="col-span-12"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {["all", "upload", "download", "mkdir", "delete"].map((a) => (
+          <Button
+            key={a}
+            variant={action === a ? "default" : "outline"}
+            size="sm"
+            className="rounded-full"
+            onClick={() => {
+              setAction(a)
+              setShown(PAGE)
+            }}
+          >
+            {a === "all" ? "전체" : ACTION[a].label}
+          </Button>
+        ))}
+        <Input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setShown(PAGE)
+          }}
+          placeholder="파일 이름·사람 찾기"
+          aria-label="파일 이름·사람 찾기"
+          className="w-full sm:ml-auto sm:w-72"
+        />
+      </div>
+      {!data ? (
+        <PageState error={error} />
+      ) : rows.length === 0 ? (
+        <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">기록이 없습니다.</p>
+      ) : (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-40">시각</TableHead>
+                <TableHead className="w-28">사람</TableHead>
+                <TableHead className="w-24">작업</TableHead>
+                <TableHead className="w-36">FTP</TableHead>
+                <TableHead>경로</TableHead>
+                <TableHead className="w-24 text-right">크기</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.slice(0, shown).map((l) => (
+                <TableRow key={l.id}>
+                  <TableCell className="text-muted-foreground tabular-nums">{formatDateTime(new Date(l.at))}</TableCell>
+                  <TableCell className="font-medium">{userName(l.userId)}</TableCell>
+                  <TableCell>
+                    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${ACTION[l.action]?.className ?? ""}`}>{ACTION[l.action]?.label ?? l.action}</span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{l.serverName}</TableCell>
+                  <TableCell className="max-w-0 truncate" title={l.path}>
+                    {l.path}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground tabular-nums">{l.size === null ? "" : formatBytes(l.size)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      {rows.length > shown && (
+        <Button variant="outline" className="self-center" onClick={() => setShown((n) => n + PAGE)}>
+          더 보기 ({rows.length - shown}건 남음)
+        </Button>
+      )}
+    </Section>
   )
 }

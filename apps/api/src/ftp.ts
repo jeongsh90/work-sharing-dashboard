@@ -2,9 +2,10 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join, posix } from 'node:path'
-import { PassThrough } from 'node:stream'
+import { Transform } from 'node:stream'
 
 import { Client, FileType } from 'basic-ftp'
+import iconv from 'iconv-lite'
 
 import { DATA_DIR } from './config.ts'
 import { all, db, get, run } from './db.ts'
@@ -31,6 +32,10 @@ CREATE TABLE IF NOT EXISTS ftp_servers (
   created_at INTEGER NOT NULL
 );
 `)
+// 파일 이름 인코딩. 한국 호스팅(카페24·가비아)은 EUC-KR 이라 UTF-8 로 올리면 다른 FTP 프로그램에서 한글이 깨진다
+if (!all<{ name: string }>("PRAGMA table_info(ftp_servers)").some((c) => c.name === 'encoding')) {
+  db.exec("ALTER TABLE ftp_servers ADD COLUMN encoding TEXT NOT NULL DEFAULT 'euc-kr'")
+}
 
 type Row = {
   id: string
@@ -42,6 +47,7 @@ type Row = {
   secure: number
   root: string
   sort: number
+  encoding: string
   created_by: string
   created_at: number
 }
@@ -80,7 +86,7 @@ function requireSuperadmin(user: PublicUser) {
 function toDto(r: Row, user: PublicUser) {
   const base = { id: r.id, name: r.name, root: r.root }
   if (user.role !== 'superadmin') return base
-  return { ...base, host: r.host, port: r.port, username: r.username, secure: r.secure === 1, createdBy: r.created_by, createdAt: r.created_at }
+  return { ...base, host: r.host, port: r.port, username: r.username, secure: r.secure === 1, encoding: r.encoding, createdBy: r.created_by, createdAt: r.created_at }
 }
 
 export function listFtpServers(user: PublicUser) {
@@ -109,7 +115,7 @@ function fields(body: Record<string, unknown>, editing: Row | null) {
   const typed = typeof body.password === 'string' ? body.password : ''
   if (!typed && !editing) throw new HttpError(400, '비밀번호를 입력해 주세요.')
   const password = typed ? encrypt(typed.slice(0, 200)) : editing!.password
-  return { name, host, port, username, password, secure: body.secure === true ? 1 : 0, root: cleanPath(body.root) }
+  return { name, host, port, username, password, secure: body.secure === true ? 1 : 0, root: cleanPath(body.root), encoding: body.encoding === 'utf8' ? 'utf8' : 'euc-kr' }
 }
 
 function find(id: string) {
@@ -124,8 +130,8 @@ export function addFtpServer(user: PublicUser, body: Record<string, unknown>) {
   const id = randomUUID()
   const sort = (get<{ n: number }>('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM ftp_servers')?.n ?? 1)
   run(
-    `INSERT INTO ftp_servers (id, name, host, port, username, password, secure, root, sort, created_by, created_at)
-     VALUES (:id, :name, :host, :port, :username, :password, :secure, :root, :sort, :me, :now)`,
+    `INSERT INTO ftp_servers (id, name, host, port, username, password, secure, root, encoding, sort, created_by, created_at)
+     VALUES (:id, :name, :host, :port, :username, :password, :secure, :root, :encoding, :sort, :me, :now)`,
     { id, ...f, sort, me: user.id, now: Date.now() },
   )
   return toDto(find(id), user)
@@ -136,7 +142,7 @@ export function updateFtpServer(user: PublicUser, id: string, body: Record<strin
   const f = fields(body, find(id))
   run(
     `UPDATE ftp_servers SET name = :name, host = :host, port = :port, username = :username, password = :password,
-     secure = :secure, root = :root WHERE id = :id`,
+     secure = :secure, root = :root, encoding = :encoding WHERE id = :id`,
     { id, ...f },
   )
   return toDto(find(id), user)
@@ -149,12 +155,16 @@ export function deleteFtpServer(user: PublicUser, id: string) {
 }
 
 // ── 접속 ──
-type Conn = { host: string; port: number; username: string; password: string; secure: boolean }
+type Conn = { host: string; port: number; username: string; password: string; secure: boolean; encoding: string }
 
 async function connect(c: Conn) {
   const client = new Client(30_000)
   try {
     await client.access({ host: c.host, port: c.port, user: c.username, password: c.password, secure: c.secure })
+    // 이름은 늘 바이트 그대로(latin1) 주고받는다. 한 서버 안에 UTF-8·EUC-KR 이름이 섞여 있어도
+    // 원래 바이트로 받고·지우고, 화면에는 바이트를 보고 알맞게 풀어 보여 준다(show).
+    client.ftp.encoding = 'latin1'
+    if (c.encoding === 'euc-kr') await client.send('OPTS UTF8 OFF').catch(() => {})
   } catch (e) {
     client.close()
     throw new HttpError(502, `FTP 에 접속하지 못했습니다: ${ftpMessage(e)}`)
@@ -172,7 +182,33 @@ function ftpMessage(e: unknown) {
   return msg.slice(0, 200)
 }
 
-const connOf = (r: Row): Conn => ({ host: r.host, port: r.port, username: r.username, password: decrypt(r.password), secure: r.secure === 1 })
+// ── 이름 바이트 ──
+// raw: FTP 에 실제로 있는 바이트를 latin1 문자열로 담은 것. 화면과는 base64url 로 주고받는다.
+// 새로 만드는 이름(올리기·새 폴더)은 서버 설정 인코딩으로 만든다. 파일질라 같은 프로그램은 서버가 UTF-8 을
+// 알리지 않으면(가비아) 한국어 Windows 에서 EUC-KR 로 읽으므로, 그런 서버는 EUC-KR 로 올려야 안 깨진다.
+const toRaw = (r: { encoding: string }, text: string) =>
+  (r.encoding === 'euc-kr' ? iconv.encode(text, 'cp949') : Buffer.from(text, 'utf8')).toString('latin1')
+const utf8 = new TextDecoder('utf-8', { fatal: true })
+// 바이트가 올바른 UTF-8 이면 UTF-8, 아니면 EUC-KR(CP949)로 푼다
+function show(raw: string) {
+  const bytes = Buffer.from(raw, 'latin1')
+  try {
+    return utf8.decode(bytes)
+  } catch {
+    return iconv.decode(bytes, 'cp949')
+  }
+}
+const pack = (raw: string) => Buffer.from(raw, 'latin1').toString('base64url')
+const unpack = (value: unknown) => (typeof value === 'string' && value ? Buffer.from(value, 'base64url').toString('latin1') : null)
+
+const connOf = (r: Row): Conn => ({
+  host: r.host,
+  port: r.port,
+  username: r.username,
+  password: decrypt(r.password),
+  secure: r.secure === 1,
+  encoding: r.encoding,
+})
 
 // 서버 하나로 일을 하고 닫는다. FTP 오류는 알아볼 수 있는 말로 바꾼다
 async function withFtp<T>(r: Row, work: (client: Client) => Promise<T>) {
@@ -192,9 +228,16 @@ export async function testFtpServer(user: PublicUser, body: Record<string, unkno
   requireSuperadmin(user)
   const editing = typeof body.id === 'string' && body.id ? find(body.id) : null
   const f = fields({ name: 'test', ...body }, editing)
-  const client = await connect({ host: f.host, port: f.port, username: f.username, password: decrypt(f.password), secure: f.secure === 1 })
+  const client = await connect({
+    host: f.host,
+    port: f.port,
+    username: f.username,
+    password: decrypt(f.password),
+    secure: f.secure === 1,
+    encoding: f.encoding,
+  })
   try {
-    const list = await client.list(f.root)
+    const list = await client.list(toRaw(f, f.root))
     return { ok: true, count: list.length }
   } catch (e) {
     throw new HttpError(502, `접속은 됐지만 시작 폴더(${f.root})를 열지 못했습니다: ${ftpMessage(e)}`)
@@ -203,31 +246,89 @@ export async function testFtpServer(user: PublicUser, body: Record<string, unkno
   }
 }
 
-// 화면이 보낸 경로를 시작 폴더 안으로만 허용한다(../ 로 밖에 나가지 못하게)
+// 화면이 보낸 경로(바이트)를 시작 폴더 안으로만 허용한다(.. 로 밖에 나가지 못하게)
 function inside(r: Row, value: unknown) {
-  const p = cleanPath(value, r.root)
-  if (r.root !== '/' && p !== r.root && !p.startsWith(r.root + '/')) throw new HttpError(403, `${r.root} 폴더 밖은 볼 수 없습니다.`)
+  const root = toRaw(r, r.root)
+  const raw = unpack(value) ?? root
+  const parts = raw.split('/').filter(Boolean)
+  if (parts.some((p) => p === '.' || p === '..' || p.includes('\0'))) throw new HttpError(400, '경로가 올바르지 않습니다.')
+  const p = '/' + parts.join('/')
+  if (root !== '/' && p !== root && !p.startsWith(root + '/')) throw new HttpError(403, `${r.root} 폴더 밖은 볼 수 없습니다.`)
   return p
 }
+const child = (dir: string, name: string) => (dir === '/' ? `/${name}` : `${dir}/${name}`)
 
 function validName(value: unknown) {
   const name = typeof value === 'string' ? value.trim() : ''
   if (!name || name === '.' || name === '..' || /[\\/\0]/.test(name) || name.length > 200) throw new HttpError(400, '이름이 올바르지 않습니다.')
   return name
 }
+// 목록에서 고른 항목(바이트 이름)
+function rawName(value: unknown) {
+  const name = unpack(value)
+  if (!name || name === '.' || name === '..' || /[/\0]/.test(name)) throw new HttpError(400, '이름이 올바르지 않습니다.')
+  return name
+}
 
-export async function ftpList(user: PublicUser, id: string, path: unknown) {
+// ── 기록: 누가 무엇을 올리고·받고·만들고·지웠는지. 관리 → FTP 서버 아래에서 본다 ──
+db.exec(`
+CREATE TABLE IF NOT EXISTS ftp_logs (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  server_id TEXT NOT NULL,
+  user_id   TEXT NOT NULL,
+  action    TEXT NOT NULL,
+  path      TEXT NOT NULL,
+  size      INTEGER,
+  at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ftp_logs_at ON ftp_logs(at);
+`)
+function log(r: Row, user: PublicUser, action: 'upload' | 'download' | 'mkdir' | 'delete', raw: string, size: number | null = null) {
+  run('INSERT INTO ftp_logs (server_id, user_id, action, path, size, at) VALUES (:s, :u, :a, :p, :z, :t)', {
+    s: r.id,
+    u: user.id,
+    a: action,
+    p: show(raw),
+    z: size,
+    t: Date.now(),
+  })
+}
+type LogRow = { id: number; server_id: string; name: string | null; user_id: string; action: string; path: string; size: number | null; at: number }
+export function listFtpLogs(user: PublicUser) {
+  requireSuperadmin(user)
+  return all<LogRow>('SELECT l.*, s.name FROM ftp_logs l LEFT JOIN ftp_servers s ON s.id = l.server_id ORDER BY l.at DESC LIMIT 2000').map((l) => ({
+    id: l.id,
+    serverName: l.name ?? '(지운 서버)',
+    userId: l.user_id,
+    action: l.action,
+    path: l.path,
+    size: l.size,
+    at: l.at,
+  }))
+}
+
+// 폴더 열기. into(바이트 이름)를 주면 그 하위 폴더, up 이면 위 폴더
+export async function ftpList(user: PublicUser, id: string, params: URLSearchParams) {
   requireFtpUser(user)
   const r = find(id)
-  const dir = inside(r, path)
+  let dir = inside(r, params.get('path'))
+  if (params.get('into')) dir = inside(r, pack(child(dir, rawName(params.get('into')))))
+  else if (params.has('up')) dir = inside(r, pack(dir.replace(/\/[^/]+$/, '') || '/'))
   const list = await withFtp(r, (c) => c.list(dir))
+  // 경로 표시: 시작 폴더부터 한 단계씩
+  const root = toRaw(r, r.root)
+  const rest = dir === root ? [] : dir.slice(root === '/' ? 1 : root.length + 1).split('/')
+  const crumbs = rest.map((part, i) => ({ label: show(part), path: pack((root === '/' ? '' : root) + '/' + rest.slice(0, i + 1).join('/')) }))
   return {
-    path: dir,
-    root: r.root,
+    path: pack(dir),
+    root: pack(root),
+    display: show(dir),
+    crumbs,
     items: list
       .filter((f) => f.name !== '.' && f.name !== '..')
       .map((f) => ({
-        name: f.name,
+        name: show(f.name),
+        raw: pack(f.name),
         dir: f.type === FileType.Directory || (f.type === FileType.SymbolicLink && !f.size),
         size: f.size,
         modifiedAt: f.modifiedAt ? f.modifiedAt.getTime() : f.rawModifiedAt || null,
@@ -238,44 +339,52 @@ export async function ftpList(user: PublicUser, id: string, path: unknown) {
 export async function ftpMkdir(user: PublicUser, id: string, body: Record<string, unknown>) {
   requireFtpUser(user)
   const r = find(id)
-  const dir = posix.join(inside(r, body.path), validName(body.name))
+  const dir = child(inside(r, body.path), toRaw(r, validName(body.name)))
   await withFtp(r, async (c) => {
     await c.send(`MKD ${dir}`)
   })
-  return { ok: true, path: dir }
+  log(r, user, 'mkdir', dir)
+  return { ok: true }
 }
 
-export async function ftpDelete(user: PublicUser, id: string, path: unknown, isDir: boolean) {
+export async function ftpDelete(user: PublicUser, id: string, params: URLSearchParams) {
   requireFtpUser(user)
   if (!isManager(user)) throw new HttpError(403, 'FTP 파일은 관리자만 지울 수 있습니다.')
   const r = find(id)
-  const target = inside(r, path)
-  if (target === r.root || target === '/') throw new HttpError(400, '시작 폴더는 지울 수 없습니다.')
+  const target = child(inside(r, params.get('path')), rawName(params.get('name')))
   // 폴더는 비어 있을 때만 지운다(실수로 통째로 지우지 않게)
-  await withFtp(r, (c) => (isDir ? c.send(`RMD ${target}`) : c.remove(target)))
+  await withFtp(r, (c) => (params.has('dir') ? c.send(`RMD ${target}`) : c.remove(target)))
+  log(r, user, 'delete', target)
   return { ok: true }
 }
 
 // 올리기: 본문이 파일 그대로. 받는 대로 FTP 로 흘려 보낸다(서버에 쌓지 않음). 같은 이름이 있으면 덮어쓴다
-export async function ftpUpload(req: IncomingMessage, user: PublicUser, id: string, path: unknown) {
+export async function ftpUpload(req: IncomingMessage, user: PublicUser, id: string, params: URLSearchParams) {
   requireFtpUser(user)
   const r = find(id)
-  const dir = inside(r, path)
+  const dir = inside(r, params.get('path'))
   const name = validName(decodeURIComponent(String(req.headers['x-file-name'] ?? '')))
-  const target = posix.join(dir, name)
-  await withFtp(r, async (c) => {
-    const body = new PassThrough()
-    req.pipe(body)
-    await c.uploadFrom(body, target)
+  const target = child(dir, toRaw(r, name))
+  // 바로 이어 두어야 FTP 접속을 기다리는 동안 받은 내용이 흘러 없어지지 않는다(흐름이 멈춰 기다림)
+  let size = 0
+  const body = new Transform({
+    transform(chunk: Buffer, _enc, done) {
+      size += chunk.length
+      done(null, chunk)
+    },
   })
-  return { ok: true, path: target }
+  req.pipe(body)
+  await withFtp(r, (c) => c.uploadFrom(body, target))
+  log(r, user, 'upload', target, size)
+  return { ok: true }
 }
 
 // 내려받기: FTP 에서 받는 대로 화면으로 흘려 보낸다
-export async function ftpDownload(res: ServerResponse, user: PublicUser, id: string, path: unknown) {
+export async function ftpDownload(res: ServerResponse, user: PublicUser, id: string, params: URLSearchParams) {
   requireFtpUser(user)
   const r = find(id)
-  const target = inside(r, path)
+  const name = rawName(params.get('name'))
+  const target = child(inside(r, params.get('path')), name)
   const client = await connect(connOf(r))
   try {
     let size: number | null = null
@@ -287,11 +396,12 @@ export async function ftpDownload(res: ServerResponse, user: PublicUser, id: str
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',
       'Content-Length': size,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(posix.basename(target))}`,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(show(name))}`,
       'X-Content-Type-Options': 'nosniff',
     })
     await client.downloadTo(res, target)
     res.end()
+    log(r, user, 'download', target, size)
   } catch (e) {
     if (res.headersSent) {
       res.destroy()

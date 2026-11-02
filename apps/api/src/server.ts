@@ -60,6 +60,7 @@ import {
   ftpList,
   ftpMkdir,
   ftpUpload,
+  listFtpLogs,
   listFtpServers,
   testFtpServer,
   updateFtpServer,
@@ -342,19 +343,20 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (method === 'GET') return sendJson(res, 200, listFtpServers(user))
     if (method === 'POST') return sendJson(res, 201, addFtpServer(user, await readJson(req)))
   }
+  if (path === '/api/ftp/logs' && method === 'GET') return sendJson(res, 200, listFtpLogs(user))
   if (path === '/api/ftp/servers/test' && method === 'POST') return sendJson(res, 200, await testFtpServer(user, await readJson(req)))
   if ((m = path.match(/^\/api\/ftp\/servers\/([0-9a-f-]{36})$/))) {
     if (method === 'PATCH') return sendJson(res, 200, updateFtpServer(user, m[1], await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, deleteFtpServer(user, m[1]))
   }
   if ((m = path.match(/^\/api\/ftp\/([0-9a-f-]{36})\/(list|file|mkdir)$/))) {
-    const p = url.searchParams.get('path')
-    if (m[2] === 'list' && method === 'GET') return sendJson(res, 200, await ftpList(user, m[1], p))
+    const q = url.searchParams
+    if (m[2] === 'list' && method === 'GET') return sendJson(res, 200, await ftpList(user, m[1], q))
     if (m[2] === 'mkdir' && method === 'POST') return sendJson(res, 201, await ftpMkdir(user, m[1], await readJson(req)))
     if (m[2] === 'file') {
-      if (method === 'GET') return ftpDownload(res, user, m[1], p)
-      if (method === 'PUT') return sendJson(res, 201, await ftpUpload(req, user, m[1], p))
-      if (method === 'DELETE') return sendJson(res, 200, await ftpDelete(user, m[1], p, url.searchParams.has('dir')))
+      if (method === 'GET') return ftpDownload(res, user, m[1], q)
+      if (method === 'PUT') return sendJson(res, 201, await ftpUpload(req, user, m[1], q))
+      if (method === 'DELETE') return sendJson(res, 200, await ftpDelete(user, m[1], q))
     }
   }
 

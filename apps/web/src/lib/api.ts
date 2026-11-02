@@ -371,11 +371,12 @@ export function ftpUploadFile(serverId: string, dir: string, file: File, onProgr
   })()
 }
 
-export async function ftpDownloadFile(serverId: string, path: string, name: string) {
+// dir·raw 는 FTP 목록이 준 바이트 경로·이름(base64url), name 은 저장할 파일 이름
+export async function ftpDownloadFile(serverId: string, dir: string, raw: string, name: string) {
   const base = await fileBase()
   const token = storedToken()
   const get = (b: string) =>
-    fetch(`${b}/api/ftp/${serverId}/file?path=${encodeURIComponent(path)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    fetch(`${b}/api/ftp/${serverId}/file?path=${encodeURIComponent(dir)}&name=${encodeURIComponent(raw)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
   let res: Response
   try {
     res = await get(base)
