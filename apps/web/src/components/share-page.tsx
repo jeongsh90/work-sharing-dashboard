@@ -202,23 +202,13 @@ export function SharePage({ session }: { session: Session }) {
         action={
           <Button onClick={() => setWriting({ files: [] })}>
             <FilePlus2 data-icon="inline-start" />
-            글쓰기
+            파일 업로드
           </Button>
         }
       >
-        {/* 위: 검색·필터 */}
+        {/* 위: 필터(왼쪽) · 검색(오른쪽) */}
         <div className="flex flex-col gap-3 rounded-xl border bg-card p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-56 flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => reset(setQuery)(e.target.value)}
-                placeholder="제목·내용·파일 이름·올린 사람 검색"
-                aria-label="공유 자료 검색"
-                className="pl-8"
-              />
-            </div>
             <Select value={kind} onValueChange={reset(setKind)}>
               <SelectTrigger className="w-36" aria-label="형식">
                 <SelectValue />
@@ -272,6 +262,16 @@ export function SharePage({ session }: { session: Session }) {
                 필터 지우기
               </Button>
             )}
+            <div className="relative w-full sm:ml-auto sm:w-80">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => reset(setQuery)(e.target.value)}
+                placeholder="제목·내용·파일 이름·올린 사람 검색"
+                aria-label="공유 자료 검색"
+                className="pl-8"
+              />
+            </div>
           </div>
           {categories.length > 0 && (
             <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="분류">
