@@ -195,32 +195,36 @@ export function FilesPage() {
             {visible.map((item) => (
               <li key={item.id} className="col-span-12 flex flex-col gap-3 rounded-xl border bg-card p-4 md:col-span-6 xl:col-span-4">
                 <div className="flex items-start gap-3">
-                  <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left" onClick={() => openRequest(item.id)}>
-                    <span className="text-xs text-muted-foreground">
-                      {item.code} · {item.workType}
-                    </span>
-                    <span className="truncate font-medium hover:underline" title={item.title}>
-                      {item.title}
-                    </span>
-                    {/* 요청자·작업자를 이름표로 나눠 보여 준다 */}
-                    <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                      <span className="flex items-center gap-1">
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">요청</span>
-                        <span>{item.requesterName}</span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    {/* 라벨 줄: 요청 번호·작업 종류 + 오른쪽에 원본 형태 배지(원본 없음·Figma 로 작업 등) */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <button type="button" className="text-left text-xs text-muted-foreground" onClick={() => openRequest(item.id)}>
+                        {item.code} · {item.workType}
+                      </button>
+                      <OriginalInfo kind={item.originalKind} link={item.originalLink} tool={item.originalTool} compact />
+                    </div>
+                    <button type="button" className="flex min-w-0 flex-col gap-0.5 text-left" onClick={() => openRequest(item.id)}>
+                      <span className="truncate font-medium hover:underline" title={item.title}>
+                        {item.title}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">작업</span>
-                        <span>{item.designers.length > 0 ? item.designers.map(userName).join(", ") : "-"}</span>
+                      {/* 요청자·작업자를 이름표로 나눠 보여 준다 */}
+                      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <span className="flex items-center gap-1">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">요청</span>
+                          <span>{item.requesterName}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">작업</span>
+                          <span>{item.designers.length > 0 ? item.designers.map(userName).join(", ") : "-"}</span>
+                        </span>
+                        <span className="text-muted-foreground">
+                          완료 {item.completedAt ? formatDateTime(new Date(item.completedAt)) : "-"}
+                        </span>
                       </span>
-                      <span className="text-muted-foreground">
-                        완료 {item.completedAt ? formatDateTime(new Date(item.completedAt)) : "-"}
-                      </span>
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                   {item.files.length > 0 && <DownloadMenu files={item.files} />}
                 </div>
-                {/* 원본 파일이 없는 작업(Figma·디자인 툴)은 어디서 만들었는지 */}
-                <OriginalInfo kind={item.originalKind} link={item.originalLink} tool={item.originalTool} compact />
                 <FileGallery
                   files={item.files}
                   empty={item.originalKind && item.originalKind !== "file" ? undefined : "보관된 파일이 없습니다."}
