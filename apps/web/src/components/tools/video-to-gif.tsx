@@ -66,7 +66,7 @@ const FORMATS: Record<
     label: "WebP",
     mime: "image/webp",
     options: QUALITIES,
-    defaultOption: "0.8",
+    defaultOption: "0.9",
     worker: () => new Worker(new URL("./webp-worker.ts", import.meta.url), { type: "module" }),
     start: (width, height, repeat, option, delay) => ({ type: "start", width, height, repeat, quality: Number(option), delay }),
     // WebP 는 1ms 단위
