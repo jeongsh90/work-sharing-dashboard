@@ -4,6 +4,7 @@ import {
   FilePlus2,
   FolderArchive,
   FolderOpen,
+  HardDrive,
   House,
   Inbox,
   Library,
@@ -14,6 +15,7 @@ import {
   MessageSquareText,
   NotebookPen,
   Network,
+  Server,
   UserRound,
   Users,
   Zap,
@@ -50,6 +52,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "share", title: "파일공유자료실", icon: FolderOpen },
       // 디자인팀 자료실: 작업에 쓰는 자료(PSD·AI·FIG 등)를 올려 두고 함께 쓴다. 작업자·관리자
       { id: "library", title: "디자인팀 자료실", icon: Library, roles: TEAM },
+      // FTP: 슈퍼관리자가 등록한 FTP(카페24 등)를 사이트 안에서 보고 올리고 받는다
+      { id: "ftp", title: "FTP", icon: HardDrive, roles: TEAM },
       { id: "org", title: "조직도", icon: Network },
       // 디자인 툴: 요청자·작업자·관리자 모두
       { id: "tools", title: "디자인 툴", icon: LayoutGrid },
@@ -61,6 +65,7 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "team", title: "팀 관리", icon: Users, roles: MANAGERS },
       // 사내망 직통(슈퍼관리자): 같은 사무실 PC 의 IP 를 등록해 파일을 서버로 바로 주고받게 한다
       { id: "lan", title: "사내망 직통", icon: Zap, roles: ["superadmin"] },
+      { id: "ftp-servers", title: "FTP 서버", icon: Server, roles: ["superadmin"] },
     ],
   },
   {

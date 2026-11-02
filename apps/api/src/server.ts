@@ -52,6 +52,18 @@ import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateL
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { renderDetail } from './detail-render.ts'
 import { addLanIp, deleteLanIp, lanAddress, listLanIps, startLan, updateLanIp } from './lan.ts'
+import {
+  addFtpServer,
+  deleteFtpServer,
+  ftpDelete,
+  ftpDownload,
+  ftpList,
+  ftpMkdir,
+  ftpUpload,
+  listFtpServers,
+  testFtpServer,
+  updateFtpServer,
+} from './ftp.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -323,6 +335,27 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/lan\/ips\/([0-9a-f-]{36})$/))) {
     if (method === 'PATCH') return sendJson(res, 200, updateLanIp(user, m[1], await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, deleteLanIp(user, m[1]))
+  }
+
+  // ── FTP(ftp.ts): 서버 목록·관리(슈퍼관리자) + 폴더 보기·올리기·내려받기 ──
+  if (path === '/api/ftp/servers') {
+    if (method === 'GET') return sendJson(res, 200, listFtpServers(user))
+    if (method === 'POST') return sendJson(res, 201, addFtpServer(user, await readJson(req)))
+  }
+  if (path === '/api/ftp/servers/test' && method === 'POST') return sendJson(res, 200, await testFtpServer(user, await readJson(req)))
+  if ((m = path.match(/^\/api\/ftp\/servers\/([0-9a-f-]{36})$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, updateFtpServer(user, m[1], await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteFtpServer(user, m[1]))
+  }
+  if ((m = path.match(/^\/api\/ftp\/([0-9a-f-]{36})\/(list|file|mkdir)$/))) {
+    const p = url.searchParams.get('path')
+    if (m[2] === 'list' && method === 'GET') return sendJson(res, 200, await ftpList(user, m[1], p))
+    if (m[2] === 'mkdir' && method === 'POST') return sendJson(res, 201, await ftpMkdir(user, m[1], await readJson(req)))
+    if (m[2] === 'file') {
+      if (method === 'GET') return ftpDownload(res, user, m[1], p)
+      if (method === 'PUT') return sendJson(res, 201, await ftpUpload(req, user, m[1], p))
+      if (method === 'DELETE') return sendJson(res, 200, await ftpDelete(user, m[1], p, url.searchParams.has('dir')))
+    }
   }
 
   // ── 서버 드라이브 남은 용량(정상훈·슈퍼관리자만). 다른 계정은 null ──

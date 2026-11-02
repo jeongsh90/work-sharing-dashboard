@@ -333,3 +333,65 @@ export function formatBytes(size: number) {
   if (size < 1024 ** 4) return `${(size / 1024 ** 3).toFixed(1)}GB`
   return `${(size / 1024 ** 4).toFixed(2)}TB`
 }
+
+// ── FTP(서버 apps/api/src/ftp.ts). 서버 PC 가 FTP 에 대신 접속해 흘려 보낸다. 사내망이면 사내망 주소로(빠름) ──
+export function ftpUploadFile(serverId: string, dir: string, file: File, onProgress: (ratio: number) => void): Promise<void> {
+  const send = (base: string) =>
+    new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', `${base}/api/ftp/${serverId}/file?path=${encodeURIComponent(dir)}`)
+      const token = storedToken()
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name))
+      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) return resolve()
+        let message = `올리지 못했습니다: ${file.name}`
+        try {
+          message = (JSON.parse(xhr.responseText) as { error?: string }).error ?? message
+        } catch {
+          /* 그대로 */
+        }
+        reject(new ApiError(xhr.status, message))
+      }
+      xhr.onerror = () => reject(new ApiError(0, `올리지 못했습니다: ${file.name}`))
+      xhr.send(file)
+    })
+  return (async () => {
+    const base = await fileBase()
+    try {
+      await send(base)
+    } catch (e) {
+      if (base === API_BASE || !(e instanceof ApiError) || e.status !== 0) throw e
+      lanFailed(base)
+      onProgress(0)
+      await send(API_BASE)
+    }
+  })()
+}
+
+export async function ftpDownloadFile(serverId: string, path: string, name: string) {
+  const base = await fileBase()
+  const token = storedToken()
+  const get = (b: string) =>
+    fetch(`${b}/api/ftp/${serverId}/file?path=${encodeURIComponent(path)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  let res: Response
+  try {
+    res = await get(base)
+  } catch {
+    if (base === API_BASE) throw new ApiError(0, '내려받지 못했습니다.')
+    lanFailed(base)
+    res = await get(API_BASE)
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new ApiError(res.status, body?.error ?? '내려받지 못했습니다.')
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
