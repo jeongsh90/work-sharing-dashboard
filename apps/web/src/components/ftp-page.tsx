@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ChevronRight, Download, FolderPlus, Folder, CornerLeftUp, LoaderCircle, RefreshCw, Search, Trash2, Upload, X } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Code, Download, FolderPlus, Folder, CornerLeftUp, LoaderCircle, RefreshCw, Search, Trash2, Upload, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -11,7 +11,8 @@ import { confirmDialog } from "@/components/confirm-dialog"
 import { TypeBadge } from "@/components/file-type"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
-import { api, ApiError, formatBytes, ftpDownloadFile, ftpUploadFile } from "@/lib/api"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { api, ApiError, formatBytes, ftpDownloadFile, ftpFetchFile, ftpUploadFile } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
@@ -19,14 +20,17 @@ import { useApi } from "@/lib/store"
 
 // FTP: 슈퍼관리자가 등록한 FTP 서버(카페24 등)를 사이트 안에서 쓴다(서버 apps/api/src/ftp.ts 가 대신 접속).
 // 폴더를 눌러 들어가고, 파일을 끌어다 놓거나 "파일 업로드"로 올리고, 줄의 받기 버튼으로 내려받는다. 지우기는 관리자만.
+// 이미지는 누르면 미리보기, 줄의 <> 버튼은 <img src="웹 주소"> 를 복사한다(웹 주소는 관리 → FTP 서버에서 넣음).
 
 type Server = { id: string; name: string; root: string }
-type Item = { name: string; raw: string; dir: boolean; size: number; modifiedAt: number | string | null }
+type Item = { name: string; raw: string; dir: boolean; size: number; modifiedAt: number | string | null; url: string | null }
 // path·root·raw: FTP 의 실제 이름 바이트(base64url). 한 서버에 UTF-8·EUC-KR 이름이 섞여 있어도 그대로 지정한다
 type Listing = { path: string; root: string; display: string; crumbs: { label: string; path: string }[]; items: Item[] }
 type Upload = { key: string; name: string; ratio: number; error: string | null }
 
 const LAST_KEY = "wsd-ftp-last2"
+const isImage = (name: string) => /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(name)
+const imgTag = (url: string) => `<img src="${url}">`
 function readLast(): { server?: string; paths?: Record<string, string> } {
   try {
     return JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}")
@@ -57,6 +61,8 @@ export function FtpPage({ session }: { session: Session }) {
   const [busy, setBusy] = useState<string | null>(null) // 내려받는 중인 파일
   const [mkdirOpen, setMkdirOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [preview, setPreview] = useState<string | null>(null) // 미리 보는 이미지 이름
+  const [copied, setCopied] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const canDelete = isManager(session)
 
@@ -153,6 +159,18 @@ export function FtpPage({ session }: { session: Session }) {
       setBusy(null)
     }
   }
+
+  const copySrc = async (item: Item) => {
+    if (!item.url) return
+    try {
+      await navigator.clipboard.writeText(imgTag(item.url))
+      setCopied(item.name)
+      setTimeout(() => setCopied((c) => (c === item.name ? null : c)), 1800)
+    } catch {
+      setListError("클립보드에 복사하지 못했습니다.")
+    }
+  }
+  const images = items.filter((i) => !i.dir && isImage(i.name))
 
   const remove = async (item: Item) => {
     if (
@@ -300,7 +318,7 @@ export function FtpPage({ session }: { session: Session }) {
                 <TableHead>이름</TableHead>
                 <TableHead className="w-28 text-right">크기</TableHead>
                 <TableHead className="hidden w-44 md:table-cell">수정한 날</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -320,8 +338,8 @@ export function FtpPage({ session }: { session: Session }) {
                 items.map((item) => (
                   <TableRow
                     key={item.name}
-                    className={item.dir ? "cursor-pointer" : ""}
-                    onClick={() => item.dir && setNav(`path=${current}&into=${item.raw}`)}
+                    className={item.dir || isImage(item.name) ? "cursor-pointer" : ""}
+                    onClick={() => (item.dir ? setNav(`path=${current}&into=${item.raw}`) : isImage(item.name) && setPreview(item.name))}
                   >
                     <TableCell>
                       <span className="flex min-w-0 items-center gap-2">
@@ -341,6 +359,18 @@ export function FtpPage({ session }: { session: Session }) {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+                        {!item.dir && isImage(item.name) && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${item.name} img src 복사`}
+                            title={item.url ? "<img src> 복사" : "관리 → FTP 서버에서 웹 주소를 넣으면 쓸 수 있습니다"}
+                            disabled={!item.url}
+                            onClick={() => void copySrc(item)}
+                          >
+                            {copied === item.name ? <Check className="text-emerald-600" /> : <Code />}
+                          </Button>
+                        )}
                         {!item.dir && (
                           <Button variant="ghost" size="icon-sm" aria-label={`${item.name} 내려받기`} disabled={busy === item.name} onClick={() => void download(item)}>
                             {busy === item.name ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <Download />}
@@ -368,6 +398,17 @@ export function FtpPage({ session }: { session: Session }) {
           파일은 서버 PC 를 거쳐 FTP 로 바로 갑니다. 같은 이름이 있으면 물어본 뒤 덮어씁니다.{canDelete ? " 폴더는 비어 있을 때만 지울 수 있습니다." : ""}
         </p>
       </Section>
+
+      <PreviewDialog
+        serverId={server.id}
+        dir={current}
+        images={images}
+        name={preview}
+        onName={setPreview}
+        copied={copied}
+        onCopy={(item) => void copySrc(item)}
+        onDownload={(item) => void download(item)}
+      />
 
       <MkdirDialog
         open={mkdirOpen}
@@ -431,6 +472,142 @@ function MkdirDialog({ open, dir, onClose, onCreate }: { open: boolean; dir: str
             {pending ? "만드는 중…" : "만들기"}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// 이미지 미리보기. 같은 폴더의 이미지를 ← → 로 넘겨 본다. 한 번 받은 이미지는 닫을 때까지 다시 받지 않는다
+function PreviewDialog({
+  serverId,
+  dir,
+  images,
+  name,
+  onName,
+  copied,
+  onCopy,
+  onDownload,
+}: {
+  serverId: string
+  dir: string
+  images: Item[]
+  name: string | null
+  onName: (name: string | null) => void
+  copied: string | null
+  onCopy: (item: Item) => void
+  onDownload: (item: Item) => void
+}) {
+  const cache = useRef(new Map<string, string>())
+  const [shown, setShown] = useState<{ name: string; src: string } | null>(null)
+  const [failed, setFailed] = useState<{ name: string; message: string } | null>(null)
+  const [size, setSize] = useState<{ name: string; w: number; h: number } | null>(null)
+  const index = images.findIndex((i) => i.name === name)
+  const item = index >= 0 ? images[index] : null
+  const open = item !== null
+
+  // 폴더가 바뀌거나 닫으면 받아 둔 이미지를 비운다
+  useEffect(() => {
+    const map = cache.current
+    return () => {
+      map.forEach((u) => URL.revokeObjectURL(u))
+      map.clear()
+    }
+  }, [serverId, dir, open])
+
+  const key = item ? `${item.raw}:${item.size}` : null
+  useEffect(() => {
+    if (!item || !key) return
+    const hit = cache.current.get(key)
+    if (hit) {
+      setShown({ name: item.name, src: hit })
+      return
+    }
+    let alive = true
+    ftpFetchFile(serverId, dir, item.raw, true)
+      .then((blob) => {
+        const src = URL.createObjectURL(blob)
+        cache.current.set(key, src)
+        if (alive) setShown({ name: item.name, src })
+      })
+      .catch((e) => alive && setFailed({ name: item.name, message: e instanceof ApiError ? e.message : "미리보기를 불러오지 못했습니다." }))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId, dir, key])
+
+  const go = (step: number) => {
+    if (images.length < 2 || index < 0) return
+    onName(images[(index + step + images.length) % images.length].name)
+  }
+  const ready = item !== null && shown?.name === item.name
+  const error = item && failed?.name === item.name ? failed.message : null
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onName(null)}>
+      <DialogContent
+        className="flex max-h-[92vh] flex-col sm:max-w-4xl"
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") go(-1)
+          if (e.key === "ArrowRight") go(1)
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle className="truncate pr-6" title={item?.name}>
+            {item?.name}
+          </DialogTitle>
+          <DialogDescription className="tabular-nums">
+            {item && formatBytes(item.size)}
+            {item && size?.name === item.name && ` · ${size.w} × ${size.h}px`}
+            {images.length > 1 && ` · ${index + 1} / ${images.length}`}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="relative min-h-40 flex-1 overflow-hidden rounded-lg border bg-muted/40">
+          {error ? (
+            <p className="p-10 text-center text-sm text-destructive">{error}</p>
+          ) : !ready || !item || !shown ? (
+            <p className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+              불러오는 중…
+            </p>
+          ) : (
+            <SmoothScrollArea className="max-h-[64vh] overflow-y-auto" contentClassName="flex justify-center">
+              <img
+                src={shown.src}
+                alt={item.name}
+                className="h-auto max-w-full"
+                onLoad={(e) => setSize({ name: item.name, w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              />
+            </SmoothScrollArea>
+          )}
+          {images.length > 1 && (
+            <>
+              <Button variant="secondary" size="icon" className="absolute top-1/2 left-2 -translate-y-1/2 rounded-full shadow" aria-label="이전 이미지" onClick={() => go(-1)}>
+                <ChevronLeft />
+              </Button>
+              <Button variant="secondary" size="icon" className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full shadow" aria-label="다음 이미지" onClick={() => go(1)}>
+                <ChevronRight />
+              </Button>
+            </>
+          )}
+        </div>
+        {item && (
+          <DialogFooter className="items-center gap-2 sm:justify-between">
+            <code className="min-w-0 truncate text-xs text-muted-foreground" title={item.url ? imgTag(item.url) : undefined}>
+              {item.url ? imgTag(item.url) : "웹 주소를 넣지 않은 FTP 라 img src 를 만들 수 없습니다(관리 → FTP 서버)."}
+            </code>
+            <div className="flex shrink-0 gap-2">
+              <Button variant="outline" onClick={() => onDownload(item)}>
+                <Download data-icon="inline-start" />
+                내려받기
+              </Button>
+              <Button disabled={!item.url} onClick={() => onCopy(item)}>
+                {copied === item.name ? <Check data-icon="inline-start" /> : <Code data-icon="inline-start" />}
+                {copied === item.name ? "복사됨" : "img src 복사"}
+              </Button>
+            </div>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

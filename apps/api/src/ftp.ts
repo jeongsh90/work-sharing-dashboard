@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS ftp_servers (
 if (!all<{ name: string }>("PRAGMA table_info(ftp_servers)").some((c) => c.name === 'encoding')) {
   db.exec("ALTER TABLE ftp_servers ADD COLUMN encoding TEXT NOT NULL DEFAULT 'euc-kr'")
 }
+// 웹 주소: FTP 의 / 가 웹에서 열리는 주소(예: https://yorihaeyou.cafe24.com). 넣으면 이미지마다 <img src> 를 만들어 준다
+if (!all<{ name: string }>("PRAGMA table_info(ftp_servers)").some((c) => c.name === 'web_url')) {
+  db.exec("ALTER TABLE ftp_servers ADD COLUMN web_url TEXT NOT NULL DEFAULT ''")
+}
 
 type Row = {
   id: string
@@ -48,6 +52,7 @@ type Row = {
   root: string
   sort: number
   encoding: string
+  web_url: string
   created_by: string
   created_at: number
 }
@@ -86,7 +91,7 @@ function requireSuperadmin(user: PublicUser) {
 function toDto(r: Row, user: PublicUser) {
   const base = { id: r.id, name: r.name, root: r.root }
   if (user.role !== 'superadmin') return base
-  return { ...base, host: r.host, port: r.port, username: r.username, secure: r.secure === 1, encoding: r.encoding, createdBy: r.created_by, createdAt: r.created_at }
+  return { ...base, host: r.host, port: r.port, username: r.username, secure: r.secure === 1, encoding: r.encoding, webUrl: r.web_url, createdBy: r.created_by, createdAt: r.created_at }
 }
 
 export function listFtpServers(user: PublicUser) {
@@ -115,7 +120,20 @@ function fields(body: Record<string, unknown>, editing: Row | null) {
   const typed = typeof body.password === 'string' ? body.password : ''
   if (!typed && !editing) throw new HttpError(400, '비밀번호를 입력해 주세요.')
   const password = typed ? encrypt(typed.slice(0, 200)) : editing!.password
-  return { name, host, port, username, password, secure: body.secure === true ? 1 : 0, root: cleanPath(body.root), encoding: body.encoding === 'utf8' ? 'utf8' : 'euc-kr' }
+  // 웹 주소는 http(s)://주소[/폴더] 만. 끝의 / 는 뗀다
+  const webUrl = str(body.webUrl, 300).replace(/\/+$/, '')
+  if (webUrl && !/^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?(\/[^\s"'<>]*)?$/.test(webUrl)) throw new HttpError(400, '웹 주소는 https://… 로 입력해 주세요(예: https://yorihaeyou.cafe24.com).')
+  return {
+    name,
+    host,
+    port,
+    username,
+    password,
+    secure: body.secure === true ? 1 : 0,
+    root: cleanPath(body.root),
+    encoding: body.encoding === 'utf8' ? 'utf8' : 'euc-kr',
+    web_url: webUrl,
+  }
 }
 
 function find(id: string) {
@@ -130,8 +148,8 @@ export function addFtpServer(user: PublicUser, body: Record<string, unknown>) {
   const id = randomUUID()
   const sort = (get<{ n: number }>('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM ftp_servers')?.n ?? 1)
   run(
-    `INSERT INTO ftp_servers (id, name, host, port, username, password, secure, root, encoding, sort, created_by, created_at)
-     VALUES (:id, :name, :host, :port, :username, :password, :secure, :root, :encoding, :sort, :me, :now)`,
+    `INSERT INTO ftp_servers (id, name, host, port, username, password, secure, root, encoding, web_url, sort, created_by, created_at)
+     VALUES (:id, :name, :host, :port, :username, :password, :secure, :root, :encoding, :web_url, :sort, :me, :now)`,
     { id, ...f, sort, me: user.id, now: Date.now() },
   )
   return toDto(find(id), user)
@@ -142,7 +160,7 @@ export function updateFtpServer(user: PublicUser, id: string, body: Record<strin
   const f = fields(body, find(id))
   run(
     `UPDATE ftp_servers SET name = :name, host = :host, port = :port, username = :username, password = :password,
-     secure = :secure, root = :root, encoding = :encoding WHERE id = :id`,
+     secure = :secure, root = :root, encoding = :encoding, web_url = :web_url WHERE id = :id`,
     { id, ...f },
   )
   return toDto(find(id), user)
@@ -198,6 +216,14 @@ function show(raw: string) {
     return iconv.decode(bytes, 'cp949')
   }
 }
+// 웹 주소 경로: 이름 바이트를 그대로 %XX 로(EUC-KR 이름도 웹 서버가 찾게). 영문·숫자·-._~/ 는 그대로 둔다
+const webPath = (raw: string) =>
+  [...Buffer.from(raw, 'latin1')]
+    .map((b) => {
+      const c = String.fromCharCode(b)
+      return /[A-Za-z0-9\-._~/]/.test(c) ? c : '%' + b.toString(16).toUpperCase().padStart(2, '0')
+    })
+    .join('')
 const pack = (raw: string) => Buffer.from(raw, 'latin1').toString('base64url')
 const unpack = (value: unknown) => (typeof value === 'string' && value ? Buffer.from(value, 'base64url').toString('latin1') : null)
 
@@ -332,6 +358,7 @@ export async function ftpList(user: PublicUser, id: string, params: URLSearchPar
         dir: f.type === FileType.Directory || (f.type === FileType.SymbolicLink && !f.size),
         size: f.size,
         modifiedAt: f.modifiedAt ? f.modifiedAt.getTime() : f.rawModifiedAt || null,
+        url: r.web_url && f.type === FileType.File ? r.web_url + webPath(child(dir, f.name)) : null,
       })),
   }
 }
@@ -379,12 +406,25 @@ export async function ftpUpload(req: IncomingMessage, user: PublicUser, id: stri
   return { ok: true }
 }
 
-// 내려받기: FTP 에서 받는 대로 화면으로 흘려 보낸다
+const IMAGE_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+}
+
+// 내려받기: FTP 에서 받는 대로 화면으로 흘려 보낸다. preview 면 미리보기(이미지 형식으로 보내고 기록하지 않음)
 export async function ftpDownload(res: ServerResponse, user: PublicUser, id: string, params: URLSearchParams) {
   requireFtpUser(user)
   const r = find(id)
   const name = rawName(params.get('name'))
   const target = child(inside(r, params.get('path')), name)
+  const preview = params.has('preview')
+  const type = preview ? IMAGE_TYPES[show(name).split('.').pop()?.toLowerCase() ?? ''] : undefined
+  if (preview && !type) throw new HttpError(400, '이미지만 미리 볼 수 있습니다.')
   const client = await connect(connOf(r))
   try {
     let size: number | null = null
@@ -394,14 +434,14 @@ export async function ftpDownload(res: ServerResponse, user: PublicUser, id: str
       throw new HttpError(404, ftpMessage(e))
     }
     res.writeHead(200, {
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': type ?? 'application/octet-stream',
       'Content-Length': size,
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(show(name))}`,
       'X-Content-Type-Options': 'nosniff',
     })
     await client.downloadTo(res, target)
     res.end()
-    log(r, user, 'download', target, size)
+    if (!preview) log(r, user, 'download', target, size)
   } catch (e) {
     if (res.headersSent) {
       res.destroy()

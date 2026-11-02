@@ -19,8 +19,19 @@ import { invalidate, useApi, useUserNames } from "@/lib/store"
 // 관리 → FTP 서버(슈퍼관리자): FTP 메뉴에서 쓸 FTP 접속 정보를 넣는다(서버 apps/api/src/ftp.ts).
 // 비밀번호는 서버 PC 에 암호화해 두고 화면에는 다시 보여 주지 않는다. 고칠 때 비워 두면 원래 비밀번호를 그대로 쓴다.
 
-type FtpServer = { id: string; name: string; host: string; port: number; username: string; secure: boolean; root: string; encoding: string }
-type Body = { id?: string; name: string; host: string; port: string; username: string; password: string; secure: boolean; root: string; encoding: string }
+type FtpServer = { id: string; name: string; host: string; port: number; username: string; secure: boolean; root: string; encoding: string; webUrl: string }
+type Body = {
+  id?: string
+  name: string
+  host: string
+  port: string
+  username: string
+  password: string
+  secure: boolean
+  root: string
+  encoding: string
+  webUrl: string
+}
 
 export function FtpAdminPage() {
   const { data, error } = useApi<FtpServer[]>("/ftp/servers")
@@ -69,6 +80,7 @@ export function FtpAdminPage() {
                       {row.host}:{row.port}
                       {row.secure && " (FTPS)"}
                       <span className="ml-1 text-xs">· {row.encoding === "utf8" ? "UTF-8" : "EUC-KR"}</span>
+                      {row.webUrl && <span className="block text-xs">{row.webUrl}</span>}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{row.username}</TableCell>
                     <TableCell className="text-muted-foreground">{row.root}</TableCell>
@@ -135,12 +147,13 @@ function ServerForm({
   const [secure, setSecure] = useState(initial?.secure ?? false)
   const [root, setRoot] = useState(initial?.root ?? "/")
   const [encoding, setEncoding] = useState(initial?.encoding ?? "euc-kr")
+  const [webUrl, setWebUrl] = useState(initial?.webUrl ?? "")
   const [pending, setPending] = useState<"save" | "test" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tested, setTested] = useState<string | null>(null)
   const id = initial ? "ftp-edit" : "ftp-add"
 
-  const body = (): Body => ({ id: initial?.id, name: name.trim(), host: host.trim(), port: port.trim(), username: username.trim(), password, secure, root: root.trim(), encoding })
+  const body = (): Body => ({ id: initial?.id, name: name.trim(), host: host.trim(), port: port.trim(), username: username.trim(), password, secure, root: root.trim(), encoding, webUrl: webUrl.trim() })
   const ready = name.trim() && host.trim() && username.trim() && (initial || password)
 
   const run = async (kind: "save" | "test") => {
@@ -166,6 +179,7 @@ function ServerForm({
         setSecure(false)
         setRoot("/")
         setEncoding("euc-kr")
+        setWebUrl("")
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : kind === "test" ? "접속하지 못했습니다." : "저장하지 못했습니다.")
@@ -246,6 +260,13 @@ function ServerForm({
               </SelectContent>
             </Select>
             <FieldDescription>다른 FTP 프로그램에서 한글 이름이 깨져 보이면 바꿔 주세요.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-web`}>웹 주소</FieldLabel>
+            <Input id={`${id}-web`} value={webUrl} onChange={(e) => setWebUrl(e.target.value)} placeholder="https://yorihaeyou.cafe24.com" inputMode="url" />
+            <FieldDescription className="break-keep">
+              FTP 의 / 가 웹에서 열리는 주소. 넣으면 FTP 메뉴에서 이미지마다 &lt;img src&gt; 를 복사할 수 있습니다.
+            </FieldDescription>
           </Field>
           <Field orientation="horizontal">
             <Switch id={`${id}-secure`} checked={secure} onCheckedChange={setSecure} />

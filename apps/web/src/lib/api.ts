@@ -373,10 +373,22 @@ export function ftpUploadFile(serverId: string, dir: string, file: File, onProgr
 
 // dir·raw 는 FTP 목록이 준 바이트 경로·이름(base64url), name 은 저장할 파일 이름
 export async function ftpDownloadFile(serverId: string, dir: string, raw: string, name: string) {
+  const url = URL.createObjectURL(await ftpFetchFile(serverId, dir, raw, false))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+// FTP 파일 내용(미리보기면 이미지 형식으로, 사용 기록에 남지 않음)
+export async function ftpFetchFile(serverId: string, dir: string, raw: string, preview: boolean): Promise<Blob> {
   const base = await fileBase()
   const token = storedToken()
   const get = (b: string) =>
-    fetch(`${b}/api/ftp/${serverId}/file?path=${encodeURIComponent(dir)}&name=${encodeURIComponent(raw)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    fetch(`${b}/api/ftp/${serverId}/file?path=${encodeURIComponent(dir)}&name=${encodeURIComponent(raw)}${preview ? '&preview' : ''}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
   let res: Response
   try {
     res = await get(base)
@@ -387,12 +399,7 @@ export async function ftpDownloadFile(serverId: string, dir: string, raw: string
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null
-    throw new ApiError(res.status, body?.error ?? '내려받지 못했습니다.')
+    throw new ApiError(res.status, body?.error ?? (preview ? '미리보기를 불러오지 못했습니다.' : '내려받지 못했습니다.'))
   }
-  const url = URL.createObjectURL(await res.blob())
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  return res.blob()
 }
