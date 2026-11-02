@@ -74,7 +74,7 @@ const ADD: { kind: Kind; label: string; icon: LucideIcon }[] = [
 ]
 
 // 고른 그림 파일 → 미리보기 주소 + 크기
-function readPicture(file: File): Promise<Picture> {
+export function readPicture(file: File): Promise<Picture> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
@@ -88,7 +88,7 @@ function readPicture(file: File): Promise<Picture> {
 }
 
 // 렌더용: 860 폭보다 크면 860 으로 줄인 JPG, 아니면 원본 그대로(data:)
-async function toDataUrl(p: Picture, max = 860): Promise<string> {
+export async function toDataUrl(p: Picture, max = 860): Promise<string> {
   if (p.width <= max) {
     return new Promise((resolve) => {
       const r = new FileReader()
@@ -108,7 +108,7 @@ async function toDataUrl(p: Picture, max = 860): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.95)
 }
 
-async function assetDataUrls() {
+export async function assetDataUrls() {
   const map = new Map<string, string>()
   for (const u of [iceboxUrl, logoUrl, patternUrl, bubbleUrl]) {
     const blob = await (await fetch(u)).blob()
@@ -121,7 +121,7 @@ async function assetDataUrls() {
   return map
 }
 
-const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+export const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
 
 type Result = { files: { file: string; size: number }[]; zipUrl: string; zipName: string; html: string }
 
@@ -406,7 +406,7 @@ export function DetailPageTool() {
 }
 
 // 미리보기: 860 폭 문서를 칸 너비에 맞춰 줄여 보여 준다
-function Preview({ doc, empty }: { doc: string; empty: boolean }) {
+export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const frame = useRef<HTMLIFrameElement>(null)
   const [scale, setScale] = useState(0.6)
@@ -731,7 +731,7 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
 
 // 이렇게 보내드려요의 한 칸(내용량·아이스박스 포장 같은 모양): 정사각형 사진(최대 SHIP_MAX) + 사진 아래 글 + ※ 안내
 // preset: 기본 아이스박스 사진을 바로 넣는 버튼
-function ShipGroup({
+export function ShipGroup({
   id,
   label,
   items,

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ClipboardList, Clapperboard, FileCheck2, FileVideo, IdCard, LayoutTemplate, Mail, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, FileCheck2, FileVideo, IdCard, LayoutTemplate, Mail, Package, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -10,6 +10,7 @@ import { PurchaseCertTool } from "@/components/tools/purchase-cert"
 import { ProductNoticeTool } from "@/components/tools/product-notice"
 import { VideoToGifTool, VideoToWebpTool } from "@/components/tools/video-to-gif"
 import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
+import { ShipTool } from "@/components/tools/detail-page/ship-tool"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 
@@ -41,6 +42,14 @@ const TOOLS: Tool[] = [
     icon: ClipboardList,
     color: "from-amber-400 to-orange-600",
     body: <ProductNoticeTool />,
+  },
+  {
+    id: "ship",
+    name: "이렇게 보내드려요",
+    description: "내용량·아이스박스 포장 사진(정사각형 최대 4개)과 글로 상세페이지 \"이렇게 보내드려요\" 이미지를 만드는 도구",
+    icon: Package,
+    color: "from-lime-400 to-green-600",
+    body: <ShipTool />,
   },
   {
     id: "detail-page",
