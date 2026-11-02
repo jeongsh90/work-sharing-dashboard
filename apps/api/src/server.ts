@@ -64,6 +64,7 @@ import {
   listFtpLogs,
   listFtpServers,
   testFtpServer,
+  changeFtpPassword,
   updateFtpServer,
 } from './ftp.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
@@ -346,6 +347,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
   if (path === '/api/ftp/logs' && method === 'GET') return sendJson(res, 200, listFtpLogs(user))
   if (path === '/api/ftp/servers/test' && method === 'POST') return sendJson(res, 200, await testFtpServer(user, await readJson(req)))
+  if ((m = path.match(/^\/api\/ftp\/servers\/([0-9a-f-]{36})\/password$/)) && method === 'POST') {
+    return sendJson(res, 200, await changeFtpPassword(user, m[1], await readJson(req)))
+  }
   if ((m = path.match(/^\/api\/ftp\/servers\/([0-9a-f-]{36})$/))) {
     if (method === 'PATCH') return sendJson(res, 200, updateFtpServer(user, m[1], await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, deleteFtpServer(user, m[1]))

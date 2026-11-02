@@ -272,6 +272,21 @@ export async function testFtpServer(user: PublicUser, body: Record<string, unkno
   }
 }
 
+// 비밀번호 바꾸기: 카페24·가비아는 FTP 로 계정 비밀번호를 바꿀 수 없어서(SITE 명령 없음) 호스팅 관리화면에서 바꾼 뒤
+// 여기에 새 비밀번호를 넣는다. 새 비밀번호로 실제 접속이 되는지 먼저 확인하고, 될 때만 저장한다(잘못 넣어 FTP 가 멈추지 않게)
+export async function changeFtpPassword(user: PublicUser, id: string, body: Record<string, unknown>) {
+  requireSuperadmin(user)
+  const r = find(id)
+  const password = typeof body.password === 'string' ? body.password.slice(0, 200) : ''
+  if (!password) throw new HttpError(400, '새 비밀번호를 입력해 주세요.')
+  const client = await connect({ ...connOf(r), password }).catch((e: unknown) => {
+    throw new HttpError(400, `새 비밀번호로 접속하지 못해 저장하지 않았습니다. ${e instanceof Error ? e.message.replace(/^FTP 에 접속하지 못했습니다: /, '') : ''}`)
+  })
+  client.close()
+  run('UPDATE ftp_servers SET password = :password WHERE id = :id', { id, password: encrypt(password) })
+  return { ok: true }
+}
+
 // 화면이 보낸 경로(바이트)를 시작 폴더 안으로만 허용한다(.. 로 밖에 나가지 못하게)
 function inside(r: Row, value: unknown) {
   const root = toRaw(r, r.root)

@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.6',
+    date: '2026-11-03',
+    changes: [
+      '관리 → FTP 서버: 줄마다 열쇠 버튼으로 FTP 비밀번호 변경 — 호스팅(카페24·가비아)에서 바꾼 새 비밀번호를 넣으면 실제 접속을 확인한 뒤에만 저장(틀리면 저장 안 함)',
+    ],
+  },
+  {
     version: '0.6.5',
     date: '2026-11-02',
     changes: [

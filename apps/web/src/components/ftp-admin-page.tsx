@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, Pencil, Plug, Plus, Trash2 } from "lucide-react"
+import { Check, KeyRound, Pencil, Plug, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -36,6 +36,8 @@ type Body = {
 export function FtpAdminPage() {
   const { data, error } = useApi<FtpServer[]>("/ftp/servers")
   const [editing, setEditing] = useState<FtpServer | null>(null)
+  const [pwFor, setPwFor] = useState<FtpServer | null>(null)
+  const [pwDone, setPwDone] = useState<string | null>(null)
 
   if (!data) return <PageState error={error} />
 
@@ -58,6 +60,12 @@ export function FtpAdminPage() {
       </Section>
 
       <Section title="등록한 FTP" aside={<span className="text-sm text-muted-foreground tabular-nums">{data.length}개</span>} className="col-span-12 lg:col-span-8">
+        {pwDone && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+            <Check className="size-4" />
+            {pwDone} 비밀번호를 바꿨습니다(새 비밀번호로 접속 확인함).
+          </p>
+        )}
         {data.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">아직 등록한 FTP 가 없습니다.</p>
         ) : (
@@ -69,7 +77,7 @@ export function FtpAdminPage() {
                   <TableHead>주소</TableHead>
                   <TableHead>아이디</TableHead>
                   <TableHead>시작 폴더</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -86,6 +94,9 @@ export function FtpAdminPage() {
                     <TableCell className="text-muted-foreground">{row.root}</TableCell>
                     <TableCell>
                       <div className="flex justify-end">
+                        <Button variant="ghost" size="icon-sm" aria-label={`${row.name} 비밀번호 변경`} title="비밀번호 변경" onClick={() => setPwFor(row)}>
+                          <KeyRound />
+                        </Button>
                         <Button variant="ghost" size="icon-sm" aria-label={`${row.name} 고치기`} onClick={() => setEditing(row)}>
                           <Pencil />
                         </Button>
@@ -104,6 +115,15 @@ export function FtpAdminPage() {
 
       <FtpHistory />
 
+      <PasswordDialog
+        server={pwFor}
+        onClose={() => setPwFor(null)}
+        onDone={(name) => {
+          setPwFor(null)
+          setPwDone(name)
+          setTimeout(() => setPwDone(null), 4000)
+        }}
+      />
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -284,6 +304,78 @@ function ServerForm({
       </form>
       {footer && <DialogFooter>{buttons}</DialogFooter>}
     </>
+  )
+}
+
+// ── 비밀번호 변경: 호스팅(카페24·가비아) 관리화면에서 FTP 비밀번호를 바꾼 뒤 여기에 넣는다.
+// FTP 로는 계정 비밀번호를 바꿀 수 없어서, 새 비밀번호로 접속이 되는지 확인하고 될 때만 저장한다
+function PasswordDialog({ server, onClose, onDone }: { server: FtpServer | null; onClose: () => void; onDone: (name: string) => void }) {
+  const [password, setPassword] = useState("")
+  const [again, setAgain] = useState("")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [shownFor, setShownFor] = useState<string | null>(null)
+  if ((server?.id ?? null) !== shownFor) {
+    setShownFor(server?.id ?? null)
+    setPassword("")
+    setAgain("")
+    setError(null)
+  }
+  const mismatch = again.length > 0 && password !== again
+
+  const submit = async () => {
+    if (!server) return
+    setPending(true)
+    setError(null)
+    try {
+      await api(`/ftp/servers/${server.id}/password`, { body: { password } })
+      invalidate()
+      onDone(server.name)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "바꾸지 못했습니다.")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog open={server !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{server?.name} 비밀번호 변경</DialogTitle>
+          <DialogDescription className="break-keep">
+            먼저 호스팅 관리화면(카페24·가비아)에서 FTP 비밀번호를 바꾼 뒤, 바꾼 비밀번호를 여기에 넣어 주세요. 새 비밀번호로 접속이 되는지 확인하고 저장합니다.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          id="ftp-pw"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void submit()
+          }}
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="ftp-pw-new">새 비밀번호</FieldLabel>
+              <Input id="ftp-pw-new" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" autoFocus />
+            </Field>
+            <Field data-invalid={mismatch || undefined}>
+              <FieldLabel htmlFor="ftp-pw-again">새 비밀번호 확인</FieldLabel>
+              <Input id="ftp-pw-again" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" aria-invalid={mismatch || undefined} />
+              {mismatch && <FieldError>두 비밀번호가 다릅니다.</FieldError>}
+            </Field>
+            {error && <FieldError>{error}</FieldError>}
+          </FieldGroup>
+        </form>
+        <DialogFooter>
+          <Button type="submit" form="ftp-pw" disabled={pending || !password || password !== again}>
+            <KeyRound data-icon="inline-start" />
+            {pending ? "접속 확인 중…" : "확인하고 저장"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
