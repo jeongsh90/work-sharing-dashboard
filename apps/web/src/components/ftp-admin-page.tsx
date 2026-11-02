@@ -240,8 +240,8 @@ function ServerForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="euc-kr">EUC-KR (카페24·가비아 등 한국 호스팅)</SelectItem>
-                  <SelectItem value="utf8">UTF-8</SelectItem>
+                  <SelectItem value="euc-kr">EUC-KR (가비아 등 UTF-8 을 지원하지 않는 서버)</SelectItem>
+                  <SelectItem value="utf8">UTF-8 (카페24 등)</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
