@@ -10,7 +10,6 @@ import {
   Image as ImageIcon,
   ImagePlus,
   LayoutTemplate,
-  Link2,
   LoaderCircle,
   Package,
   Plus,
@@ -70,7 +69,6 @@ const ADD: { kind: Kind; label: string; icon: LucideIcon }[] = [
   { kind: "recipe", label: "레시피", icon: UtensilsCrossed },
   { kind: "ship", label: "이렇게 보내드려요", icon: Package },
   { kind: "notice", label: "상품정보고시", icon: ClipboardList },
-  { kind: "common", label: "공통 이미지", icon: Link2 },
 ]
 
 // 고른 그림 파일 → 미리보기 주소 + 크기
@@ -256,7 +254,7 @@ export function DetailPageTool() {
   }
 
   return (
-    <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:flex-row lg:items-start">
+    <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:flex-row lg:items-start lg:pr-28">
       {/* 왼쪽: 미리보기 */}
       <div className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:flex-[7]">
         <div className="flex items-center gap-2">
@@ -266,8 +264,8 @@ export function DetailPageTool() {
         <Preview doc={doc} empty={sections.length === 0} />
       </div>
 
-      {/* 가운데: 섹션 추가 도구 막대(넓은 화면은 세로, 좁은 화면은 가로로 늘어놓음) */}
-      <div className="flex shrink-0 flex-col gap-1 lg:sticky lg:top-0 lg:pt-8" role="toolbar" aria-label="섹션 추가">
+      {/* 섹션 추가 도구 막대: 넓은 화면은 화면 오른쪽 끝에 세로로 고정, 좁은 화면은 가로로 늘어놓음 */}
+      <div className="flex shrink-0 flex-col gap-1 lg:fixed lg:top-1/2 lg:right-4 lg:z-20 lg:-translate-y-1/2" role="toolbar" aria-label="섹션 추가">
         <span className="text-center text-xs font-medium text-muted-foreground">추가</span>
         <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 lg:w-[76px] lg:flex-col">
           {ADD.map((a) => (
@@ -321,7 +319,7 @@ export function DetailPageTool() {
 
         {sections.length === 0 ? (
           <p className="rounded-xl border border-dashed p-8 text-center text-sm break-keep text-muted-foreground">
-            왼쪽 도구 막대의 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
+            오른쪽 도구 막대의 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
           </p>
         ) : (
           <SortableList
