@@ -438,7 +438,8 @@ function Preview({ doc, empty }: { doc: string; empty: boolean }) {
             오른쪽에서 섹션을 추가하면 여기에 보입니다
           </div>
         ) : (
-          <div style={{ height: height * scale }} className="overflow-hidden">
+          // 칸이 860 보다 넓으면 가운데에 둔다
+          <div style={{ height: height * scale, width: 860 * scale }} className="mx-auto overflow-hidden">
             <iframe
               ref={frame}
               title="상세페이지 미리보기"
