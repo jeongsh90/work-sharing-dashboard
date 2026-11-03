@@ -67,6 +67,7 @@ export type RequestSummaryDto = {
   originalLink: string
   originalTool: string
   designers: string[]
+  individualConfirm: boolean // 개별 컨펌: 작업자마다 시안을 올리고 모두 올리면 시안 확인으로
   urgency: Urgency
   status: RequestStatus
   revision: number
@@ -255,6 +256,7 @@ export type SubmissionDto = {
   decidedAt: number | null
   decisionNote: string
   files: FileInfo[]
+  parts: { userId: string; note: string; createdAt: number }[] // 개별 컨펌: 이 차수에 시안을 올린 작업자
 }
 
 export type EventDto = {
@@ -315,6 +317,8 @@ export const EVENT_LABEL: Record<string, string> = {
   resubmit: '보완 완료',
   start: '작업 시작',
   submit: '컨펌 요청',
+  'submit-part': '시안 올림(개별 컨펌)',
+  individual: '개별 컨펌 설정',
   reject: '반려',
   approve: '컨펌',
   complete: '작업 완료',

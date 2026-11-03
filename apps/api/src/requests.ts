@@ -60,6 +60,7 @@ type RequestRow = {
   original_kind: string
   original_link: string
   original_tool: string
+  individual_confirm: number
 }
 
 type FileRow = {
@@ -87,6 +88,26 @@ function assigneesOf(id: number) {
     (a) => a.user_id,
   )
 }
+
+// ── 개별 컨펌 ─────────────────────────────────────────
+// 작업자가 둘 이상이고 개별 컨펌을 켠 요청: 작업자마다 이번 차수 시안을 올리고(submission_parts),
+// 마지막 작업자가 올리면 그때 시안 확인으로 넘어간다. 컨펌·반려는 그 차수 전체에 한 번에 한다.
+const isIndividual = (req: RequestRow, assignees: string[]) => req.individual_confirm === 1 && assignees.length > 1
+
+// 모으는 중인 차수: 작업 중·수정 중인데 아직 결정 안 된 마지막 시안(누군가 먼저 올려 둔 것)
+function openRound(req: RequestRow) {
+  if (req.status !== 'in-progress' && req.status !== 'revising') return null
+  const s = get<{ id: number; round: number; decision: string | null }>(
+    'SELECT id, round, decision FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1',
+    { id: req.id },
+  )
+  return s && s.decision === null ? s : null
+}
+const partsOf = (submissionId: number) =>
+  all<{ user_id: string; note: string; created_at: number }>(
+    'SELECT user_id, note, created_at FROM submission_parts WHERE submission_id = :submissionId ORDER BY created_at',
+    { submissionId },
+  )
 
 // ── 권한 ──────────────────────────────────────────────
 
@@ -120,6 +141,7 @@ const UNDO_LABEL: Record<string, string> = {
   resubmit: '보완 완료',
   start: '작업 시작',
   submit: '컨펌 요청',
+  'submit-part': '시안 올림(개별 컨펌)',
   reject: '반려',
   approve: '컨펌',
   complete: '작업 완료',
@@ -130,7 +152,7 @@ function undoTarget(req: RequestRow) {
   const ev = get<UndoTarget>(
     `SELECT id, type, actor_id, from_status, to_status FROM events
      WHERE request_id = :id AND undone = 0 AND type != 'undo' AND type != 'create'
-       AND from_status IS NOT NULL AND to_status IS NOT NULL AND from_status != to_status
+       AND from_status IS NOT NULL AND to_status IS NOT NULL AND (from_status != to_status OR type = 'submit-part')
      ORDER BY id DESC LIMIT 1`,
     { id: req.id },
   )
@@ -167,7 +189,16 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     'request-info': (manager || designer) && (s === 'requested' || s === 'waiting'),
     resubmit: (owner || manager) && s === 'needs-info',
     start: (assignee || manager) && s === 'waiting' && assignees.length > 0,
-    submit: (assignee || manager) && (s === 'in-progress' || s === 'revising'),
+    // 개별 컨펌이면 담당 작업자가 이번 차수에 아직 안 올렸을 때만(각자 한 번씩)
+    submit:
+      (s === 'in-progress' || s === 'revising') &&
+      (isIndividual(req, assignees)
+        ? assignee &&
+          (() => {
+            const open = openRound(req)
+            return !open || !partsOf(open.id).some((p) => p.user_id === user.id)
+          })()
+        : assignee || manager),
     reject: (owner || manager) && s === 'review',
     approve: (owner || manager) && s === 'review',
     complete: (assignee || manager) && s === 'approved',
@@ -358,6 +389,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     originalLink: row.original_link,
     originalTool: row.original_tool,
     designers: assigneesOf(row.id),
+    individualConfirm: row.individual_confirm === 1,
     urgency: row.urgency,
     status: row.status,
     revision: row.revision,
@@ -439,6 +471,8 @@ export function requestDetail(user: PublicUser, id: number) {
     decidedAt: s.decided_at,
     decisionNote: s.decision_note,
     files: files.filter((f) => f.submission_id === s.id).map(fileInfo),
+    // 개별 컨펌: 이 차수에 시안을 올린 작업자(올린 순서). 일반 요청은 빈 목록
+    parts: partsOf(s.id).map((p) => ({ userId: p.user_id, note: p.note, createdAt: p.created_at })),
   }))
   const events = all<{
     id: number
@@ -650,9 +684,15 @@ export function performAction(user: PublicUser, id: number, action: Action, body
       case 'reassign': {
         // 작업자 변경: 프로젝트를 새 작업자에게 넘기고 작업 대기부터 다시 시작한다(시작 일시도 새로 잡는다).
         const ids = designerIdsFrom(body)
+        const individual = body.individualConfirm === true && ids.length > 1 ? 1 : 0
         if (ids.length === assignees.length && ids.every((uid, i) => uid === assignees[i])) {
-          throw new HttpError(400, '지금과 다른 작업자를 골라 주세요.')
+          // 작업자는 그대로 두고 개별 컨펌만 켜거나 끈다(진행 상태는 그대로)
+          if (individual === req.individual_confirm) throw new HttpError(400, '지금과 다른 작업자를 골라 주세요.')
+          run('UPDATE requests SET individual_confirm = :individual, updated_at = :now WHERE id = :id', { id, individual, now: Date.now() })
+          logEvent(id, user.id, 'individual', req.status, req.status, individual ? '개별 컨펌 켬' : '개별 컨펌 끔')
+          return
         }
+        run('UPDATE requests SET individual_confirm = :individual WHERE id = :id', { id, individual })
         run('DELETE FROM assignees WHERE request_id = :id', { id })
         ids.forEach((uid, ord) => run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, :ord)', { id, uid, ord }))
         setStatus(req, 'waiting', { started_at: null })
@@ -666,6 +706,12 @@ export function performAction(user: PublicUser, id: number, action: Action, body
       case 'assign':
       case 'take': {
         const ids = action === 'take' ? [...assignees, user.id] : designerIdsFrom(body)
+        if (action === 'assign') {
+          run('UPDATE requests SET individual_confirm = :individual WHERE id = :id', {
+            id,
+            individual: body.individualConfirm === true && ids.length > 1 ? 1 : 0,
+          })
+        }
         run('DELETE FROM assignees WHERE request_id = :id', { id })
         ids.forEach((uid, ord) => run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, :ord)', { id, uid, ord }))
         const to: Status = req.status === 'requested' ? 'waiting' : req.status
@@ -703,6 +749,54 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         return
       }
       case 'submit': {
+        if (isIndividual(req, assignees)) {
+          // 개별 컨펌: 모으는 중인 차수에 내 시안을 더한다(없으면 새 차수). 모두 올리면 시안 확인으로
+          const open = openRound(req)
+          let submissionId: number
+          let round: number
+          if (open) {
+            submissionId = open.id
+            round = open.round
+          } else {
+            const last = get<{ round: number }>('SELECT MAX(round) AS round FROM submissions WHERE request_id = :id', { id })
+            round = (last?.round ?? 0) + 1
+            const result = run(
+              `INSERT INTO submissions (request_id, round, author_id, note, created_at) VALUES (:id, :round, :author, '', :now)`,
+              { id, round, author: user.id, now: Date.now() },
+            )
+            submissionId = Number(result.lastInsertRowid)
+          }
+          const count = claimFiles(user, body.fileIds, { requestId: id, submissionId, kind: 'deliverable' }, { imagesOnly: true })
+          if (count === 0) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
+          run('INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:submissionId, :uid, :note, :now)', {
+            submissionId,
+            uid: user.id,
+            note,
+            now: Date.now(),
+          })
+          // 차수 메모: 작업자별 메모를 "이름: 메모" 로 모은다
+          const parts = partsOf(submissionId)
+          const memo = parts
+            .filter((p) => p.note)
+            .map((p) => `${findUser(p.user_id)?.name ?? p.user_id}: ${p.note}`)
+            .join('\n')
+          run('UPDATE submissions SET note = :memo WHERE id = :submissionId', { submissionId, memo })
+          const done = assignees.filter((uid) => parts.some((p) => p.user_id === uid))
+          const left = assignees.filter((uid) => !done.includes(uid))
+          const progress = `${done.length}/${assignees.length}`
+          if (left.length === 0) {
+            setStatus(req, 'review')
+            logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · 작업자 ${assignees.length}명 모두 올림${note ? ` · ${note}` : ''}`)
+            notify([req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
+            notify(assignees, user.id, id, `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}`)
+          } else {
+            run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
+            const leftNames = left.map((uid) => findUser(uid)?.name ?? uid).join(', ')
+            logEvent(id, user.id, 'submit-part', req.status, req.status, `${round}차 시안 올림 (${progress}) · 남은 작업자: ${leftNames}${note ? ` · ${note}` : ''}`)
+            notify(left, user.id, id, `${findUser(user.id)?.name ?? '작업자'}님이 ${round}차 시안을 올렸습니다(${progress}). 시안을 올려 주세요: ${req.title}`)
+          }
+          return
+        }
         const last = get<{ round: number }>('SELECT MAX(round) AS round FROM submissions WHERE request_id = :id', { id })
         const round = (last?.round ?? 0) + 1
         const result = run(
@@ -794,7 +888,17 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         const extra: Record<string, unknown> = {}
         if (t.type === 'assign') run('DELETE FROM assignees WHERE request_id = :id', { id })
         if (t.type === 'take') run('DELETE FROM assignees WHERE request_id = :id AND user_id = :uid', { id, uid: t.actor_id })
-        if (t.type === 'submit' && latest) {
+        const parts = latest ? partsOf(latest.id) : []
+        if ((t.type === 'submit' || t.type === 'submit-part') && latest && parts.length > 0) {
+          // 개별 컨펌: 그 단계를 한 작업자가 올린 시안만 지우고, 다른 작업자가 올린 것은 남긴다
+          const sid = latest.id
+          const files = `SELECT id FROM files WHERE submission_id = :sid AND uploader_id = :uid`
+          run(`DELETE FROM comments WHERE pin_id IN (SELECT id FROM pins WHERE file_id IN (${files}))`, { sid, uid: t.actor_id })
+          run(`DELETE FROM pins WHERE file_id IN (${files})`, { sid, uid: t.actor_id })
+          run('DELETE FROM files WHERE submission_id = :sid AND uploader_id = :uid', { sid, uid: t.actor_id })
+          run('DELETE FROM submission_parts WHERE submission_id = :sid AND user_id = :uid', { sid, uid: t.actor_id })
+          if (partsOf(sid).length === 0) run('DELETE FROM submissions WHERE id = :sid', { sid })
+        } else if (t.type === 'submit' && latest) {
           // 올린 시안을 지운다(핀·핀 댓글·시안 파일 기록 포함)
           run('DELETE FROM comments WHERE pin_id IN (SELECT p.id FROM pins p JOIN files f ON f.id = p.file_id WHERE f.submission_id = :sid)', { sid: latest.id })
           run('DELETE FROM pins WHERE file_id IN (SELECT id FROM files WHERE submission_id = :sid)', { sid: latest.id })

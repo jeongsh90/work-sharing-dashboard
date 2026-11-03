@@ -101,6 +101,11 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
 
   const rounds = detail.submissions
   const shown = rounds.find((s) => s.round === round) ?? rounds[rounds.length - 1]
+  // 개별 컨펌: 작업자마다 이번 차수 시안을 올렸는지(모으는 중인 차수 = 작업 중·수정 중인데 결정 안 된 마지막 시안)
+  const latest = rounds[rounds.length - 1]
+  const collecting =
+    detail.individualConfirm && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
+  const uploaded = (uid: string) => collecting?.parts.some((p) => p.userId === uid) ?? false
   const overdue = !detail.onHold && detail.status !== "done" && detail.status !== "canceled" && detail.dueAt < now
 
   const content = (
@@ -169,9 +174,17 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{shown.round}차 시안</span>
               <span className="text-xs text-muted-foreground">
-                {userName(shown.authorId)} · {formatDateTime(new Date(shown.createdAt))}
+                {shown.parts.length > 0 ? shown.parts.map((p) => userName(p.userId)).join(" · ") : userName(shown.authorId)} ·{" "}
+                {formatDateTime(new Date(shown.createdAt))}
               </span>
-              {shown.decision === null && <Badge variant="secondary">확인 중</Badge>}
+              {shown.decision === null &&
+                (collecting?.id === shown.id ? (
+                  <Badge variant="secondary" className="bg-violet-500/15 text-violet-800 dark:text-violet-300">
+                    모으는 중 {shown.parts.length}/{detail.designers.length}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">확인 중</Badge>
+                ))}
               {shown.decision === "rejected" && (
                 <Badge variant="secondary" className="bg-orange-500/15 text-orange-800 dark:text-orange-300">
                   반려
@@ -196,6 +209,17 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
               </Button>
             </div>
             {shown.note && <p className="whitespace-pre-wrap text-muted-foreground">{shown.note}</p>}
+            {/* 개별 컨펌: 작업자마다 올린 시안 수 */}
+            {shown.parts.length > 0 && (
+              <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {shown.parts.map((p) => (
+                  <li key={p.userId}>
+                    <span className="font-medium text-foreground">{userName(p.userId)}</span> 시안 {shown.files.filter((f) => f.uploaderId === p.userId).length}장 ·{" "}
+                    {formatDateTime(new Date(p.createdAt))}
+                  </li>
+                ))}
+              </ul>
+            )}
             {shown.decision && (
               <p className="text-xs text-muted-foreground">
                 {userName(shown.decidedBy)}님이 {formatDateTime(new Date(shown.decidedAt!))}에{" "}
@@ -241,6 +265,23 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           <Meta label="담당">
             {detail.designers.length === 0 ? (
               <span className="text-muted-foreground">미배정</span>
+            ) : detail.individualConfirm && detail.designers.length > 1 ? (
+              <span className="flex flex-col gap-1">
+                <span className="w-fit rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+                  개별 컨펌{collecting ? ` · ${collecting.round}차 ${detail.designers.filter(uploaded).length}/${detail.designers.length} 올림` : ""}
+                </span>
+                {detail.designers.map((uid) => (
+                  <span key={uid} className="flex items-center gap-1.5">
+                    {userName(uid)}
+                    {(detail.status === "in-progress" || detail.status === "revising") &&
+                      (uploaded(uid) ? (
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ 올림</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">올리기 전</span>
+                      ))}
+                  </span>
+                ))}
+              </span>
             ) : (
               detail.designers.map(userName).join(", ")
             )}

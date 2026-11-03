@@ -22,7 +22,7 @@ import { FilePicker } from "@/components/requests/file-picker"
 import { Progress } from "@/components/ui/progress"
 import { api, ApiError, formatBytes, uploadFileWithProgress } from "@/lib/api"
 import { ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
-import { invalidate, isDesignWorker, useUsers } from "@/lib/store"
+import { invalidate, isDesignWorker, useUserNames, useUsers } from "@/lib/store"
 
 // 진행 동작 버튼. 어떤 버튼이 보일지는 서버가 준 actions 로 정한다(apps/api/src/requests.ts).
 
@@ -56,7 +56,8 @@ const ACTIONS: Partial<Record<RequestAction, ActionSpec>> = {
     label: "작업자 변경",
     dialog: {
       title: "작업자 변경",
-      description: "바꾸면 프로젝트가 새 작업자에게 넘어가고 작업 대기로 돌아갑니다. 새 작업자·빠지는 작업자·요청자에게 알림이 갑니다.",
+      description:
+        "바꾸면 프로젝트가 새 작업자에게 넘어가고 작업 대기로 돌아갑니다. 새 작업자·빠지는 작업자·요청자에게 알림이 갑니다. 작업자는 그대로 두고 개별 컨펌만 켜거나 끄면 진행 상태는 그대로입니다.",
       confirm: "변경",
       designers: true,
     },
@@ -196,6 +197,7 @@ export function ActionPanel({
   onChanged: (next: RequestDetailDto) => void
 }) {
   const [open, setOpen] = useState<RequestAction | null>(null)
+  const userName = useUserNames()
   const [pending, setPending] = useState<RequestAction | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -237,6 +239,11 @@ export function ActionPanel({
   }
 
   const available = ORDER.filter((a) => detail.actions.includes(a) && ACTIONS[a])
+  // 개별 컨펌: 이번 차수에 아직 시안을 안 올린 작업자
+  const individual = detail.individualConfirm && detail.designers.length > 1
+  const latest = detail.submissions[detail.submissions.length - 1]
+  const collecting = individual && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
+  const waiting = detail.designers.filter((uid) => !collecting?.parts.some((p) => p.userId === uid))
   const spec: ActionSpec | null | undefined =
     open === "undo"
       ? {
@@ -248,9 +255,21 @@ export function ActionPanel({
               : "",
           },
         }
-      : open
-        ? ACTIONS[open]
-        : null
+      : open === "submit" && individual
+        ? {
+            label: "내 시안 올리기",
+            dialog: {
+              ...ACTIONS.submit!.dialog!,
+              title: "내 시안 올리기 (개별 컨펌)",
+              description: `이 요청은 작업자마다 시안을 올립니다. 모든 작업자(${detail.designers.length}명)가 올리면 요청자에게 컨펌 요청이 갑니다.${
+                waiting.length > 0 ? ` 아직 안 올린 사람: ${waiting.map(userName).join(", ")}` : ""
+              }`,
+              confirm: "내 시안 올리기",
+            },
+          }
+        : open
+          ? ACTIONS[open]
+          : null
   const canUndo = detail.actions.includes("undo") && detail.undo !== null
 
   if (available.length === 0 && !detail.actions.includes("edit") && !canUndo) return null
@@ -270,7 +289,7 @@ export function ActionPanel({
                 disabled={pending !== null}
                 onClick={() => (s.dialog ? setOpen(a) : direct(a))}
               >
-                {pending === a ? "처리 중…" : s.label}
+                {pending === a ? "처리 중…" : a === "submit" && individual ? "내 시안 올리기" : s.label}
               </Button>
             )
           })}
@@ -330,6 +349,7 @@ function ActionDialog({
   const [note, setNote] = useState("")
   const [files, setFiles] = useState<File[]>([])
   const [designerIds, setDesignerIds] = useState<string[]>(detail.designers)
+  const [individual, setIndividual] = useState(detail.individualConfirm)
   const [kind, setKind] = useState<OriginalKind>("file")
   const [link, setLink] = useState("")
   const [tool, setTool] = useState("")
@@ -366,6 +386,7 @@ function ActionDialog({
         note,
         fileIds: uploaded.map((f) => f.id),
         designerIds,
+        individualConfirm: individual && designerIds.length > 1,
         ...(spec.original && { originalKind: kind, originalLink: link.trim(), originalTool: tool }),
       })
     } catch (e) {
@@ -406,6 +427,18 @@ function ActionDialog({
                   )
                 })}
               </ul>
+              {/* 작업자가 둘 이상이면: 각자 시안을 올리고 모두 올리면 컨펌 요청 */}
+              {designerIds.length > 1 && (
+                <Label className="mt-1 flex cursor-pointer items-start gap-2 rounded-lg border border-violet-500/40 bg-violet-500/5 p-3 font-normal">
+                  <Checkbox checked={individual} onCheckedChange={(v) => setIndividual(v === true)} className="mt-0.5" />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium">개별 컨펌</span>
+                    <span className="text-xs break-keep text-muted-foreground">
+                      작업자마다 각자 시안을 올립니다. 모든 작업자가 올리면 그때 요청자에게 컨펌 요청(시안 확인)이 갑니다.
+                    </span>
+                  </span>
+                </Label>
+              )}
             </Field>
           )}
           {spec.original && (

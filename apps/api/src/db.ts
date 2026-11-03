@@ -207,6 +207,18 @@ addColumn('requests', 'requester_label', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'original_kind', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'original_link', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'original_tool', "TEXT NOT NULL DEFAULT ''")
+// 개별 컨펌: 작업자가 여럿일 때 작업자마다 시안을 올리고, 모두 올리면 시안 확인으로 넘어간다
+addColumn('requests', 'individual_confirm', 'INTEGER NOT NULL DEFAULT 0')
+// 개별 컨펌에서 한 차수(submission)에 누가 올렸는지(작업자마다 한 줄)
+db.exec(`
+CREATE TABLE IF NOT EXISTS submission_parts (
+  submission_id INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+  user_id       TEXT NOT NULL,
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    INTEGER NOT NULL,
+  PRIMARY KEY (submission_id, user_id)
+);
+`)
 
 // 여러 쿼리를 한 번에 반영하거나 모두 취소한다.
 export function transaction<T>(work: () => T): T {
