@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useSyncExternalStore } from "react"
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Image from "@tiptap/extension-image"
@@ -17,6 +17,7 @@ import {
   Link2,
   List,
   ListOrdered,
+  Paintbrush,
   LoaderCircle,
   Minus,
   Palette,
@@ -33,6 +34,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { ApiError, fileUrl, uploadFile } from "@/lib/api"
+import { copyFormat, FormatPainter, setPainterArmed, type PainterStorage } from "@/components/notices/format-painter"
 
 // 공지사항 에디터(Tiptap). 굵게·기울임·밑줄·취소선·제목·글자색·정렬·목록·인용·구분선·링크·그림.
 // 그림은 고르거나 붙여 넣으면 바로 서버에 올리고, 본문에는 파일 id(data-file-id)를 남긴다(lib/notices.ts).
@@ -99,6 +101,7 @@ export function RichEditor({
       TextStyle,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      FormatPainter,
       Placeholder.configure({ placeholder: "공지 내용을 적어 주세요. 그림은 붙여 넣거나 끌어 놓아도 됩니다." }),
     ],
     content: initialHtml,
@@ -203,6 +206,8 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
       <Tool icon={Heading2} label="큰 제목" active={s.h2} onClick={() => c().toggleHeading({ level: 2 }).run()} />
       <Tool icon={Heading3} label="작은 제목" active={s.h3} onClick={() => c().toggleHeading({ level: 3 }).run()} />
       <Separator orientation="vertical" className="mx-1 h-5" />
+      <PainterTool editor={editor} />
+      <Separator orientation="vertical" className="mx-1 h-5" />
       <Tool icon={Bold} label="굵게 (Ctrl+B)" active={s.bold} onClick={() => c().toggleBold().run()} />
       <Tool icon={Italic} label="기울임 (Ctrl+I)" active={s.italic} onClick={() => c().toggleItalic().run()} />
       <Tool icon={Underline} label="밑줄 (Ctrl+U)" active={s.underline} onClick={() => c().toggleUnderline().run()} />
@@ -277,5 +282,29 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
       </Popover>
       <Tool icon={busy ? LoaderCircle : ImagePlus} label="그림 넣기" disabled={busy} onClick={pickImage} />
     </div>
+  )
+}
+
+// 서식 복사 붓: 누르면 커서 자리 모양을 복사하고 대기(눌린 상태) → 글을 드래그해 고르면 입힘. 다시 누르거나 Esc 면 취소.
+function PainterTool({ editor }: { editor: Editor }) {
+  const st = (editor.storage as unknown as { formatPainter: PainterStorage }).formatPainter
+  const armed = useSyncExternalStore(
+    (l) => {
+      st.listeners.add(l)
+      return () => st.listeners.delete(l)
+    },
+    () => st.armed,
+  )
+  return (
+    <Tool
+      icon={Paintbrush}
+      label="서식 복사 (Ctrl+Shift+C 복사 · Ctrl+Shift+V 붙이기)"
+      active={armed}
+      onClick={() => {
+        if (armed) return setPainterArmed(editor, false)
+        copyFormat(editor)
+        setPainterArmed(editor, true)
+      }}
+    />
   )
 }
