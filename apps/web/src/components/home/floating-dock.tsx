@@ -1,9 +1,9 @@
 import { createPortal } from "react-dom"
-import { ArrowDownToLine, ArrowUpToLine, FileImage, Inbox, type LucideIcon } from "lucide-react"
+import { ArrowDownToLine, ArrowUpToLine, FileImage, Inbox, Maximize2, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { PresenceButton } from "@/components/home/presence-button"
 import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
 import { updateStoredUser, type Session } from "@/lib/auth"
@@ -53,11 +53,54 @@ function DockButton({
 }
 
 
+// 화면이 맨 위로 버튼 위에 "크게 보기"를 띄운다(요청 상세의 시안 보기). 누르면 등록한 쪽이 지금 보이는 이미지를 연다.
+// 여러 곳이 등록하면(차수 탭) 화면에 보이는 쪽이 true 를 돌려 처리한다.
+type ZoomAction = () => boolean
+const zoomActions = new Set<ZoomAction>()
+const zoomListeners = new Set<() => void>()
+const notifyZoom = () => zoomListeners.forEach((l) => l())
+export function useFloatingZoom(action: ZoomAction) {
+  const ref = useRef(action)
+  ref.current = action
+  useEffect(() => {
+    const a: ZoomAction = () => ref.current()
+    zoomActions.add(a)
+    notifyZoom()
+    return () => {
+      zoomActions.delete(a)
+      notifyZoom()
+    }
+  }, [])
+}
+const hasZoom = () => zoomActions.size > 0
+const subscribeZoom = (l: () => void) => {
+  zoomListeners.add(l)
+  return () => zoomListeners.delete(l)
+}
+
 // 맨 위로·맨 아래로(긴 화면에서 한 번에 이동). 떠 있는 버튼 묶음 맨 위에 두고, 묶음이 없는 화면(요청 상세)에서는 따로 띄운다
 export function ScrollEdgeButtons() {
+  const zoom = useSyncExternalStore(subscribeZoom, hasZoom)
   return (
     // 다른 떠 있는 버튼(컨펌 대기·받은 요청)과 같은 기본 버튼 모양
     <div className="flex flex-col gap-3">
+      {zoom && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              className="size-12 rounded-full shadow-lg [&_svg:not([class*='size-'])]:size-5"
+              aria-label="크게 보기"
+              onClick={() => {
+                for (const a of zoomActions) if (a()) return
+              }}
+            >
+              <Maximize2 />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">크게 보기</TooltipContent>
+        </Tooltip>
+      )}
       {(["top", "bottom"] as const).map((edge) => (
         <Tooltip key={edge}>
           <TooltipTrigger asChild>

@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.7',
+    date: '2026-11-04',
+    changes: [
+      '요청 상세 시안: 오른쪽 아래 맨 위로 버튼 위에 "크게 보기" 버튼 — 지금 화면에 보이는 시안 이미지를 전체 화면으로 엶',
+    ],
+  },
+  {
     version: '0.6.6',
     date: '2026-11-03',
     changes: [

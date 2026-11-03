@@ -12,6 +12,7 @@ import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from 
 import { scrollToElement } from "@/lib/smooth-scroll"
 import { useUserNames } from "@/lib/store"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { useFloatingZoom } from "@/components/home/floating-dock"
 
 // 시안 이미지 위에 핀을 꽂고, 핀마다 댓글을 단다.
 // 핀 위치는 이미지 크기 대비 비율(0~1)로 저장해 화면 폭이 달라도 같은 자리에 보인다.
@@ -85,6 +86,24 @@ export function ReviewBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageSize])
 
+  // 오른쪽 아래 떠 있는 "크게 보기": 화면에 가장 많이 보이는 시안 이미지를 전체 화면으로 연다
+  useFloatingZoom(() => {
+    const col = columnRef.current
+    if (!col || !col.offsetParent || images.length === 0) return false
+    let best = 0
+    let bestArea = -1
+    col.querySelectorAll<HTMLElement>("[data-image-index]").forEach((el) => {
+      const r = el.getBoundingClientRect()
+      const h = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0))
+      if (h > bestArea) {
+        bestArea = h
+        best = Number(el.dataset.imageIndex)
+      }
+    })
+    setViewing(best)
+    return true
+  })
+
   const select = (id: number, scrollTo: "image" | "thread") => {
     setSelected(id)
     const el = document.getElementById(scrollTo === "image" ? `pin-${id}` : `thread-${id}`)
@@ -104,6 +123,7 @@ export function ReviewBoard({
         {submission.files.map((file) => (
           <figure key={file.id} className="flex flex-col gap-1">
             <div
+              data-image-index={images.includes(file) ? images.indexOf(file) : undefined}
               className={`relative min-h-12 w-fit max-w-full min-w-12 overflow-visible rounded-lg border bg-muted/30 ${canPin ? "cursor-crosshair" : "cursor-zoom-in"}`}
               onClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-pin],[data-draft]")) return
