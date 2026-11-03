@@ -21,6 +21,7 @@ import { confirmDialog } from "@/components/confirm-dialog"
 import { FilePicker } from "@/components/requests/file-picker"
 import { Progress } from "@/components/ui/progress"
 import { api, ApiError, formatBytes, uploadFileWithProgress } from "@/lib/api"
+import { loadSession } from "@/lib/auth"
 import { ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
 import { invalidate, isDesignWorker, useUserNames, useUsers } from "@/lib/store"
 
@@ -244,6 +245,10 @@ export function ActionPanel({
   const latest = detail.submissions[detail.submissions.length - 1]
   const collecting = individual && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
   const waiting = detail.designers.filter((uid) => !collecting?.parts.some((p) => p.userId === uid))
+  // 슈퍼관리자가 담당이 아니거나 이미 올렸으면: 남은 작업자를 기다리지 않고 바로 컨펌 요청
+  const me = loadSession()
+  const force = individual && me?.role === "superadmin" && (!detail.designers.includes(me.id) || !waiting.includes(me.id))
+  const submitLabel = force ? "바로 컨펌 요청" : "내 시안 올리기"
   const spec: ActionSpec | null | undefined =
     open === "undo"
       ? {
@@ -257,14 +262,16 @@ export function ActionPanel({
         }
       : open === "submit" && individual
         ? {
-            label: "내 시안 올리기",
+            label: submitLabel,
             dialog: {
               ...ACTIONS.submit!.dialog!,
-              title: "내 시안 올리기 (개별 컨펌)",
-              description: `이 요청은 작업자마다 시안을 올립니다. 모든 작업자(${detail.designers.length}명)가 올리면 요청자에게 컨펌 요청이 갑니다.${
+              title: force ? "바로 컨펌 요청 (슈퍼관리자)" : "내 시안 올리기 (개별 컨펌)",
+              description: force
+                ? `남은 작업자(${waiting.map(userName).join(", ") || "없음"})를 기다리지 않고, 지금까지 올라온 시안에 이 시안을 더해 바로 요청자에게 컨펌 요청을 보냅니다.`
+                : `이 요청은 작업자마다 시안을 올립니다. 모든 작업자(${detail.designers.length}명)가 올리면 요청자에게 컨펌 요청이 갑니다.${
                 waiting.length > 0 ? ` 아직 안 올린 사람: ${waiting.map(userName).join(", ")}` : ""
               }`,
-              confirm: "내 시안 올리기",
+              confirm: submitLabel,
             },
           }
         : open
@@ -290,7 +297,7 @@ export function ActionPanel({
                 disabled={pending !== null}
                 onClick={() => (s.dialog ? setOpen(a) : direct(a))}
               >
-                {pending === a ? "처리 중…" : a === "submit" && individual ? "내 시안 올리기" : s.label}
+                {pending === a ? "처리 중…" : a === "submit" && individual ? submitLabel : s.label}
               </Button>
             )
           })}

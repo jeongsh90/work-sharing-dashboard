@@ -179,6 +179,8 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   // 부서별 최종 컨펌자(정해진 부서만): 컨펌·반려·핀 댓글을 할 수 있다
   const finalBy = approverFor(req.department)
   const approver = !!finalBy && finalBy === user.id
+  // 슈퍼관리자는 모든 권한(최종 컨펌자가 정해진 부서 컨펌, 개별 컨펌을 기다리지 않고 컨펌 요청, 내가 맡기 등)
+  const su = user.role === 'superadmin'
   const active = ACTIVE.includes(req.status)
   const s = req.status
   const can: Record<Action, boolean> = {
@@ -189,7 +191,7 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     assign: active && manager && assignees.length === 0,
     reassign:
       manager && assignees.length > 0 && ['needs-info', 'waiting', 'in-progress', 'review', 'revising'].includes(s),
-    take: designer && !assignee && (s === 'requested' || s === 'needs-info' || s === 'waiting'),
+    take: (designer || su) && !assignee && (s === 'requested' || s === 'needs-info' || s === 'waiting'),
     'request-info': (manager || designer) && (s === 'requested' || s === 'waiting'),
     resubmit: (owner || manager) && s === 'needs-info',
     start: (assignee || manager) && s === 'waiting' && assignees.length > 0,
@@ -197,15 +199,16 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     submit:
       (s === 'in-progress' || s === 'revising') &&
       (isIndividual(req, assignees)
-        ? assignee &&
-          (() => {
-            const open = openRound(req)
-            return !open || !partsOf(open.id).some((p) => p.user_id === user.id)
-          })()
+        ? su ||
+          (assignee &&
+            (() => {
+              const open = openRound(req)
+              return !open || !partsOf(open.id).some((p) => p.user_id === user.id)
+            })())
         : assignee || manager),
-    reject: (owner || manager || approver) && s === 'review',
+    reject: (owner || manager || approver || su) && s === 'review',
     // 부서별 최종 컨펌자가 정해진 부서(예: 마케팅 1팀)는 그 사람만 컨펌(완료 처리)할 수 있다
-    approve: s === 'review' && (finalBy ? approver : owner || manager),
+    approve: s === 'review' && (su || (finalBy ? approver : owner || manager)),
     complete: (assignee || manager) && s === 'approved',
     'upload-source': (assignee || manager) && s === 'source-pending',
     cancel: active && (owner || manager),
@@ -775,7 +778,8 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           }
           const count = claimFiles(user, body.fileIds, { requestId: id, submissionId, kind: 'deliverable' }, { imagesOnly: true })
           if (count === 0) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
-          run('INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:submissionId, :uid, :note, :now)', {
+          const force = user.role === 'superadmin' && (!assignees.includes(user.id) || partsOf(submissionId).some((p) => p.user_id === user.id))
+          run('INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:submissionId, :uid, :note, :now) ON CONFLICT DO NOTHING', {
             submissionId,
             uid: user.id,
             note,
@@ -791,9 +795,10 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           const done = assignees.filter((uid) => parts.some((p) => p.user_id === uid))
           const left = assignees.filter((uid) => !done.includes(uid))
           const progress = `${done.length}/${assignees.length}`
-          if (left.length === 0) {
+          if (left.length === 0 || force) {
             setStatus(req, 'review')
-            logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · 작업자 ${assignees.length}명 모두 올림${note ? ` · ${note}` : ''}`)
+            const how = left.length === 0 ? `작업자 ${assignees.length}명 모두 올림` : `슈퍼관리자가 바로 컨펌 요청(${progress} 올림)`
+            logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · ${how}${note ? ` · ${note}` : ''}`)
             notify([req.requester_id, approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
             notify(assignees, user.id, id, `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}`)
           } else {
