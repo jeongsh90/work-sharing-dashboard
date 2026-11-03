@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, readFile, stat, statfs, unlink } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -153,6 +153,26 @@ function bearer(req: IncomingMessage) {
   return req.headers.authorization?.match(/^Bearer (\w+)$/)?.[1] ?? null
 }
 
+// 내려받기 표: 큰 파일을 브라우저 자체 다운로드(진행률·이어받기, 메모리에 쌓지 않음)로 받게 한다.
+// 브라우저 다운로드는 Authorization 머리말을 못 붙여서, 로그인한 화면이 이 파일 하나만 받을 수 있는 표를 받아 주소에 붙인다.
+// 표는 1시간 동안(끊긴 다운로드 이어받기) 쓸 수 있고, 로그아웃하면 바로 못 쓴다(쓸 때마다 로그인 세션을 다시 확인).
+const TICKET_MS = 60 * 60 * 1000
+const tickets = new Map<string, { session: string; fileId: string; exp: number }>()
+function issueTicket(req: IncomingMessage, fileId: string) {
+  const now = Date.now()
+  for (const [k, t] of tickets) if (t.exp < now) tickets.delete(k)
+  const ticket = randomBytes(24).toString('base64url')
+  tickets.set(ticket, { session: bearer(req)!, fileId, exp: now + TICKET_MS })
+  return ticket
+}
+function ticketUser(ticket: string, fileId: string) {
+  const t = tickets.get(ticket)
+  if (!t || t.fileId !== fileId || t.exp < Date.now()) throw new HttpError(401, '내려받기 주소가 만료됐습니다. 화면에서 다시 눌러 주세요.')
+  const user = sessionUser(t.session)
+  if (!user) throw new HttpError(401, '다시 로그인해 주세요.')
+  return user
+}
+
 function requireUser(req: IncomingMessage): PublicUser {
   const token = bearer(req)
   const user = token ? sessionUser(token) : null
@@ -227,6 +247,7 @@ async function handleFile(
   id: string,
   download: boolean,
   size: string | null,
+  saveAs: string | null = null,
 ) {
   const file = findFile(id)
   // 어디에도 붙지 않은 파일은 올린 사람만 볼 수 있다. 프로필 사진은 로그인한 누구나 볼 수 있다.
@@ -252,14 +273,33 @@ async function handleFile(
       return
     }
   }
-  const disposition = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`
-  res.writeHead(200, {
+  // 저장 이름: 화면이 정한 이름(예: 디자인 툴 결과 "제목_r.jpg")이 있으면 그것, 없으면 올린 이름
+  const name = saveAs?.replace(/[\\/\0\r\n]/g, '_').trim().slice(0, 200) || file.name
+  const disposition = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(name)}`
+  const headers = {
     'Content-Type': file.mime,
-    'Content-Length': file.size,
     'Content-Disposition': disposition,
     'Cache-Control': 'private, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff',
-  })
+    'Accept-Ranges': 'bytes',
+  }
+  // 이어받기(Range: bytes=시작-끝): 큰 파일 다운로드가 중간에 끊겨도 브라우저가 끊긴 데부터 다시 받는다
+  const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''))
+  if (range && (range[1] || range[2])) {
+    let start = range[1] ? Number(range[1]) : file.size - Number(range[2])
+    let end = range[1] && range[2] ? Number(range[2]) : file.size - 1
+    start = Math.max(0, start)
+    end = Math.min(end, file.size - 1)
+    if (start > end || start >= file.size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${file.size}` })
+      res.end()
+      return
+    }
+    res.writeHead(206, { ...headers, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${file.size}` })
+    await pipeline(createReadStream(join(UPLOAD_DIR, file.id), { start, end }), res)
+    return
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': file.size })
   await pipeline(createReadStream(join(UPLOAD_DIR, file.id)), res)
 }
 
@@ -326,9 +366,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     return sendJson(res, 200, { ok: true })
   }
 
+  let m: RegExpMatchArray | null
+  // 내려받기 표로 받는 파일(브라우저 자체 다운로드, 로그인 머리말 없음)
+  if (method === 'GET' && (m = path.match(/^\/api\/files\/([0-9a-f-]{36})$/)) && url.searchParams.get('ticket')) {
+    const owner = ticketUser(url.searchParams.get('ticket')!, m[1])
+    return handleFile(req, res, owner, m[1], true, null, url.searchParams.get('name'))
+  }
+
   const user = requireUser(req)
   touchSeen(user.id)
-  let m: RegExpMatchArray | null
 
   // ── 사내망 직통 PC(IP) 등록(관리 → 사내망 직통, 슈퍼관리자, lan.ts) ──
   if (path === '/api/lan/ips') {
@@ -529,6 +575,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
   if ((m = path.match(/^\/api\/files\/([0-9a-f-]{36})$/)) && method === 'GET') {
     return handleFile(req, res, user, m[1], url.searchParams.has('download'), url.searchParams.get('size'))
+  }
+  if ((m = path.match(/^\/api\/files\/([0-9a-f-]{36})\/ticket$/)) && method === 'POST') {
+    return sendJson(res, 200, { ticket: issueTicket(req, m[1]) })
   }
   if ((m = path.match(/^\/api\/files\/([0-9a-f-]{36})\/pins$/)) && method === 'POST') {
     const pinId = addPin(user, m[1], await readJson(req))

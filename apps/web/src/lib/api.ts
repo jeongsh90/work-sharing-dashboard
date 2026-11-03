@@ -295,35 +295,24 @@ export function useFileUrl(id: string | null | undefined, size?: ImageSize) {
   return { url: current?.url ?? null, error: current?.error ?? false }
 }
 
-export async function downloadFile(id: string, name: string) {
-  const url = await fileUrl(id)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
+// 내려받기는 크기와 상관없이 브라우저 자체 다운로드로(최종 파일·요청 첨부에도 큰 PSD 가 있다)
+export function downloadFile(id: string, name: string) {
+  return downloadLargeFile(id, name)
 }
 
-// 큰 파일 내려받기: 받아 둔 주소를 남겨 두지 않는다(PSD 처럼 큰 파일이 메모리에 계속 남지 않게)
+// 큰 파일 내려받기(자료실·파일공유·공지 첨부): 브라우저 자체 다운로드로 받는다.
+// 다운로드 목록에 진행률이 보이고, 메모리에 쌓지 않고 바로 디스크에 쓰며, 끊기면 이어받는다(PSD 수백 MB 도 받게).
+// 브라우저 다운로드는 로그인 머리말을 못 붙여서 이 파일만 받을 수 있는 표(1시간)를 받아 주소에 붙인다.
+// 사내망이면 사내망 주소에서 받는다(빠름).
 export async function downloadLargeFile(id: string, name: string) {
-  // 사내망이면 사내망 주소에서 받는다(빠름). 그쪽이 끊기면 늘 쓰는 주소로 다시 받는다
-  const base = await fileBase()
-  const token = storedToken()
-  const get = (b: string) => fetch(`${b}/api/files/${id}?download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-  let res: Response
-  try {
-    res = await get(base)
-  } catch {
-    if (base === API_BASE) throw new ApiError(0, '파일을 내려받지 못했습니다.')
-    lanFailed(base)
-    res = await get(API_BASE)
-  }
-  if (!res.ok) throw new ApiError(res.status, '파일을 내려받지 못했습니다.')
-  const url = URL.createObjectURL(await res.blob())
+  const [base, { ticket }] = await Promise.all([fileBase(), api<{ ticket: string }>(`/files/${id}/ticket`, { body: {} })])
   const a = document.createElement('a')
-  a.href = url
-  a.download = name
+  // 저장 이름은 서버가 Content-Disposition 으로 정한다(name 을 넘겨 화면이 정한 이름으로)
+  a.href = `${base}/api/files/${id}?download&ticket=${encodeURIComponent(ticket)}&name=${encodeURIComponent(name)}`
+  a.rel = 'noopener'
+  document.body.appendChild(a)
   a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  a.remove()
 }
 
 export function formatBytes(size: number) {
