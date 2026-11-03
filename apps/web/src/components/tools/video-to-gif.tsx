@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, Scissors, Upload, Wand2, X } from "lucide-react"
+import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, Scissors, SlidersHorizontal, Upload, Wand2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
@@ -10,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatBytes } from "@/lib/api"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
+import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
 
 // 동영상 → GIF · 동영상 → WebP: 동영상 파일(MP4·MOV·WebM)을 골라 구간·크기·초당 장수를 정하고 GIF(또는 움직이는 WebP)로 바꾼다.
 // 서버에 올리지 않고 이 브라우저 안에서 바꾼다. 장면을 한 장씩 뽑아(canvas) Web Worker 가 GIF·WebP 로 묶는다.
@@ -110,6 +112,7 @@ async function measurePerFrame(
   w: number,
   h: number,
   option: string,
+  adjust: Adjust,
   alive: () => boolean,
 ): Promise<number | null> {
   const video = document.createElement("video")
@@ -138,7 +141,9 @@ async function measurePerFrame(
       if (!alive()) return null
       await seek(video, t)
       ctx.drawImage(video, 0, 0, w, h)
-      const data = ctx.getImageData(0, 0, w, h).data.buffer
+      const img = ctx.getImageData(0, 0, w, h)
+      applyAdjust(img.data, adjust)
+      const data = img.data.buffer
       worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
     }
     worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
@@ -271,6 +276,9 @@ export function VideoConvertTool() {
   const [colors, setColors] = useState(F.defaultOption)
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")
+  const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST) // 색 보정(노출·오프셋·감마·색조·채도·명도)
+  const adjusted = !isNoAdjust(adjust)
+  const adjustCanvas = useRef<HTMLCanvasElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ step: string; ratio: number; done: number } | null>(null)
   const [result, setResult] = useState<Result | null>(null)
@@ -330,6 +338,30 @@ export function VideoConvertTool() {
     if (v) v.defaultPlaybackRate = v.playbackRate = Number(speed)
   }, [speed, source, result])
 
+  // 색 보정 미리보기: 보정이 있으면 동영상 위 캔버스에 지금 장면을 보정해 그린다(가로 최대 860 으로 줄여서)
+  const adjustRef = useRef(adjust)
+  adjustRef.current = adjust
+  const drawAdjusted = () => {
+    const v = preview.current
+    const c = adjustCanvas.current
+    if (!v || !c || !v.videoWidth || isNoAdjust(adjustRef.current)) return
+    const w = Math.min(860, v.videoWidth)
+    const h = Math.max(1, Math.round((v.videoHeight * w) / v.videoWidth))
+    if (c.width !== w || c.height !== h) {
+      c.width = w
+      c.height = h
+    }
+    const ctx = c.getContext("2d", { willReadFrequently: true })!
+    ctx.drawImage(v, 0, 0, w, h)
+    const img = ctx.getImageData(0, 0, w, h)
+    applyAdjust(img.data, adjustRef.current)
+    ctx.putImageData(img, 0, 0)
+  }
+  useEffect(() => {
+    drawAdjusted()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adjust, result])
+
   // 재생 위치(프레임 띠의 세로선). 재생 중에는 화면 그릴 때마다 따라간다
   const [time, setTime] = useState(0)
   useEffect(() => {
@@ -337,6 +369,7 @@ export function VideoConvertTool() {
     let raf = 0
     const tick = () => {
       if (preview.current) setTime(preview.current.currentTime)
+      drawAdjusted()
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -391,6 +424,7 @@ export function VideoConvertTool() {
     else v.currentTime = t
   }
   const onSeeked = () => {
+    drawAdjusted()
     const t = pendingSeek.current
     if (t === null || !preview.current) return
     pendingSeek.current = null
@@ -422,14 +456,14 @@ export function VideoConvertTool() {
 
   // 설정을 바꾸면 잠깐 뒤(손을 멈춘 뒤) 한 장 평균 크기를 다시 잰다. 초당 장수·속도·반복은 장수만 바뀌어 다시 재지 않는다.
   const [perFrame, setPerFrame] = useState<{ key: string; bytes: number } | null>(null)
-  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}` : ""
+  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}|${JSON.stringify(adjust)}` : ""
   useEffect(() => {
     // 손잡이를 끄는 동안에는 재지 않는다(미리보기와 영상 읽기를 다투지 않게)
     if (!source || busy || sliding || length <= 0) return
     let alive = true
     const timer = setTimeout(() => {
       const times = Array.from({ length: SAMPLES }, (_, i) => Math.min(range[0] + ((i + 0.5) * length) / SAMPLES, source.duration - 0.001))
-      measurePerFrame(format, source.url, times, outW, outH, colors, () => alive).then(
+      measurePerFrame(format, source.url, times, outW, outH, colors, adjust, () => alive).then(
         (bytes) => alive && bytes !== null && setPerFrame({ key: sampleKey, bytes }),
         () => {},
       )
@@ -487,7 +521,9 @@ export function VideoConvertTool() {
         if (cancelled) return
         await seek(video, Math.min(range[0] + i / Number(fps), source.duration - 0.001))
         ctx.drawImage(video, 0, 0, outW, outH)
-        const data = ctx.getImageData(0, 0, outW, outH).data.buffer
+        const img = ctx.getImageData(0, 0, outW, outH)
+        applyAdjust(img.data, adjust)
+        const data = img.data.buffer
         worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
       }
       worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
@@ -760,6 +796,8 @@ export function VideoConvertTool() {
                 </Field>
               </div>
 
+              <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} />
+
               <Field data-invalid={tooMany}>
                 {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
                 <div
@@ -880,7 +918,14 @@ export function VideoConvertTool() {
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
                   onClick={togglePlay}
+                  onLoadedData={drawAdjusted}
                   className="max-h-[60vh] w-full cursor-pointer object-contain"
+                />
+                {/* 색 보정 미리보기(보정이 있을 때만). 누르면 아래 동영상이 받는다 */}
+                <canvas
+                  ref={adjustCanvas}
+                  aria-hidden
+                  className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted ? "" : "hidden"}`}
                 />
               </div>
               <div className="flex items-center gap-3">
@@ -914,5 +959,106 @@ export function VideoConvertTool() {
         </div>
       )}
     </div>
+  )
+}
+
+// ── 색 보정 칸: 포토샵 노출 창(노출·오프셋·감마 교정) + 색조/채도(색조·채도·명도) ──
+type AdjustKey = keyof Adjust
+type AdjustRow = { key: AdjustKey; label: string; min: number; max: number; step: number; digits: number; group: string }
+const ADJUST_ROWS: AdjustRow[] = [
+  { key: "exposure", label: "노출", min: -5, max: 5, step: 0.01, digits: 2, group: "노출" },
+  { key: "offset", label: "오프셋", min: -0.5, max: 0.5, step: 0.001, digits: 3, group: "노출" },
+  { key: "gamma", label: "감마 교정", min: 0.1, max: 9.99, step: 0.01, digits: 2, group: "노출" },
+  { key: "hue", label: "색조", min: -180, max: 180, step: 1, digits: 0, group: "색조/채도" },
+  { key: "saturation", label: "채도", min: -100, max: 100, step: 1, digits: 0, group: "색조/채도" },
+  { key: "lightness", label: "명도", min: -100, max: 100, step: 1, digits: 0, group: "색조/채도" },
+]
+// 감마 슬라이더는 가운데가 1 이 되게 로그 눈금(0.1 ~ 1 ~ 9.99)
+const gammaToPos = (g: number) => Math.log10(g)
+const posToGamma = (p: number) => Math.round(10 ** p * 100) / 100
+const showNum = (row: AdjustRow, v: number) => (row.key === "gamma" ? v.toFixed(2) : (v > 0 ? "+" : "") + v.toFixed(row.digits))
+
+function AdjustPanel({ value, onChange, disabled }: { value: Adjust; onChange: (a: Adjust) => void; disabled?: boolean }) {
+  // 입력 칸에 치는 중인 글자(다 치기 전 "-" "0." 같은 것도 그대로 보이게)
+  const [drafts, setDrafts] = useState<Partial<Record<AdjustKey, string>>>({})
+  const set = (key: AdjustKey, v: number) => onChange({ ...value, [key]: v })
+  const clearDraft = (key: AdjustKey) =>
+    setDrafts((d) => {
+      const next = { ...d }
+      delete next[key]
+      return next
+    })
+  return (
+    <Field>
+      <FieldLabel>
+        <SlidersHorizontal className="size-4" />
+        색 보정
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="ml-auto"
+          disabled={disabled || isNoAdjust(value)}
+          onClick={() => {
+            setDrafts({})
+            onChange(NO_ADJUST)
+          }}
+        >
+          <RotateCcw data-icon="inline-start" />
+          기본값
+        </Button>
+      </FieldLabel>
+      <div className="flex flex-col gap-3 rounded-lg border p-3">
+        {ADJUST_ROWS.map((row, i) => {
+          const v = value[row.key]
+          const gamma = row.key === "gamma"
+          return (
+            <div key={row.key} className="flex flex-col gap-1.5">
+              {(i === 0 || ADJUST_ROWS[i - 1].group !== row.group) && (
+                <span className={`text-xs font-medium text-muted-foreground ${i > 0 ? "mt-1 border-t pt-3" : ""}`}>{row.group}</span>
+              )}
+              <div className="flex items-center gap-3">
+                <label htmlFor={`adj-${row.key}`} className="w-16 shrink-0 text-sm">
+                  {row.label}
+                </label>
+                <Slider
+                  min={gamma ? gammaToPos(row.min) : row.min}
+                  max={gamma ? gammaToPos(row.max) : row.max}
+                  step={gamma ? 0.001 : row.step}
+                  value={[gamma ? gammaToPos(v) : v]}
+                  disabled={disabled}
+                  onValueChange={([x]) => {
+                    clearDraft(row.key)
+                    set(row.key, gamma ? posToGamma(x) : Number(x.toFixed(row.digits)))
+                  }}
+                  aria-label={row.label}
+                  className="flex-1"
+                />
+                <Input
+                  id={`adj-${row.key}`}
+                  value={drafts[row.key] ?? showNum(row, v)}
+                  disabled={disabled}
+                  inputMode="decimal"
+                  title="두 번 누르면 기본값"
+                  className="h-8 w-20 text-right tabular-nums"
+                  onChange={(e) => {
+                    const text = e.target.value
+                    setDrafts((d) => ({ ...d, [row.key]: text }))
+                    const n = Number(text)
+                    if (text.trim() !== "" && Number.isFinite(n)) set(row.key, Math.min(row.max, Math.max(row.min, n)))
+                  }}
+                  onBlur={() => clearDraft(row.key)}
+                  onDoubleClick={() => {
+                    clearDraft(row.key)
+                    set(row.key, NO_ADJUST[row.key])
+                  }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <FieldDescription className="break-keep">포토샵 노출·색조/채도와 같은 방식입니다. 미리보기와 만드는 파일에 그대로 들어갑니다.</FieldDescription>
+    </Field>
   )
 }
