@@ -52,6 +52,15 @@ export function toStoredHtml(html: string) {
 }
 
 // 보여 주기용: 안전한 태그만 남기고(sanitize), 그림에 브라우저 안 주소를 채운다. 링크는 새 창으로.
+// 예전 편집기 글자 색 → 한 단계 밝은 지금 색(주황·빨강·파랑·초록·회색)
+const BRIGHTER: Record<string, string> = {
+  'rgb(249,115,22)': '#fb923c',
+  'rgb(239,68,68)': '#f87171',
+  'rgb(59,130,246)': '#60a5fa',
+  'rgb(22,163,74)': '#22c55e',
+  'rgb(107,114,128)': '#9ca3af',
+}
+
 export async function toViewHtml(html: string) {
   const clean = DOMPurify.sanitize(html, { ADD_ATTR: ['data-file-id', 'target'] })
   const doc = new DOMParser().parseFromString(clean, 'text/html')
@@ -67,6 +76,11 @@ export async function toViewHtml(html: string) {
   doc.querySelectorAll('a[href]').forEach((a) => {
     a.setAttribute('target', '_blank')
     a.setAttribute('rel', 'noopener noreferrer')
+  })
+  // 예전 글자 색(한 단계 어두운 색)은 지금 색으로 보여 준다(편집기 색을 한 단계 밝게 바꿈)
+  doc.querySelectorAll<HTMLElement>('[style*="color"]').forEach((el) => {
+    const now = BRIGHTER[el.style.color.replace(/\s/g, '')]
+    if (now) el.style.color = now
   })
   return doc.body.innerHTML
 }

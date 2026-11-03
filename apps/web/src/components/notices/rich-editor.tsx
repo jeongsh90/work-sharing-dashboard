@@ -53,11 +53,12 @@ const NoticeImage = Image.extend({
 
 const COLORS = [
   { label: "기본", value: null },
-  { label: "주황(브랜드)", value: "#f97316" },
-  { label: "빨강", value: "#ef4444" },
-  { label: "파랑", value: "#3b82f6" },
-  { label: "초록", value: "#16a34a" },
-  { label: "회색", value: "#6b7280" },
+  // 어두운 화면에서도 잘 읽히게 한 단계 밝은 색(Tailwind 400 / 초록 500)
+  { label: "주황(브랜드)", value: "#fb923c" },
+  { label: "빨강", value: "#f87171" },
+  { label: "파랑", value: "#60a5fa" },
+  { label: "초록", value: "#22c55e" },
+  { label: "회색", value: "#9ca3af" },
 ]
 
 async function insertImages(editor: Editor, files: File[], onError: (m: string) => void, setBusy: (b: boolean) => void) {
