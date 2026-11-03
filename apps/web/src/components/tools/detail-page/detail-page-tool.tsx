@@ -13,6 +13,7 @@ import {
   ImagePlus,
   LayoutTemplate,
   LoaderCircle,
+  Minus,
   Package,
   Plus,
   Trash2,
@@ -54,7 +55,9 @@ import {
   type Section,
   type ShipProduct,
 } from "./sections"
-import { DraftBar, type CurrentDraft } from "./drafts"
+import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftState } from "./drafts"
+import { ToolHistory } from "@/components/tools/tool-history"
+import { invalidate } from "@/lib/store"
 import iceboxUrl from "./assets/icebox.png"
 import logoUrl from "./assets/logo.svg"
 import patternUrl from "./assets/point-pattern.png"
@@ -261,6 +264,16 @@ export function DetailPageTool() {
       a.href = zipUrl
       a.download = zipName
       a.click()
+      // 히스토리에 남긴다(첫 섹션 이미지를 썸네일로, 입력은 그림까지 올려 두어 나중에 그대로 불러온다). 실패해도 내려받기는 끝났으니 조용히 넘긴다
+      const thumb = shots.find((x) => x.data)?.data
+      if (thumb) {
+        void (async () => {
+          const { sections: saved, fileIds } = await serializeSections(sections)
+          const form: DraftState = { product: product.trim(), category, number, sections: saved }
+          await api("/tools/detail-page/history", { body: { title: product.trim(), fileName: "thumb.jpg", form, fileIds, image: `data:image/jpeg;base64,${thumb}` } })
+          invalidate()
+        })().catch(() => {})
+      }
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : "만들지 못했습니다.")
     } finally {
@@ -268,8 +281,39 @@ export function DetailPageTool() {
     }
   }
 
+  const loadState = (st: DraftState, d: CurrentDraft | null) => {
+    setProduct(st.product)
+    setCategory(st.category)
+    setNumber(st.number)
+    setSections(st.sections)
+    setSelected(null)
+    setResult(null)
+    setError(null)
+    setDraft(d)
+  }
+
+  // 히스토리에서 불러오기: 그때 입력(그림 포함)을 그대로 다시 채운다(임시 저장과는 따로)
+  const loadHistory = async (f: DraftState) => {
+    if (sections.length > 0 && !(await confirmDialog({ title: "히스토리 내용을 불러올까요?", description: "지금 화면에 만들던 내용은 사라집니다(필요하면 먼저 임시 저장하세요).", confirmText: "불러오기" })))
+      return
+    setBusy("히스토리 불러오는 중")
+    try {
+      loadState({ product: f.product ?? "", category: f.category ?? "", number: f.number ?? "", sections: await deserializeSections(f.sections ?? []) }, null)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "불러오지 못했습니다.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:flex-row lg:items-start lg:pr-28">
+    <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:pr-28">
+      {/* 맨 위: 임시 저장(본사 자료를 기다리는 동안 만든 내용을 저장해 두고 나중에 이어서) */}
+      <div className="rounded-xl border bg-card px-3 py-2">
+        <DraftBar state={{ product, category, number, sections }} current={draft} onSaved={setDraft} onLoad={(st, d) => loadState(st, d)} />
+      </div>
+    <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-start">
       {/* 왼쪽: 미리보기 */}
       <div className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:flex-[7]">
         <div className="flex items-center gap-2">
@@ -300,22 +344,6 @@ export function DetailPageTool() {
       {/* 오른쪽: 입력 */}
       <div className="flex min-w-0 flex-col gap-4 lg:flex-[5]">
         <FieldGroup className="rounded-xl border p-4">
-          {/* 중간 저장: 본사 자료를 기다리는 동안 만든 내용을 저장해 두고 나중에 이어서 */}
-          <DraftBar
-            state={{ product, category, number, sections }}
-            current={draft}
-            onSaved={setDraft}
-            onLoad={(st, d) => {
-              setProduct(st.product)
-              setCategory(st.category)
-              setNumber(st.number)
-              setSections(st.sections)
-              setSelected(null)
-              setResult(null)
-              setError(null)
-              setDraft(d)
-            }}
-          />
           <Field>
             <FieldLabel htmlFor="dp-product">상품명</FieldLabel>
             <Input id="dp-product" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="예: 통영생굴무침" />
@@ -452,23 +480,34 @@ export function DetailPageTool() {
         </div>
       </div>
     </div>
+
+      {/* 아래: 제작 완료한 상세페이지 히스토리(상품명·첫 섹션 썸네일·검색·불러오기) */}
+      <ToolHistory<DraftState> tool="detail-page" onLoad={loadHistory} fileName={(t) => `${t}_썸네일.jpg`} />
+    </div>
   )
 }
 
 // 미리보기: 860 폭 문서를 칸 너비에 맞춰 줄여 보여 준다
+// 보기 배율: 오른쪽 위 − / + 로 40% ~ 100%(10% 단위). 가운데 숫자를 누르면 칸 너비에 맞춤으로 돌아간다
+const ZOOMS = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+
 export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const frame = useRef<HTMLIFrameElement>(null)
-  const [scale, setScale] = useState(0.6)
+  const [fit, setFit] = useState(0.6)
+  const [zoom, setZoom] = useState<number | null>(null) // null = 칸 너비에 맞춤
+  const scale = zoom ?? fit
   const [height, setHeight] = useState(400)
 
   useEffect(() => {
     const el = box.current
     if (!el) return
-    const ro = new ResizeObserver(() => setScale(Math.min(1, el.clientWidth / 860)))
+    const ro = new ResizeObserver(() => setFit(Math.min(1, el.clientWidth / 860)))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  const smaller = [...ZOOMS].reverse().find((z) => z < scale - 0.001)
+  const bigger = ZOOMS.find((z) => z > scale + 0.001)
 
   // 문서 높이를 따라간다(웹폰트·그림이 늦게 들어와도)
   const measure = () => {
@@ -480,7 +519,26 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
   }
 
   return (
-    <SmoothScrollArea className="max-h-[calc(100svh-9rem)] overflow-y-auto rounded-xl border bg-[#444]" contentClassName="p-0">
+    <div className="relative">
+      {!empty && (
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 rounded-full border bg-background/90 p-0.5 shadow-md backdrop-blur" role="group" aria-label="보기 배율">
+          <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="작게 보기" disabled={!smaller} onClick={() => smaller && setZoom(smaller)}>
+            <Minus />
+          </Button>
+          <button
+            type="button"
+            className="min-w-12 rounded-full px-1 text-xs font-medium tabular-nums hover:bg-accent"
+            title={zoom === null ? "칸 너비에 맞춤" : "누르면 칸 너비에 맞춤"}
+            onClick={() => setZoom(null)}
+          >
+            {Math.round(scale * 100)}%
+          </button>
+          <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="크게 보기" disabled={!bigger} onClick={() => bigger && setZoom(bigger)}>
+            <Plus />
+          </Button>
+        </div>
+      )}
+    <SmoothScrollArea className="max-h-[calc(100svh-9rem)] overflow-auto rounded-xl border bg-[#444]" contentClassName="p-0">
       <div ref={box} className="w-full">
         {empty ? (
           <div className="flex h-80 flex-col items-center justify-center gap-2 text-sm text-white/70">
@@ -501,6 +559,7 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
         )}
       </div>
     </SmoothScrollArea>
+    </div>
   )
 }
 

@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS tool_history_tool ON tool_history(tool, created_at);
 // 입력에 넣은 그림(이렇게 보내드려요 사진 등)의 파일 id 목록(JSON). 불러오기 때 다시 받는다. 기록을 지우면 다른 데서 안 쓰는 그림은 지운다
 addColumn('tool_history', 'asset_ids', "TEXT NOT NULL DEFAULT '[]'")
 
-const TOOLS = new Set(['product-notice', 'ship'])
+const TOOLS = new Set(['product-notice', 'ship', 'detail-page'])
 // 디자인 툴은 로그인한 누구나(요청자·작업자·관리자) 쓴다
 const canUse = (_u: PublicUser) => true
 
