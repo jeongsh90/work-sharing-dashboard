@@ -25,6 +25,7 @@ export type CertLayout = {
   pageImage: string // data:image/jpeg;base64,...
   pageCount: number
   issued: string | null // PDF 발행일 yyyy-MM-dd (못 읽으면 null)
+  produced: string | null // 표 첫 칸 생산일자 값, PDF 에 적힌 그대로(예 10.22). 말풍선에 이 값을 쓴다
   highlight: Box | null
   tag: { left: number; top: number } | null // '생식용 굴' 말풍선(164×50)
   dateBox: { left: number; top: number } | null // '수매일자' 말풍선(164×112)
@@ -66,7 +67,6 @@ export async function analyzePurchaseCert(pdf: Buffer): Promise<CertLayout> {
     const dm = /(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})/.exec(issuedLine)
     const pad = (n: string) => n.padStart(2, '0')
     const issued = dm ? `${dm[1]}-${pad(dm[2])}-${pad(dm[3])}` : null
-    if (!issued) warnings.push('PDF 에서 발행일을 읽지 못했습니다. 수매일자를 직접 골라 주세요.')
 
     // 픽셀(표 선 찾기): 밝기 < 120 = 선
     const { data: px, info } = await sharp(jpg).greyscale().raw().toBuffer({ resolveWithObject: true })
@@ -98,6 +98,7 @@ export async function analyzePurchaseCert(pdf: Buffer): Promise<CertLayout> {
 
     // 7-5. 표 첫 칸(생산일자) → 수매일자 말풍선
     let dateBox: CertLayout['dateBox'] = null
+    let produced: string | null = null
     const hd = words.find((w) => /^(중량|품목|수량)/.test(w.t))
     if (hd) {
       const c1 = words.filter((w) => Math.abs(w.y - hd.y) < 40).sort((a, b) => a.x - b.x)[0]
@@ -112,14 +113,30 @@ export async function analyzePurchaseCert(pdf: Buffer): Promise<CertLayout> {
       while (dark(vx, y) && y < PH) y++
       const B = scanY(vx, y, 1)
       dateBox = { left: R * s + 4 - 164, top: ((T + B) / 2) * s - 56 }
+      // 생산일자 값: 첫 칸 머리 아래(값 칸) 안에 든 글자를 PDF 에 적힌 그대로 읽는다(예 10.22)
+      const cell = words
+        .filter((w) => {
+          const mx = w.x + w.w / 2
+          const my = w.y + w.h / 2
+          return mx > L && mx < R && my > mid && my < B
+        })
+        .sort((a, b) => a.y - b.y || a.x - b.x)
+      const text = cell
+        .map((w) => w.t)
+        .join(' ')
+        .replace(/\s*([./-])\s*/g, '$1')
+        .trim()
+      produced = text || null
     } else {
-      warnings.push('PDF 에서 표(생산일자 칸)를 찾지 못해 수매일자 말풍선을 기본 위치에 넣었습니다.')
+      warnings.push('PDF 에서 표(생산일자 칸)를 찾지 못해 생산일자 말풍선을 기본 위치에 넣었습니다.')
     }
+    if (dateBox && !produced) warnings.push('PDF 에서 생산일자 값을 읽지 못했습니다. 직접 입력해 주세요.')
 
     return {
       pageImage: `data:image/jpeg;base64,${jpg.toString('base64')}`,
       pageCount,
       issued,
+      produced,
       highlight,
       tag,
       dateBox,

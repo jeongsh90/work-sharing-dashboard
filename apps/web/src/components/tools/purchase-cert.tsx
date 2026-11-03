@@ -3,13 +3,14 @@ import { AlertTriangle, Download, FileUp, LoaderCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { DateRangePicker } from "@/components/date-range-picker"
+import { Input } from "@/components/ui/input"
 import { apiFetch, ApiError } from "@/lib/api"
 import { FONT, loadFonts } from "@/lib/canvas-text"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 
 // 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
-// 사양: docs/tools/수매확인서_툴_사양.md (Figma 셰프애찬 461:212). 고칠 수 있는 건 수매일자뿐이다.
+// 사양: docs/tools/수매확인서_툴_사양.md (Figma 셰프애찬 461:212). 고칠 수 있는 건 생산일자뿐이다.
+// 말풍선은 '생산일자' + PDF 표 첫 칸(생산일자)에 적힌 값 그대로(예 10.22). 서버가 OCR 로 읽어 채운다.
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다. PDF 분석(이미지·OCR·위치)은 서버가 한다(apps/api/src/purchase-cert.ts).
 
 type Box = { l: number; t: number; r: number; b: number }
@@ -17,6 +18,7 @@ type Layout = {
   pageImage: string
   pageCount: number
   issued: string | null
+  produced: string | null
   highlight: Box | null
   tag: { left: number; top: number } | null
   dateBox: { left: number; top: number } | null
@@ -31,7 +33,7 @@ const INK = "#111111"
 const SUB = "#555555"
 const PAPER = { x: 120, y: 392 + 80, w: 620, h: 877 } // 이미지 영역(392부터 1037) 가운데, 위아래 80
 
-// 표를 못 찾았을 때 수매일자 말풍선 기본 위치(사양 7-6 기준값)
+// 표를 못 찾았을 때 생산일자 말풍선 기본 위치(사양 7-6 기준값)
 const DEFAULT_LAYOUT: Pick<Layout, "highlight" | "tag" | "dateBox"> = {
   highlight: { l: 79, t: 422, r: 146, b: 441 },
   tag: { left: 31, top: 455 },
@@ -102,7 +104,7 @@ function bubbleBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   ctx.restore()
 }
 
-async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, layout: Pick<Layout, "highlight" | "tag" | "dateBox">, mmdd: string) {
+async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, layout: Pick<Layout, "highlight" | "tag" | "dateBox">, value: string) {
   await loadFonts()
   const pattern = await loadImage(patternUrl)
   const ctx = canvas.getContext("2d")!
@@ -197,7 +199,7 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
     centerText(ctx, "생식용 굴", 24, -0.02, tag.left + 82, tag.top + 2 + 23)
   }
 
-  // '수매일자' 말풍선 164×112: 머리 칸 160×50(#f5f5f5, 아래 선 2px 주황) + 날짜 칸 160×58
+  // '생산일자' 말풍선 164×112: 머리 칸 160×50(#f5f5f5, 아래 선 2px 주황) + 날짜 칸 160×58
   if (dateBox) {
     const { left: x, top: y } = dateBox
     bubble(ctx, x, y, 164, 112)
@@ -211,13 +213,11 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
     ctx.fillRect(x + 2, y + 2 + 48, 160, 2)
     ctx.restore()
     bubbleBorder(ctx, x, y, 164, 112)
-    centerText(ctx, "수매일자", 24, -0.013, x + 82, y + 2 + 24)
-    centerText(ctx, mmdd, 31, -0.01, x + 82, y + 52 + 29)
+    centerText(ctx, "생산일자", 24, -0.013, x + 82, y + 2 + 24)
+    centerText(ctx, value, 31, -0.01, x + 82, y + 52 + 29)
   }
   ctx.restore()
 }
-
-const toMMDD = (iso: string) => (iso ? `${iso.slice(5, 7)}.${iso.slice(8, 10)}` : "MM.DD")
 
 export function PurchaseCertTool() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -225,13 +225,13 @@ export function PurchaseCertTool() {
   const [pdfName, setPdfName] = useState<string | null>(null)
   const [layout, setLayout] = useState<Layout | null>(null)
   const [page, setPage] = useState<HTMLImageElement | null>(null)
-  const [date, setDate] = useState("") // 수매일자 yyyy-MM-dd(이것만 고칠 수 있다)
+  const [date, setDate] = useState("") // 생산일자: PDF 에 적힌 그대로(이것만 고칠 수 있다)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // 입력이 바뀔 때마다 다시 그린다
   useEffect(() => {
-    if (canvasRef.current) void draw(canvasRef.current, page, layout ?? NO_MARKS, toMMDD(date))
+    if (canvasRef.current) void draw(canvasRef.current, page, layout ?? NO_MARKS, date.trim() || "MM.DD")
   }, [page, layout, date])
 
   const attach = async (file: File | undefined) => {
@@ -250,7 +250,7 @@ export function PurchaseCertTool() {
       const next = body as Layout
       setPage(await loadImage(next.pageImage))
       setLayout({ ...next, dateBox: next.dateBox ?? DEFAULT_LAYOUT.dateBox })
-      if (next.issued) setDate(next.issued)
+      setDate(next.produced ?? "")
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "PDF 를 읽지 못했습니다.")
       setPdfName(null)
@@ -259,7 +259,7 @@ export function PurchaseCertTool() {
     }
   }
 
-  const ready = !!page && !!date
+  const ready = !!page && !!date.trim()
   const fileName = "2026.jpg" // 다운로드 파일 이름은 늘 2026.jpg
 
   const download = () => {
@@ -288,7 +288,7 @@ export function PurchaseCertTool() {
         />
       </div>
 
-      {/* 오른쪽: 파일 첨부 · 수매일자 · 다운로드(넓은 화면에서는 스크롤해도 따라온다) */}
+      {/* 오른쪽: 파일 첨부 · 생산일자 · 다운로드(넓은 화면에서는 스크롤해도 따라온다) */}
       <div className="col-span-12 flex flex-col gap-5 lg:sticky lg:top-6 lg:col-span-4 lg:self-start">
         <Field>
           <FieldLabel>수매확인서 PDF</FieldLabel>
@@ -305,7 +305,7 @@ export function PurchaseCertTool() {
           >
             {busy ? <LoaderCircle className="size-6 animate-spin" aria-hidden /> : <FileUp className="size-6" aria-hidden />}
             <span className="font-medium text-foreground">{busy ? "PDF 를 읽는 중… (20~30초)" : pdfName ?? "PDF 를 끌어 놓거나 눌러서 고르세요"}</span>
-            <span className="text-xs">첫 장을 이미지로 바꿔 왼쪽 종이에 넣고, '생식용 굴'·수매일자 위치를 찾습니다.</span>
+            <span className="text-xs">첫 장을 이미지로 바꿔 왼쪽 종이에 넣고, '생식용 굴'·생산일자를 찾습니다.</span>
           </button>
           <input
             ref={fileRef}
@@ -328,19 +328,9 @@ export function PurchaseCertTool() {
         ))}
 
         <Field>
-          <FieldLabel htmlFor="cert-date">수매일자</FieldLabel>
-          {/* shadcn 달력(한 날짜) */}
-          <DateRangePicker
-            id="cert-date"
-            single
-            value={date ? { from: new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))), to: undefined } : undefined}
-            onChange={(r) => {
-              const d = r?.from
-              if (d) setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
-            }}
-            placeholder="PDF 를 올리면 발행일로 채워집니다"
-          />
-          <FieldDescription>PDF 의 발행일로 채워집니다. 문서에서 고칠 수 있는 곳은 수매일자뿐입니다.</FieldDescription>
+          <FieldLabel htmlFor="cert-date">생산일자</FieldLabel>
+          <Input id="cert-date" value={date} onChange={(e) => setDate(e.target.value)} maxLength={20} placeholder="PDF 를 올리면 표의 생산일자로 채워집니다" className="tabular-nums" />
+          <FieldDescription className="break-keep">PDF 표의 생산일자 칸에 적힌 그대로 들어갑니다(예 10.22). 잘못 읽혔을 때만 고쳐 주세요.</FieldDescription>
         </Field>
 
         <Button size="lg" disabled={!ready || busy} onClick={download}>
