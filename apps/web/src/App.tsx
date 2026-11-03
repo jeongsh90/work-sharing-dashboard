@@ -72,7 +72,7 @@ function Placeholder() {
 }
 
 // 떠 있는 버튼 수에 맞춘 아래 여백(맨 위·맨 아래 버튼 묶음 몫 포함)
-const DOCK_PAD = ['pb-24', 'pb-40', 'pb-56', 'pb-72']
+const DOCK_PAD = ['pb-32', 'pb-48', 'pb-64', 'pb-80']
 
 // 자동 새로 고침을 하지 않는 화면(긴 글을 쓰는 화면)
 const NO_AUTO_RELOAD = new Set<string>(['request', 'notice-edit'])

@@ -56,14 +56,14 @@ function DockButton({
 // 맨 위로·맨 아래로(긴 화면에서 한 번에 이동). 떠 있는 버튼 묶음 맨 위에 두고, 묶음이 없는 화면(요청 상세)에서는 따로 띄운다
 export function ScrollEdgeButtons() {
   return (
-    <div className="flex w-12 flex-col overflow-hidden rounded-full border bg-background/90 shadow-lg backdrop-blur">
+    // 다른 떠 있는 버튼(컨펌 대기·받은 요청)과 같은 기본 버튼 모양
+    <div className="flex flex-col gap-3">
       {(["top", "bottom"] as const).map((edge) => (
         <Tooltip key={edge}>
           <TooltipTrigger asChild>
             <Button
-              variant="ghost"
               size="icon"
-              className="h-10 w-12 rounded-none"
+              className="size-12 rounded-full shadow-lg [&_svg:not([class*='size-'])]:size-5"
               aria-label={edge === "top" ? "맨 위로" : "맨 아래로"}
               onClick={() => scrollToEdge(edge)}
             >
