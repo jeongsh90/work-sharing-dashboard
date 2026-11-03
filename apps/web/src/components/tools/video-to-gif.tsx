@@ -862,7 +862,7 @@ export function VideoConvertTool() {
 
       {/* 왼쪽: 미리보기(동영상) → 결과(GIF) */}
       {source && (
-        <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:order-1 lg:col-span-7">
+        <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:order-1 lg:col-span-7 lg:self-start">
           {result ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
