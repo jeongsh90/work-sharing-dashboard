@@ -120,7 +120,7 @@ export function designerTitle(d: Designer) {
 }
 
 // 요청서의 작업 종류
-export const WORK_TYPES = ['메인 배너', '띠 배너', '상세페이지', '기획전 페이지', 'SNS 콘텐츠', '인쇄물', '간단 수정', '기타']
+export const WORK_TYPES = ['메인 배너', '띠 배너', '상세페이지', '기획전 페이지', '프로모션', 'SNS 콘텐츠', '인쇄물', '간단 수정', '기타']
 
 export const STATUS_LABEL: Record<RequestStatus, string> = {
   requested: '요청됨',
@@ -304,6 +304,7 @@ export type RequestDetailDto = RequestSummaryDto & {
   events: EventDto[]
   actions: RequestAction[]
   undo: { label: string; to: RequestStatus } | null // 작업 취소로 되돌릴 마지막 단계와 돌아갈 상태
+  finalApprover: string | null // 부서별 최종 컨펌자(정해진 부서만). 이 사람이 컨펌해야 완료
 }
 
 // 진행 기록에 보이는 동작 이름

@@ -157,7 +157,8 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
         </p>
       ) : (
         <div className="flex flex-col gap-4">
-          {rounds.length > 1 && (
+          {/* 반려된 차수도 탭으로 남겨 이전 시안을 다시 본다(한 차수뿐이어도 보임) */}
+          {rounds.length > 0 && (
             <Tabs value={String(shown.round)} onValueChange={(v) => setRound(Number(v))}>
               <TabsList>
                 {rounds.map((s) => (
@@ -255,6 +256,12 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           <Meta label="요청자">
             {detail.requesterName}
             {detail.department && <span className="text-muted-foreground"> · {detail.department}</span>}
+            {/* 부서별 최종 컨펌자: 이 사람이 컨펌해야 완료 */}
+            {detail.finalApprover && (
+              <span className="mt-1 flex w-fit items-center rounded-full bg-teal-500/15 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
+                최종 컨펌 {userName(detail.finalApprover)}
+              </span>
+            )}
             {/* 대신 작성한 요청: 받은 경로와 쓴 사람 */}
             {detail.source && (
               <span className="mt-1 flex w-fit items-center rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">

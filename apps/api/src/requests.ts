@@ -1,5 +1,6 @@
 import { all, get, run, transaction } from './db.ts'
 import { findUser, isManager, listUsers, type PublicUser } from './users.ts'
+import { approverFor } from './dept-approvers.ts'
 
 // 디자인 요청의 진행 흐름(상태 기계).
 // 요청됨 → (담당 지정) 작업 대기 → (작업 시작) 작업 중 → (컨펌 요청) 시안 확인
@@ -175,6 +176,9 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   const assignee = assignees.includes(user.id)
   const manager = isManager(user)
   const designer = user.role === 'designer'
+  // 부서별 최종 컨펌자(정해진 부서만): 컨펌·반려·핀 댓글을 할 수 있다
+  const finalBy = approverFor(req.department)
+  const approver = !!finalBy && finalBy === user.id
   const active = ACTIVE.includes(req.status)
   const s = req.status
   const can: Record<Action, boolean> = {
@@ -199,14 +203,15 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
             return !open || !partsOf(open.id).some((p) => p.user_id === user.id)
           })()
         : assignee || manager),
-    reject: (owner || manager) && s === 'review',
-    approve: (owner || manager) && s === 'review',
+    reject: (owner || manager || approver) && s === 'review',
+    // 부서별 최종 컨펌자가 정해진 부서(예: 마케팅 1팀)는 그 사람만 컨펌(완료 처리)할 수 있다
+    approve: s === 'review' && (finalBy ? approver : owner || manager),
     complete: (assignee || manager) && s === 'approved',
     'upload-source': (assignee || manager) && s === 'source-pending',
     cancel: active && (owner || manager),
     // 핀은 시안 확인 중일 때 최신 시안에만 꽂는다. 핀 댓글·일반 댓글은 관계자 누구나
-    pin: s === 'review' && (owner || manager || assignee || designer),
-    comment: s !== 'canceled' && (owner || manager || assignee || designer),
+    pin: s === 'review' && (owner || manager || assignee || designer || approver),
+    comment: s !== 'canceled' && (owner || manager || assignee || designer || approver),
     resolve: assignee || manager,
     // 요청자 확인 필요: 상태는 그대로 두고 요청자에게 확인해 달라는 알림만 보낸다(담당 작업자·관리자)
     'ask-requester': active && !owner && (assignee || manager),
@@ -505,6 +510,8 @@ export function requestDetail(user: PublicUser, id: number) {
     comments: comments.filter((c) => c.pinId === null),
     events,
     actions: availableActions(user, row, assigneesOf(id)),
+    // 부서별 최종 컨펌자(정해진 부서만). 이 사람이 컨펌해야 완료된다
+    finalApprover: approverFor(row.department),
     undo: undoInfo(row),
   }
 }
@@ -787,7 +794,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           if (left.length === 0) {
             setStatus(req, 'review')
             logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · 작업자 ${assignees.length}명 모두 올림${note ? ` · ${note}` : ''}`)
-            notify([req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
+            notify([req.requester_id, approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
             notify(assignees, user.id, id, `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}`)
           } else {
             run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
@@ -808,7 +815,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         if (count === 0) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
         setStatus(req, 'review')
         logEvent(id, user.id, action, req.status, 'review', note ? `${round}차 시안 · ${note}` : `${round}차 시안`)
-        notify([req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다: ${req.title}`)
+        notify([req.requester_id, approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다: ${req.title}`)
         return
       }
       case 'reject':

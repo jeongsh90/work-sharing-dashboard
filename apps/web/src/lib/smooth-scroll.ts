@@ -11,6 +11,13 @@ export function scrollToElement(el: HTMLElement) {
   else el.scrollIntoView({ block: 'center' })
 }
 
+// 페이지 맨 위·맨 아래로 부드럽게(오른쪽 아래 버튼)
+export function scrollToEdge(edge: 'top' | 'bottom') {
+  const y = edge === 'top' ? 0 : document.documentElement.scrollHeight
+  if (pageLenis) pageLenis.scrollTo(y)
+  else window.scrollTo({ top: y, behavior: 'smooth' })
+}
+
 // 열린 창(대화상자)·메뉴가 없는데 스크롤 잠금이 남아 있으면 푼다.
 // (Radix 창이 닫히는 도중 화면이 바뀌면 body 의 잠금 표시가 남아 페이지 스크롤이 멈출 수 있다)
 // 휠을 굴릴 때마다 불리므로 잠금이 실제로 남아 있을 때만 DOM 을 찾고 고친다(평소에는 속성 몇 개만 본다).

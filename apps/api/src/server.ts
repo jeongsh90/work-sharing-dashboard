@@ -52,6 +52,7 @@ import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateL
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { renderDetail } from './detail-render.ts'
 import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, updateDetailDraft } from './detail-drafts.ts'
+import { deleteDeptApprover, listDeptApprovers, setDeptApprover } from './dept-approvers.ts'
 import { addLanIp, deleteLanIp, lanAddress, listLanIps, listLanMisses, reportLan, startLan, updateLanIp } from './lan.ts'
 import {
   addFtpServer,
@@ -377,6 +378,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   touchSeen(user.id)
 
   // ── 사내망 직통 PC(IP) 등록(관리 → 사내망 직통, 슈퍼관리자, lan.ts) ──
+  // 부서별 최종 컨펌자(팀 관리, 슈퍼관리자가 정함. 보기는 로그인한 누구나)
+  if (path === '/api/dept-approvers') {
+    if (method === 'GET') return sendJson(res, 200, listDeptApprovers())
+    if (method === 'POST') return sendJson(res, 200, setDeptApprover(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/dept-approvers\/([^/]+)$/)) && method === 'DELETE') return sendJson(res, 200, deleteDeptApprover(user, decodeURIComponent(m[1])))
   if (path === '/api/lan/report' && method === 'POST') return sendJson(res, 200, await reportLan(user, await readJson(req), String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()))
   if (path === '/api/lan/misses' && method === 'GET') return sendJson(res, 200, listLanMisses(user))
   if (path === '/api/lan/ips') {

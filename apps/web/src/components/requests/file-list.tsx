@@ -31,8 +31,9 @@ export function AuthImage({
   }
   if (!url) {
     return (
-      <div className={`flex min-h-40 items-center justify-center bg-muted ${className ?? ""}`}>
-        <LoaderCircle className="size-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="불러오는 중" />
+      <div className={`flex min-h-40 w-full items-center justify-center gap-2 bg-muted text-sm text-muted-foreground ${className ?? ""}`}>
+        <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" aria-label="불러오는 중" />
+        <span className="hidden sm:inline">이미지를 불러오는 중…</span>
       </div>
     )
   }

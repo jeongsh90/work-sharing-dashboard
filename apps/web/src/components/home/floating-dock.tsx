@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom"
-import { FileImage, Inbox, type LucideIcon } from "lucide-react"
+import { ArrowDownToLine, ArrowUpToLine, FileImage, Inbox, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -10,6 +10,7 @@ import { updateStoredUser, type Session } from "@/lib/auth"
 import { setTeamPresence, type Presence } from "@/lib/presence"
 import { isActive } from "@/lib/requests"
 import { navigate } from "@/lib/router"
+import { scrollToEdge } from "@/lib/smooth-scroll"
 import { isDesignWorker, useDesigners, useRequests } from "@/lib/store"
 
 // 모든 화면 오른쪽 아래에 떠 있는 버튼 묶음. 위에서부터
@@ -49,6 +50,35 @@ function DockButton({
       </TooltipContent>
     </Tooltip>
   )
+}
+
+
+// 맨 위로·맨 아래로(긴 화면에서 한 번에 이동). 떠 있는 버튼 묶음 맨 위에 두고, 묶음이 없는 화면(요청 상세)에서는 따로 띄운다
+export function ScrollEdgeButtons() {
+  return (
+    <div className="flex w-12 flex-col overflow-hidden rounded-full border bg-background/90 shadow-lg backdrop-blur">
+      {(["top", "bottom"] as const).map((edge) => (
+        <Tooltip key={edge}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-12 rounded-none"
+              aria-label={edge === "top" ? "맨 위로" : "맨 아래로"}
+              onClick={() => scrollToEdge(edge)}
+            >
+              {edge === "top" ? <ArrowUpToLine /> : <ArrowDownToLine />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">{edge === "top" ? "맨 위로" : "맨 아래로"}</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  )
+}
+
+export function FloatingScrollEdge({ raised = false }: { raised?: boolean }) {
+  return createPortal(<div className={`fixed right-6 z-30 ${raised ? "bottom-28" : "bottom-6"}`}><ScrollEdgeButtons /></div>, document.body)
 }
 
 // 화면 아래 여백 계산용: 이 사용자에게 보이는 버튼 수
@@ -97,6 +127,7 @@ export function FloatingDock({
 
   return createPortal(
     <div className={`fixed right-6 z-30 flex flex-col items-end gap-3 ${raised ? "bottom-28" : "bottom-6"}`}>
+      <ScrollEdgeButtons />
       {(manager || requester) && (
         <DockButton
           icon={FileImage}

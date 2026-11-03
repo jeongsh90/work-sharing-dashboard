@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { AuthImage } from "@/components/requests/file-list"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
-import { api, ApiError, downloadFile, sizeForWidth, sizeRank, type ImageSize } from "@/lib/api"
+import { api, ApiError, downloadFile, fileUrl, sizeForWidth, sizeRank, type ImageSize } from "@/lib/api"
 import type { Session } from "@/lib/auth"
 import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
 import { scrollToElement } from "@/lib/smooth-scroll"
@@ -68,6 +68,22 @@ export function ReviewBoard({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  // 다른 차수(반려된 시안 포함) 이미지도 뒤에서 미리 받아 둔다. 세로로 아주 긴 시안은 몇 MB 라 탭을 누를 때 기다리지 않게
+  useEffect(() => {
+    if (!imageSize) return
+    let alive = true
+    const others = detail.submissions.filter((s) => s.id !== submission.id).flatMap((s) => s.files.filter((f) => f.mime.startsWith("image/")))
+    void (async () => {
+      for (const f of others) {
+        if (!alive) return
+        await fileUrl(f.id, imageSize).catch(() => {})
+      }
+    })()
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageSize])
 
   const select = (id: number, scrollTo: "image" | "thread") => {
     setSelected(id)

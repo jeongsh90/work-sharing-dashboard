@@ -6,7 +6,7 @@ import { HomePage } from '@/components/home/home-page'
 import { OverlayScrollbar } from '@/components/overlay-scrollbar'
 import { LoginForm } from '@/components/login-form'
 import { PageState } from '@/components/page-state'
-import { dockItemCount, FloatingDock } from '@/components/home/floating-dock'
+import { dockItemCount, FloatingDock, FloatingScrollEdge } from '@/components/home/floating-dock'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { reportLanAfterLogin, UNAUTHORIZED_EVENT } from '@/lib/api'
 import { useAskOnFirstClick } from '@/lib/desktop-notify'
@@ -71,7 +71,8 @@ function Placeholder() {
   )
 }
 
-const DOCK_PAD = ['', 'pb-16', 'pb-32', 'pb-48']
+// 떠 있는 버튼 수에 맞춘 아래 여백(맨 위·맨 아래 버튼 묶음 몫 포함)
+const DOCK_PAD = ['pb-24', 'pb-40', 'pb-56', 'pb-72']
 
 // 자동 새로 고침을 하지 않는 화면(긴 글을 쓰는 화면)
 const NO_AUTO_RELOAD = new Set<string>(['request', 'notice-edit'])
@@ -290,6 +291,8 @@ export default function App() {
           <Suspense fallback={<PageState />}>{content}</Suspense>
         </div>
         {showDock && <FloatingDock session={session} onSessionChange={setSession} raised={page === 'request'} />}
+        {/* 요청 상세는 떠 있는 버튼 묶음이 없어 맨 위·맨 아래 버튼만(아래 진행 버튼 막대 위로) */}
+        {!showDock && <FloatingScrollEdge raised />}
       </SidebarInset>
     </SidebarProvider>
   )

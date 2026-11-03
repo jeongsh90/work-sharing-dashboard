@@ -24,11 +24,12 @@ import { api, ApiError } from "@/lib/api"
 import { COMPANY_EMAIL_DOMAIN, ROLE_LABEL, type Role, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
-import { DESIGN_TEAM, invalidate, isDesignWorker, useUsers, type UserInfo } from "@/lib/store"
+import { DESIGN_TEAM, invalidate, isDesignWorker, useApi, useUserNames, useUsers, type UserInfo } from "@/lib/store"
 
 // 팀 관리(관리자): 계정 만들기, 역할·부서 바꾸기, 비밀번호 정해 주기, 사용 중지
 export function TeamPage({ session }: { session: Session }) {
   const { users, error } = useUsers()
+  const { data: approvers } = useApi<DeptApprover[]>("/dept-approvers")
   const [editing, setEditing] = useState<UserInfo | "new" | null>(null)
 
   if (!users) return <PageState error={error} />
@@ -74,6 +75,7 @@ export function TeamPage({ session }: { session: Session }) {
               <div className="flex items-center gap-2 border-b px-4 py-3">
                 <h3 className="font-semibold">{team}</h3>
                 <span className="text-sm text-muted-foreground tabular-nums">{list.length}명</span>
+                {team !== NO_TEAM && <FinalApprover team={team} members={list} approvers={approvers} editable={session.role === "superadmin"} />}
               </div>
               <ul className="flex flex-col divide-y">
                 {list.map((u) => (
@@ -375,5 +377,50 @@ function UserDialog({ user, session, onClose }: { user: UserInfo | null; session
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ── 부서별 최종 컨펌자: 그 부서 요청은 이 사람이 컨펌해야 완료된다(서버 dept-approvers.ts). 슈퍼관리자가 정한다 ──
+type DeptApprover = { key: string; department: string; userId: string; createdAt: number }
+const NONE = "__none__"
+
+function FinalApprover({ team, members, approvers, editable }: { team: string; members: UserInfo[]; approvers: DeptApprover[] | null | undefined; editable: boolean }) {
+  const key = team.replace(/s+/g, "")
+  const current = approvers?.find((a) => a.key === key) ?? null
+  const userName = useUserNames()
+  const [busy, setBusy] = useState(false)
+  if (!editable) {
+    return current ? (
+      <span className="ml-auto rounded-full bg-teal-500/15 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">최종 컨펌 {userName(current.userId)}</span>
+    ) : null
+  }
+  const change = async (v: string) => {
+    setBusy(true)
+    try {
+      if (v === NONE) await api(`/dept-approvers/${encodeURIComponent(key)}`, { method: "DELETE" })
+      else await api("/dept-approvers", { body: { department: team, userId: v } })
+      invalidate()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Select value={current?.userId ?? NONE} onValueChange={(v) => void change(v)} disabled={busy}>
+      <SelectTrigger size="sm" className="ml-auto h-7 w-auto gap-1 text-xs" aria-label={`${team} 최종 컨펌`} title="이 부서 요청은 고른 사람이 컨펌해야 완료됩니다">
+        <span className="text-muted-foreground">최종 컨펌</span>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectItem value={NONE}>없음(요청자·관리자)</SelectItem>
+        {members
+          .filter((m) => m.active)
+          .map((m) => (
+            <SelectItem key={m.id} value={m.id}>
+              {m.name}
+              {m.rank ? ` ${m.rank}` : ""}
+            </SelectItem>
+          ))}
+      </SelectContent>
+    </Select>
   )
 }

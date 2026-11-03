@@ -272,7 +272,8 @@ export function ActionPanel({
           : null
   const canUndo = detail.actions.includes("undo") && detail.undo !== null
 
-  if (available.length === 0 && !detail.actions.includes("edit") && !canUndo) return null
+  const finalNote = detail.status === "review" && !!detail.finalApprover && !detail.actions.includes("approve")
+  if (available.length === 0 && !detail.actions.includes("edit") && !canUndo && !finalNote) return null
 
   return (
     <>
@@ -316,6 +317,10 @@ export function ActionPanel({
             </Button>
           )}
         </div>
+        {/* 최종 컨펌자가 정해진 부서: 다른 사람에게는 누가 컨펌하는지 알려 준다 */}
+        {detail.status === "review" && detail.finalApprover && !detail.actions.includes("approve") && (
+          <p className="text-center text-sm text-muted-foreground">최종 컨펌은 {userName(detail.finalApprover)}님이 합니다.</p>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </BottomBar>
       {open && spec?.dialog && (
