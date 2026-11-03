@@ -41,9 +41,10 @@ async function mapPictures<A, B>(sections: Section[], fn: (p: A) => Promise<B>):
   return out
 }
 
-async function serialize(state: DraftState) {
+// 섹션 안 그림을 올린 파일 id 로 바꾼다(같은 그림은 한 번만 올림). 디자인 툴 히스토리(이렇게 보내드려요)도 쓴다
+export async function serializeSections(list: Section[]) {
   const fileIds: string[] = []
-  const sections = await mapPictures<Picture, PicRef>(state.sections, async (p) => {
+  const sections = await mapPictures<Picture, PicRef>(list, async (p) => {
     let fileId = uploaded.get(p.file)
     if (!fileId) {
       fileId = (await uploadFile(p.file)).id
@@ -52,11 +53,17 @@ async function serialize(state: DraftState) {
     fileIds.push(fileId)
     return { fileId, name: p.name, width: p.width, height: p.height }
   })
+  return { sections, fileIds: [...new Set(fileIds)] }
+}
+
+async function serialize(state: DraftState) {
+  const { sections, fileIds } = await serializeSections(state.sections)
   return { data: { ...state, sections }, fileIds }
 }
 
-async function deserialize(data: DraftState): Promise<DraftState> {
-  const sections = await mapPictures<PicRef, Picture>(data.sections ?? [], async (r) => {
+// 저장해 둔 섹션의 그림을 다시 받아 넣고, 섹션·항목 번호를 새로 매긴다
+export async function deserializeSections(list: Section[]): Promise<Section[]> {
+  const sections = await mapPictures<PicRef, Picture>(list ?? [], async (r) => {
     const res = await apiFetch(`/files/${r.fileId}`)
     if (!res.ok) throw new ApiError(res.status, `그림(${r.name})을 불러오지 못했습니다.`)
     const blob = await res.blob()
@@ -64,8 +71,17 @@ async function deserialize(data: DraftState): Promise<DraftState> {
     uploaded.set(file, r.fileId)
     return { url: URL.createObjectURL(file), name: r.name, width: r.width, height: r.height, file }
   })
+  return renumber(sections)
+}
+
+async function deserialize(data: DraftState): Promise<DraftState> {
+  const fresh = await deserializeSections(data.sections ?? [])
+  return { product: data.product ?? "", category: data.category ?? "", number: data.number ?? "", sections: fresh }
+}
+
+function renumber(sections: Section[]) {
   // 섹션·항목 번호는 이 화면에서 새로 매긴다(새로 더하는 섹션과 겹치지 않게)
-  const fresh = sections.map((s) => {
+  return sections.map((s) => {
     const base = { ...s, id: nextId() } as Section
     if (base.kind === "qa") return { ...base, items: base.items.map((it) => ({ ...it, id: nextId() })) }
     if (base.kind === "ship") {
@@ -73,7 +89,6 @@ async function deserialize(data: DraftState): Promise<DraftState> {
     }
     return base
   })
-  return { product: data.product ?? "", category: data.category ?? "", number: data.number ?? "", sections: fresh }
 }
 
 export function DraftBar({

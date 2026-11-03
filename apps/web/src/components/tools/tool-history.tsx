@@ -19,7 +19,16 @@ export type HistoryItem<F> = {
   createdAt: number
 }
 
-export function ToolHistory<F>({ tool, onLoad }: { tool: string; onLoad?: (form: F) => void }) {
+// fileName: 다시 내려받을 때 이름(기본 "제품명_r.jpg" = 상품정보고시)
+export function ToolHistory<F>({
+  tool,
+  onLoad,
+  fileName = (title) => `${title}_r.jpg`,
+}: {
+  tool: string
+  onLoad?: (form: F) => void | Promise<void>
+  fileName?: (title: string) => string
+}) {
   const { data } = useApi<HistoryItem<F>[]>(`/tools/${tool}/history`, 60_000)
   const [query, setQuery] = useState("")
   const q = query.trim().toLowerCase()
@@ -57,7 +66,7 @@ export function ToolHistory<F>({ tool, onLoad }: { tool: string; onLoad?: (form:
               <button
                 type="button"
                 className="relative block aspect-[3/4] overflow-hidden bg-white"
-                onClick={() => downloadFile(h.fileId, `${h.title}_r.jpg`)}
+                onClick={() => downloadFile(h.fileId, fileName(h.title))}
                 title={`${h.title} 다운로드`}
               >
                 <AuthImage fileId={h.fileId} alt={h.title} size="w640" className="size-full object-cover object-top" />
@@ -70,12 +79,12 @@ export function ToolHistory<F>({ tool, onLoad }: { tool: string; onLoad?: (form:
                   {h.authorName} · {formatDateTime(new Date(h.createdAt))}
                 </p>
                 <div className="mt-1 flex items-center gap-1">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => downloadFile(h.fileId, `${h.title}_r.jpg`)}>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => downloadFile(h.fileId, fileName(h.title))}>
                     <Download data-icon="inline-start" />
                     다운로드
                   </Button>
                   {onLoad && (
-                    <Button size="icon-sm" variant="ghost" aria-label="입력 내용 불러오기" title="입력 내용 불러오기" onClick={() => onLoad(h.form)}>
+                    <Button size="icon-sm" variant="ghost" aria-label="입력 내용 불러오기" title="입력 내용 불러오기" onClick={() => void onLoad(h.form)}>
                       <FileInput />
                     </Button>
                   )}

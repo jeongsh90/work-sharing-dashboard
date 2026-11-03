@@ -2,13 +2,21 @@ import { useEffect, useMemo, useState } from "react"
 import { Check, Copy, Download, LoaderCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { FieldError, FieldGroup } from "@/components/ui/field"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { ToolHistory } from "@/components/tools/tool-history"
 import { api, ApiError } from "@/lib/api"
+import { invalidate } from "@/lib/store"
+import { deserializeSections, serializeSections } from "./drafts"
 import { assetDataUrls, b64ToBytes, Preview, ShipGroup, toDataUrl } from "./detail-page-tool"
 import { autoAlt, buildDocument, newSection, plan, type Picture, type Section } from "./sections"
 
 // 디자인 툴 > 이렇게 보내드려요: 상세페이지 도구의 "이렇게 보내드려요" 섹션만 따로 만든다(같은 입력·같은 디자인).
 // 내용량·아이스박스 포장(정사각형 사진 최대 4개 + 사진 아래 글 + ※ 안내) → 서버가 Edge 로 찍은 860 폭 JPG(p.jpg) 내려받기 + alt 복사.
+// 내려받으면 히스토리에 남는다(제품명·썸네일·사진 포함 입력). 히스토리에서 불러오면 사진까지 그대로 다시 채운다.
+
+// 히스토리에 남기는 입력: 제품명 + 섹션(사진은 올린 파일 id)
+type ShipForm = { title: string; ship: Section }
 
 type Ship = Extract<Section, { kind: "ship" }>
 
@@ -17,6 +25,8 @@ export function ShipTool() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [title, setTitle] = useState("") // 히스토리 제목(제품명)
+  const [loading, setLoading] = useState(false)
 
   const planned = useMemo(() => plan([{ ...ship, layer: "p" }]), [ship])
   const [doc, setDoc] = useState("")
@@ -29,6 +39,23 @@ export function ShipTool() {
   const items = [...ship.products, ...ship.ice]
   const missing = items.some((pr) => !pr.image)
   const alt = autoAlt(planned[0], "")
+  // 제품명을 비우면 내용량 글로 이름을 붙인다
+  const fallbackTitle = [ship.products.map((p) => p.cap.trim()).filter(Boolean).join(" · "), "이렇게 보내드려요"].filter(Boolean)[0]
+
+  const loadForm = async (f: ShipForm) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [next] = await deserializeSections([f.ship])
+      if (next?.kind === "ship") setShip(next as Ship)
+      setTitle(f.title ?? "")
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "불러오지 못했습니다.")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const download = async () => {
     if (missing) return setError("빈 사진 칸에 사진을 넣거나 칸을 빼 주세요.")
@@ -46,6 +73,15 @@ export function ShipTool() {
       a.download = "p.jpg"
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      // 히스토리에 남긴다(사진도 올려 두어 나중에 그대로 불러온다). 실패해도 내려받기는 끝났으니 조용히 넘긴다
+      void (async () => {
+        const { sections, fileIds } = await serializeSections([ship])
+        const form: ShipForm = { title: title.trim(), ship: sections[0] }
+        await api("/tools/ship/history", {
+          body: { title: title.trim() || fallbackTitle, fileName: "p.jpg", form, fileIds, image: `data:image/jpeg;base64,${shot.data}` },
+        })
+        invalidate()
+      })().catch(() => {})
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : "만들지 못했습니다.")
     } finally {
@@ -60,7 +96,8 @@ export function ShipTool() {
   }
 
   return (
-    <div className="flex w-full flex-col gap-6 p-4 md:p-6 lg:flex-row lg:items-start">
+    <div className="flex w-full flex-col gap-6 p-4 md:p-6">
+    <div className="flex w-full flex-col gap-6 lg:flex-row lg:items-start">
       {/* 왼쪽: 미리보기(내려받는 이미지 그대로) */}
       <div className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:flex-[7]">
         <h3 className="font-semibold">미리보기</h3>
@@ -70,6 +107,17 @@ export function ShipTool() {
       {/* 오른쪽: 입력 */}
       <div className="flex min-w-0 flex-col gap-4 lg:flex-[5]">
         <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="ship-title">제품명</FieldLabel>
+            <Input id="ship-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} placeholder="예: 통영생굴무침" />
+            <FieldDescription>히스토리에 이 이름으로 남습니다(이미지에는 들어가지 않음).</FieldDescription>
+          </Field>
+          {loading && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+              히스토리에서 불러오는 중…
+            </p>
+          )}
           <ShipGroup
             id="ship-p"
             label="내용량"
@@ -106,6 +154,10 @@ export function ShipTool() {
           </div>
         </div>
       </div>
+    </div>
+
+      {/* 아래: 만든 이미지 히스토리(제품명·썸네일·다운로드·검색·불러오기) */}
+      <ToolHistory<ShipForm> tool="ship" onLoad={loadForm} fileName={(t) => `${t}_p.jpg`} />
     </div>
   )
 }

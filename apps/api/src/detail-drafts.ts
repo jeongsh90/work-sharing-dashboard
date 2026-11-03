@@ -81,6 +81,7 @@ async function dropUnused(fileIds: string[]) {
   for (const fileId of fileIds) {
     if (get('SELECT 1 FROM detail_draft_files WHERE file_id = :fileId', { fileId })) continue
     if (get('SELECT 1 FROM tool_history WHERE file_id = :fileId', { fileId })) continue
+    if (get('SELECT 1 FROM tool_history WHERE asset_ids LIKE :like', { like: `%"${fileId}"%` })) continue
     run("DELETE FROM files WHERE id = :fileId AND kind = 'tool' AND request_id IS NULL", { fileId })
     await unlink(join(UPLOAD_DIR, fileId)).catch(() => {})
   }
