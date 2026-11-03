@@ -20,6 +20,7 @@ export type DesignRequest = {
   title: string
   workType: string
   requesterId: string
+  coRequesters: string[] // 공동 요청자(같은 팀, 여러 명)
   requester: string // 요청자 이름
   department: string
   designers: string[] // 담당 작업자 id, 첫 번째가 주 담당
@@ -67,6 +68,7 @@ export type RequestSummaryDto = {
   originalLink: string
   originalTool: string
   designers: string[]
+  coRequesters: string[] // 공동 요청자(같은 팀에서 함께 요청한 사람). 원래 요청자처럼 내 요청·컨펌
   individualConfirm: boolean // 개별 컨펌: 작업자마다 시안을 올리고 모두 올리면 시안 확인으로
   urgency: Urgency
   status: RequestStatus
@@ -83,6 +85,10 @@ export type RequestSummaryDto = {
 
 const toDate = (v: number | null) => (v === null ? null : new Date(v))
 
+// 이 사람이 요청자인지(원래 요청자 또는 공동 요청자)
+export const isRequesterOf = (r: { requesterId: string; coRequesters?: string[] }, userId: string) =>
+  r.requesterId === userId || (r.coRequesters ?? []).includes(userId)
+
 export function toRequest(dto: RequestSummaryDto): DesignRequest {
   return {
     id: String(dto.id),
@@ -90,6 +96,7 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     title: dto.title,
     workType: dto.workType,
     requesterId: dto.requesterId,
+    coRequesters: dto.coRequesters ?? [],
     requester: dto.requesterName,
     source: dto.source ?? "",
     department: dto.department,

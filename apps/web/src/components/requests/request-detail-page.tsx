@@ -255,6 +255,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           <Meta label="작업 종류">{detail.workType}</Meta>
           <Meta label="요청자">
             {detail.requesterName}
+            {detail.coRequesters.length > 0 && `, ${detail.coRequesters.map(userName).join(", ")}`}
             {detail.department && <span className="text-muted-foreground"> · {detail.department}</span>}
             {/* 부서별 최종 컨펌자: 이 사람이 컨펌해야 완료 */}
             {detail.finalApprover && (

@@ -6,7 +6,7 @@ import { RequestTable } from "@/components/home/request-table"
 import { PageState } from "@/components/page-state"
 import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
-import { isActive, isUnassigned, type DesignRequest } from "@/lib/requests"
+import { isActive, isRequesterOf, isUnassigned, type DesignRequest } from "@/lib/requests"
 import { navigate } from "@/lib/router"
 import { useRequests } from "@/lib/store"
 
@@ -29,7 +29,7 @@ export function RequestListPage({ session, mode }: { session: Session; mode: "in
           },
           { id: "all", label: "전체", match: () => true, empty: "아직 들어온 요청이 없습니다." },
         ]
-      : [{ id: "mine", label: "내 요청", match: (r) => r.requesterId === session.id, empty: "보낸 요청이 없습니다." }]
+      : [{ id: "mine", label: "내 요청", match: (r) => isRequesterOf(r, session.id), empty: "보낸 요청이 없습니다." }]
   const ordered = mode === "inbox" && isManager(session) ? [scopes[1], scopes[0], ...scopes.slice(2)] : scopes
 
   if (!requests) return <PageState error={error} />

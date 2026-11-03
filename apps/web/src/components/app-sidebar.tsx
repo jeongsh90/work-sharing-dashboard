@@ -7,7 +7,7 @@ import { isManager, type Session } from "@/lib/auth"
 import { menuFor } from "@/lib/menu"
 import type { NoticeSummary } from "@/lib/notices"
 import { useNotifications } from "@/lib/notifications"
-import type { RequestSummaryDto } from "@/lib/requests"
+import { isRequesterOf, type RequestSummaryDto } from "@/lib/requests"
 import { markSeen, useSeen } from "@/lib/seen"
 import { useApi } from "@/lib/store"
 import { APP_VERSION } from "@/lib/version"
@@ -54,13 +54,13 @@ function useFreshMenus(session: Session, activeId: string) {
   }, [userId, activeId])
 
   const latest = (list: number[]) => (list.length ? Math.max(...list) : 0)
-  const mineReq = (r: RequestSummaryDto) => r.requesterId === userId || r.createdBy === userId
+  const mineReq = (r: RequestSummaryDto) => isRequesterOf(r, userId) || r.createdBy === userId
   const newest: Record<(typeof TRACKED)[number], number> = {
     notices: latest((notices ?? []).filter((n) => n.authorId !== userId && !n.read).map((n) => n.createdAt)),
     // 받은 요청함: 다른 사람이 새로 보낸 요청
     inbox: latest((requests ?? []).filter((r) => !mineReq(r)).map((r) => r.createdAt)),
     // 내 요청: 내 요청에 생긴 변화(보낸 뒤 상태가 바뀐 것)
-    "my-requests": latest((requests ?? []).filter((r) => r.requesterId === userId && r.updatedAt - r.createdAt > 5_000).map((r) => r.updatedAt)),
+    "my-requests": latest((requests ?? []).filter((r) => isRequesterOf(r, userId) && r.updatedAt - r.createdAt > 5_000).map((r) => r.updatedAt)),
     // 최종 파일 보관함: 새로 완료된 작업
     files: latest((requests ?? []).filter((r) => r.completedAt).map((r) => r.completedAt!)),
     share: latest((share ?? []).filter((s) => s.authorId !== userId).map((s) => s.createdAt)),

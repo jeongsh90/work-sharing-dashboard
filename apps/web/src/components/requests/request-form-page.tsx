@@ -25,7 +25,7 @@ import {
   type Urgency,
 } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
-import { invalidate, isDesignWorker } from "@/lib/store"
+import { invalidate, isDesignWorker, useUsers } from "@/lib/store"
 
 // 작업 기간: 날짜는 범위 선택(시작일 ~ 마감일), 마감 시각은 따로 고른다.
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -224,6 +224,9 @@ export function RequestForm({
   // 디자인팀(작업자·디자인팀 관리자)은 등록하면서 바로 담당을 맡을 수 있다(기본 켬)
   const canTake = designer || isDesignWorker(session)
   const [takeSelf, setTakeSelf] = useState(true)
+  // 공동 요청자: 같은 팀(요청 부서)에서 함께 요청하는 사람(여러 명). 원래 요청자처럼 알림·내 요청·컨펌을 한다
+  const [coIds, setCoIds] = useState<string[]>(initial?.coRequesters ?? [])
+  const mainRequester = initial ? initial.requesterId : proxy ? (requesterId && requesterId !== NO_ACCOUNT ? requesterId : session.id) : session.id
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -271,6 +274,7 @@ export function RequestForm({
         dueAt: ongoing ? undefined : dueAt!.getTime(),
         fileIds: uploaded.map((f) => f.id),
         keepFileIds: kept.map((f) => f.id),
+        coRequesterIds: coIds.filter((uid) => uid !== mainRequester),
         ...(proxy && {
           proxy:
             requesterId === NO_ACCOUNT ? { requesterName: requesterName.trim(), source } : { requesterId, source },
@@ -374,6 +378,7 @@ export function RequestForm({
             )}
           </div>
         )}
+        <CoRequesterPicker mainId={mainRequester} department={department} value={coIds} onChange={setCoIds} />
         <Field data-invalid={invalid("title")}>
           <FieldLabel htmlFor="req-title">제목</FieldLabel>
           <Input
@@ -557,5 +562,38 @@ export function RequestFormPage({ session }: { session: Session }) {
         <RequestForm session={session} onDone={(id) => openRequest(id)} />
       </div>
     </div>
+  )
+}
+
+// 함께 요청하는 사람: 요청 부서와 같은 팀 사람을 여러 명 고른다(띄어쓰기만 다른 부서 이름은 같은 팀). 원래 요청자는 빼고 보여 준다
+function CoRequesterPicker({ mainId, department, value, onChange }: { mainId: string; department: string; value: string[]; onChange: (ids: string[]) => void }) {
+  const { users } = useUsers()
+  const team = department.replace(/s+/g, "")
+  const people = (users ?? [])
+    .filter((u) => u.active && u.approved && u.id !== mainId && ((team && u.department.replace(/s+/g, "") === team) || value.includes(u.id)))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"))
+  if (people.length === 0) return null
+  return (
+    <Field>
+      <FieldLabel>함께 요청하는 사람 (선택, 여러 명)</FieldLabel>
+      <div className="flex flex-wrap gap-2">
+        {people.map((u) => {
+          const checked = value.includes(u.id)
+          return (
+            <Label
+              key={u.id}
+              className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 font-normal has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary/5"
+            >
+              <Checkbox checked={checked} onCheckedChange={(v) => onChange(v ? [...value, u.id] : value.filter((id) => id !== u.id))} />
+              {u.name}
+              {u.rank && <span className="text-xs text-muted-foreground">{u.rank}</span>}
+            </Label>
+          )
+        })}
+      </div>
+      <FieldDescription className="break-keep">
+        같은 팀({department.trim()}) 동료를 함께 넣으면 그 사람도 알림을 받고 내 요청에 보이며, 시안 컨펌·반려를 할 수 있습니다.
+      </FieldDescription>
+    </Field>
   )
 }

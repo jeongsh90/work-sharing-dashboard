@@ -90,6 +90,28 @@ function assigneesOf(id: number) {
   )
 }
 
+// ── 공동 요청자 ───────────────────────────────────────
+// 같은 팀 동료를 요청서에 함께 넣으면(여러 명) 원래 요청자와 똑같이 알림을 받고, 내 요청에 보이고, 시안 컨펌·반려를 한다
+function coRequestersOf(id: number) {
+  return all<{ user_id: string }>('SELECT user_id FROM request_coowners WHERE request_id = :id ORDER BY rowid', { id }).map((r) => r.user_id)
+}
+// 알림 받을 요청자들(원래 요청자 + 공동 요청자)
+const requestersOf = (req: { id: number; requester_id: string }) => [req.requester_id, ...coRequestersOf(req.id)]
+
+// 공동 요청자 저장(원래 요청자는 빼고, 쓸 수 있는 계정만, 최대 10명). 새로 들어간 사람을 돌려준다
+function saveCoRequesters(id: number, mainId: string, value: unknown) {
+  if (!Array.isArray(value)) return []
+  const ids = [...new Set(value.filter((v): v is string => typeof v === 'string' && v !== mainId))].slice(0, 10)
+  for (const uid of ids) {
+    const u = findUser(uid)
+    if (!u || !u.active || !u.approved) throw new HttpError(400, '함께 요청하는 사람 중 찾을 수 없는 계정이 있습니다.')
+  }
+  const before = coRequestersOf(id)
+  run('DELETE FROM request_coowners WHERE request_id = :id', { id })
+  for (const uid of ids) run('INSERT INTO request_coowners (request_id, user_id) VALUES (:id, :uid)', { id, uid })
+  return ids.filter((uid) => !before.includes(uid))
+}
+
 // ── 개별 컨펌 ─────────────────────────────────────────
 // 작업자가 둘 이상이고 개별 컨펌을 켠 요청: 작업자마다 이번 차수 시안을 올리고(submission_parts),
 // 마지막 작업자가 올리면 그때 시안 확인으로 넘어간다. 컨펌·반려는 그 차수 전체에 한 번에 한다.
@@ -172,7 +194,7 @@ export function canEditAnytime(user: PublicUser) {
 }
 
 function availableActions(user: PublicUser, req: RequestRow, assignees: string[]): Action[] {
-  const owner = req.requester_id === user.id
+  const owner = req.requester_id === user.id || coRequestersOf(req.id).includes(user.id)
   const assignee = assignees.includes(user.id)
   const manager = isManager(user)
   const designer = user.role === 'designer'
@@ -397,6 +419,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     originalLink: row.original_link,
     originalTool: row.original_tool,
     designers: assigneesOf(row.id),
+    coRequesters: coRequestersOf(row.id), // 공동 요청자(같은 팀, 여러 명)
     individualConfirm: row.individual_confirm === 1,
     urgency: row.urgency,
     status: row.status,
@@ -593,6 +616,9 @@ export function createRequest(user: PublicUser, body: Record<string, unknown>) {
     const id = Number(result.lastInsertRowid)
     saveItems(id, itemList)
     claimFiles(user, body.fileIds, { requestId: id, kind: 'reference' })
+    const mainId = proxy?.requesterId ?? user.id
+    const added = saveCoRequesters(id, mainId, body.coRequesterIds)
+    notify(added, user.id, id, `${user.name}님이 요청에 함께 요청자로 넣었습니다: ${title}`)
     if (!proxy) {
       logEvent(id, user.id, 'create', null, 'requested')
       notify(managersAndDesigners(), user.id, id, `새 디자인 요청: ${title}`)
@@ -650,6 +676,8 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
       }
     }
     claimFiles(user, body.fileIds, { requestId: id, kind: 'reference' })
+    const added = saveCoRequesters(id, req.requester_id, body.coRequesterIds)
+    notify(added, user.id, id, `${user.name}님이 요청에 함께 요청자로 넣었습니다: ${req.title}`)
     logEvent(id, user.id, 'edit', null, null)
     notify(assigneesOf(id), user.id, id, `요청 내용이 수정되었습니다: ${req.title}`)
   })
@@ -687,7 +715,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
   requireAction(user, req, action)
   const note = text(body.note, '메모', { max: 2000 })
   const assignees = assigneesOf(id)
-  const everyone = [req.requester_id, ...assignees]
+  const everyone = [...requestersOf(req), ...assignees]
 
   transaction(() => {
     switch (action) {
@@ -710,7 +738,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         logEvent(id, user.id, action, req.status, 'waiting', `담당: ${nameOf(assignees)} → ${nameOf(ids)}`)
         notify(ids.filter((uid) => !assignees.includes(uid)), user.id, id, `작업자 변경으로 담당이 되었습니다: ${req.title}`)
         notify(assignees.filter((uid) => !ids.includes(uid)), user.id, id, `작업자 변경으로 담당에서 빠졌습니다: ${req.title}`)
-        notify([req.requester_id], user.id, id, `담당 작업자가 바뀌었습니다(${nameOf(ids)}): ${req.title}`)
+        notify(requestersOf(req), user.id, id, `담당 작업자가 바뀌었습니다(${nameOf(ids)}): ${req.title}`)
         return
       }
       case 'assign':
@@ -735,14 +763,14 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           id,
           `담당으로 지정되었습니다: ${req.title}`,
         )
-        notify([req.requester_id], user.id, id, `담당 작업자가 정해졌습니다(${names}): ${req.title}`)
+        notify(requestersOf(req), user.id, id, `담당 작업자가 정해졌습니다(${names}): ${req.title}`)
         return
       }
       case 'request-info': {
         if (!note) throw new HttpError(400, '무엇을 보완해야 하는지 적어 주세요.')
         setStatus(req, 'needs-info')
         logEvent(id, user.id, action, req.status, 'needs-info', note)
-        notify([req.requester_id], user.id, id, `요청 보완이 필요합니다: ${req.title}`)
+        notify(requestersOf(req), user.id, id, `요청 보완이 필요합니다: ${req.title}`)
         return
       }
       case 'resubmit': {
@@ -755,7 +783,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
       case 'start': {
         setStatus(req, 'in-progress', { started_at: req.started_at ?? Date.now() })
         logEvent(id, user.id, action, req.status, 'in-progress', note)
-        notify([req.requester_id], user.id, id, `작업을 시작했습니다: ${req.title}`)
+        notify(requestersOf(req), user.id, id, `작업을 시작했습니다: ${req.title}`)
         return
       }
       case 'submit': {
@@ -799,7 +827,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
             setStatus(req, 'review')
             const how = left.length === 0 ? `작업자 ${assignees.length}명 모두 올림` : `슈퍼관리자가 바로 컨펌 요청(${progress} 올림)`
             logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · ${how}${note ? ` · ${note}` : ''}`)
-            notify([req.requester_id, approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
+            notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
             notify(assignees, user.id, id, `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}`)
           } else {
             run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
@@ -820,7 +848,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         if (count === 0) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
         setStatus(req, 'review')
         logEvent(id, user.id, action, req.status, 'review', note ? `${round}차 시안 · ${note}` : `${round}차 시안`)
-        notify([req.requester_id, approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다: ${req.title}`)
+        notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다: ${req.title}`)
         return
       }
       case 'reject':
@@ -851,7 +879,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           const now = Date.now()
           setStatus(req, 'source-pending', { approved_at: now, completed_at: now })
           logEvent(id, user.id, action, req.status, 'source-pending', note ? `${latest.round}차 시안 컨펌 · ${note}` : `${latest.round}차 시안 컨펌`)
-          notify([req.requester_id], user.id, id, `작업이 완료되었습니다(${latest.round}차 시안 컨펌): ${req.title}`)
+          notify(requestersOf(req), user.id, id, `작업이 완료되었습니다(${latest.round}차 시안 컨펌): ${req.title}`)
           notify(assignees, user.id, id, `컨펌 완료 · 작업 원본 파일을 올려 주세요: ${req.title}`)
         }
         return
@@ -860,7 +888,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         claimFiles(user, body.fileIds, { requestId: id, kind: 'final' })
         setStatus(req, 'done', { completed_at: Date.now() })
         logEvent(id, user.id, action, req.status, 'done', note)
-        notify([req.requester_id], user.id, id, `작업이 완료되었습니다: ${req.title}`)
+        notify(requestersOf(req), user.id, id, `작업이 완료되었습니다: ${req.title}`)
         return
       }
       case 'upload-source': {
@@ -883,12 +911,12 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         setStatus(req, 'done')
         const what = [ORIGINAL_LABEL[kind] + (kind === 'tool' ? `(${tool})` : ''), count > 0 ? `원본 ${count}개` : '', note].filter(Boolean).join(' · ')
         logEvent(id, user.id, action, req.status, 'done', what)
-        notify([req.requester_id], user.id, id, kind === 'none' ? `작업이 완료되었습니다: ${req.title}` : `작업 원본 파일이 등록되었습니다: ${req.title}`)
+        notify(requestersOf(req), user.id, id, kind === 'none' ? `작업이 완료되었습니다: ${req.title}` : `작업 원본 파일이 등록되었습니다: ${req.title}`)
         return
       }
       case 'ask-requester': {
         logEvent(id, user.id, action, req.status, req.status, note)
-        notify([req.requester_id], user.id, id, `요청자 확인이 필요합니다${note ? ` (${note.slice(0, 60)})` : ''}: ${req.title}`)
+        notify(requestersOf(req), user.id, id, `요청자 확인이 필요합니다${note ? ` (${note.slice(0, 60)})` : ''}: ${req.title}`)
         return
       }
       case 'undo': {
@@ -930,7 +958,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         setStatus(req, t.from_status, extra)
         run('UPDATE events SET undone = 1 WHERE id = :eid', { eid: t.id })
         logEvent(id, user.id, action, req.status, t.from_status, `취소한 단계: ${UNDO_LABEL[t.type]}${note ? ` · ${note}` : ''}`)
-        notify(assigneesOf(id).concat(req.requester_id, assignees), user.id, id, `작업이 이전 단계로 되돌려졌습니다(${UNDO_LABEL[t.type]} 취소): ${req.title}`)
+        notify([...assigneesOf(id), ...requestersOf(req), ...assignees], user.id, id, `작업이 이전 단계로 되돌려졌습니다(${UNDO_LABEL[t.type]} 취소): ${req.title}`)
         return
       }
       case 'cancel': {
@@ -975,7 +1003,7 @@ export function addPin(user: PublicUser, fileId: string, body: Record<string, un
       b: comment,
       now,
     })
-    notify([req.requester_id, ...assigneesOf(req.id)], user.id, req.id, `시안에 핀 댓글이 달렸습니다: ${req.title}`)
+    notify([...requestersOf(req), ...assigneesOf(req.id)], user.id, req.id, `시안에 핀 댓글이 달렸습니다: ${req.title}`)
     return pinId
   })
 }
@@ -998,7 +1026,7 @@ export function addComment(user: PublicUser, requestId: number, pinId: number | 
     now: Date.now(),
   })
   const pinAuthor = pinId ? [loadPin(pinId).author_id] : []
-  notify([req.requester_id, ...assigneesOf(requestId), ...pinAuthor], user.id, requestId, `새 댓글: ${req.title}`)
+  notify([...requestersOf(req), ...assigneesOf(requestId), ...pinAuthor], user.id, requestId, `새 댓글: ${req.title}`)
 }
 
 export function addPinComment(user: PublicUser, pinId: number, body: Record<string, unknown>) {

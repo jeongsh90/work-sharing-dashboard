@@ -8,7 +8,7 @@ import { PresenceButton } from "@/components/home/presence-button"
 import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
 import { updateStoredUser, type Session } from "@/lib/auth"
 import { setTeamPresence, type Presence } from "@/lib/presence"
-import { isActive } from "@/lib/requests"
+import { isActive, isRequesterOf } from "@/lib/requests"
 import { navigate } from "@/lib/router"
 import { scrollToEdge } from "@/lib/smooth-scroll"
 import { isDesignWorker, useDesigners, useRequests } from "@/lib/store"
@@ -121,7 +121,7 @@ export function FloatingDock({
   const requester = session.role === "requester"
   // 컨펌 대기: 관리자는 전체, 요청자는 내 요청 중 시안 확인 상태
   if (!requests) return null
-  const review = requests.filter((r) => r.status === "review" && (manager || r.requesterId === session.id)).length
+  const review = requests.filter((r) => r.status === "review" && (manager || isRequesterOf(r, session.id))).length
   // 받은 요청: 아직 담당 작업자가 없는 진행 중 요청
   const unassigned = requests.filter((r) => isActive(r) && r.designers.length === 0).length
 

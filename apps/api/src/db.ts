@@ -207,6 +207,14 @@ addColumn('requests', 'requester_label', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'original_kind', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'original_link', "TEXT NOT NULL DEFAULT ''")
 addColumn('requests', 'original_tool', "TEXT NOT NULL DEFAULT ''")
+// 공동 요청자: 같은 팀에서 함께 요청한 사람(여러 명). 원래 요청자처럼 알림·내 요청·컨펌·반려를 한다
+db.exec(`
+CREATE TABLE IF NOT EXISTS request_coowners (
+  request_id INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  user_id    TEXT NOT NULL,
+  PRIMARY KEY (request_id, user_id)
+);
+`)
 // 개별 컨펌: 작업자가 여럿일 때 작업자마다 시안을 올리고, 모두 올리면 시안 확인으로 넘어간다
 addColumn('requests', 'individual_confirm', 'INTEGER NOT NULL DEFAULT 0')
 // 개별 컨펌에서 한 차수(submission)에 누가 올렸는지(작업자마다 한 줄)
