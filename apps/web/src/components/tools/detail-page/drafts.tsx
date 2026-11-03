@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useImperativeHandle, useState, type Ref } from "react"
 import { FolderOpen, LoaderCircle, Save, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,8 @@ import { nextId, type Picture, type Section } from "./sections"
 
 export type DraftState = { product: string; category: string; number: string; sections: Section[] }
 export type CurrentDraft = { id: string; title: string; savedAt: number }
+// 바깥(오른쪽 도구 막대)에서 누르는 임시 저장·불러오기
+export type DraftControls = { save: () => void; open: () => void; busy: boolean }
 type PicRef = { fileId: string; name: string; width: number; height: number }
 type DraftListItem = { id: string; title: string; authorId: string; updatedBy: string; updatedAt: number; images: number }
 
@@ -96,11 +98,13 @@ export function DraftBar({
   current,
   onSaved,
   onLoad,
+  controlRef,
 }: {
   state: DraftState
   current: CurrentDraft | null
   onSaved: (d: CurrentDraft) => void
   onLoad: (state: DraftState, d: CurrentDraft) => void
+  controlRef?: Ref<DraftControls>
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -125,6 +129,10 @@ export function DraftBar({
       setBusy(null)
     }
   }
+
+  // 임시 저장: 이미 저장한 것이면 같은 이름으로 덮어쓰고, 처음이면 이름을 묻는다
+  const quickSave = () => (current ? void save(current.title, false) : setNaming("new"))
+  useImperativeHandle(controlRef, () => ({ save: quickSave, open: () => setListOpen(true), busy: busy !== null }))
 
   const load = async (item: DraftListItem) => {
     if (
@@ -152,7 +160,7 @@ export function DraftBar({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => (current ? void save(current.title, false) : setNaming("new"))}>
+        <Button variant="outline" size="sm" disabled={busy !== null} onClick={quickSave}>
           {busy === "저장 중" ? <LoaderCircle data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <Save data-icon="inline-start" />}
           임시 저장
         </Button>

@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Download,
   Film,
+  FolderOpen,
   HelpCircle,
   Image as ImageIcon,
   ImagePlus,
@@ -15,6 +16,7 @@ import {
   LoaderCircle,
   Minus,
   Package,
+  Save,
   Plus,
   Trash2,
   Type,
@@ -55,7 +57,7 @@ import {
   type Section,
   type ShipProduct,
 } from "./sections"
-import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftState } from "./drafts"
+import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftControls, type DraftState } from "./drafts"
 import { ToolHistory } from "@/components/tools/tool-history"
 import { invalidate } from "@/lib/store"
 import iceboxUrl from "./assets/icebox.png"
@@ -142,6 +144,7 @@ export function DetailPageTool() {
   const [result, setResult] = useState<Result | null>(null)
   const [draft, setDraft] = useState<CurrentDraft | null>(null)
   const cards = useRef(new Map<number, HTMLDivElement>())
+  const drafts = useRef<DraftControls>(null)
   // 접어 둔 섹션(id). 접으면 머리줄만 보이고 입력 칸은 숨긴다
   const [folded, setFolded] = useState<Set<number>>(new Set())
   const toggleFold = (id: number) =>
@@ -311,7 +314,7 @@ export function DetailPageTool() {
     <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:pr-28">
       {/* 맨 위: 임시 저장(본사 자료를 기다리는 동안 만든 내용을 저장해 두고 나중에 이어서) */}
       <div className="rounded-xl border bg-card px-3 py-2">
-        <DraftBar state={{ product, category, number, sections }} current={draft} onSaved={setDraft} onLoad={(st, d) => loadState(st, d)} />
+        <DraftBar controlRef={drafts} state={{ product, category, number, sections }} current={draft} onSaved={setDraft} onLoad={(st, d) => loadState(st, d)} />
       </div>
     <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-start">
       {/* 왼쪽: 미리보기 */}
@@ -330,12 +333,33 @@ export function DetailPageTool() {
             <Button
               key={a.kind}
               variant="ghost"
-              className="h-auto flex-col gap-1 px-1 py-2 text-[11px] leading-tight font-normal break-keep whitespace-normal lg:w-full"
+              className="h-auto flex-col gap-1 px-1 py-2 text-[11px] leading-tight font-normal break-keep whitespace-normal lg:w-full [@media(max-height:880px)]:gap-0.5 [@media(max-height:880px)]:py-1"
               title={`${a.label} 추가${selected !== null && sections[selected] ? " (고른 섹션 뒤에)" : ""}`}
               onClick={() => add(a.kind)}
             >
               <a.icon className="size-5" />
               {a.label}
+            </Button>
+          ))}
+        </div>
+        {/* 임시 저장·불러오기, 섹션 모두 접기·펼치기 */}
+        <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 lg:w-[76px] lg:flex-col">
+          {[
+            { label: "임시 저장", icon: Save, onClick: () => drafts.current?.save(), title: draft ? `"${draft.title}" 에 덮어쓰기` : "이름을 정해 임시 저장" },
+            { label: "불러오기", icon: FolderOpen, onClick: () => drafts.current?.open(), title: "임시 저장한 것 불러오기" },
+            { label: "모두 접기", icon: ChevronsDownUp, onClick: () => setFolded(new Set(sections.map((x) => x.id))), title: "섹션 입력을 모두 접기", off: sections.length === 0 },
+            { label: "모두 펼치기", icon: ChevronsUpDown, onClick: () => setFolded(new Set()), title: "섹션 입력을 모두 펼치기", off: sections.length === 0 },
+          ].map((b) => (
+            <Button
+              key={b.label}
+              variant="ghost"
+              className="h-auto flex-col gap-1 px-1 py-2 text-[11px] leading-tight font-normal break-keep whitespace-normal lg:w-full [@media(max-height:880px)]:gap-0.5 [@media(max-height:880px)]:py-1"
+              title={b.title}
+              disabled={b.off}
+              onClick={b.onClick}
+            >
+              <b.icon className="size-5" />
+              {b.label}
             </Button>
           ))}
         </div>
