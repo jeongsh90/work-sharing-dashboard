@@ -8,7 +8,7 @@ import { LoginForm } from '@/components/login-form'
 import { PageState } from '@/components/page-state'
 import { dockItemCount, FloatingDock } from '@/components/home/floating-dock'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import { UNAUTHORIZED_EVENT } from '@/lib/api'
+import { reportLanAfterLogin, UNAUTHORIZED_EVENT } from '@/lib/api'
 import { useAskOnFirstClick } from '@/lib/desktop-notify'
 import { isManager, loadSession, logout, verifySession, writeStored, type Session } from '@/lib/auth'
 import { menuFor, PAGE_TITLES } from '@/lib/menu'
@@ -143,6 +143,7 @@ export default function App() {
   // 로그인해 있으면 첫 화면이 뜬 뒤 나머지 화면 조각을 미리 받아 둔다
   useEffect(() => {
     if (!session) return
+    reportLanAfterLogin()
     const timer = setTimeout(() => PAGE_LOADERS.forEach((load) => load().catch(() => {})), 1500)
     return () => clearTimeout(timer)
   }, [session])

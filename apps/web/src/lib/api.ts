@@ -47,25 +47,53 @@ function probeLan() {
   // 닿지 않았으면 1분 뒤 다시 본다(허용을 늦게 눌렀거나 사무실에 막 들어온 경우)
   if (lanProbe && (lanUrl || Date.now() - lanChecked < 60_000)) return lanProbe
   lanProbe = (async () => {
+    let url: string | null = null
     try {
-      const { url } = (await (await fetch(`${API_BASE}/api/lan`)).json()) as { url: string | null }
+      url = ((await (await fetch(`${API_BASE}/api/lan`)).json()) as { url: string | null }).url
       if (!url) return null
       const res = await fetch(`${url}/api/lan`, { signal: AbortSignal.timeout(8000) })
+      if (res.ok) lanResult = { ok: true }
+      else {
+        // 등록 안 된 IP: 받은 표를 본 주소에 알려 관리 화면에 "누가·어느 IP"로 보이게 한다
+        const body = (await res.json().catch(() => null)) as { nonce?: string } | null
+        lanResult = body?.nonce ? { nonce: body.nonce } : null
+      }
       return res.ok ? url : null
     } catch {
+      // 사내망 주소에 닿지 않음(회사 밖, 또는 브라우저가 로컬 네트워크 접근을 막음)
+      if (url) lanResult = { unreachable: true }
       return null
     } finally {
       lanChecked = Date.now()
+      void reportLan()
     }
   })().then((url) => (lanUrl = url))
   return lanProbe
 }
 if (typeof window !== 'undefined') void probeLan()
 
+// 사내망 확인 결과를 서버에 알린다(관리 → 사내망 직통의 "직통을 못 탄 PC"). 로그인한 뒤에만, 같은 결과는 10분에 한 번
+let lanResult: { ok: true } | { nonce: string } | { unreachable: true } | null = null
+let lanReported = { key: '', at: 0 }
+async function reportLan() {
+  if (!lanResult || !storedToken()) return
+  const key = JSON.stringify(lanResult)
+  if (key === lanReported.key && Date.now() - lanReported.at < 10 * 60_000) return
+  lanReported = { key, at: Date.now() }
+  const body = lanResult
+  if ('nonce' in body) lanResult = null // 표는 한 번만 쓴다
+  await api('/lan/report', { body }).catch(() => {})
+}
+
 // 파일을 주고받을 서버 주소. 사내망 확인이 늦으면(1.5초) 기다리지 않고 중계로 보낸다.
 async function fileBase() {
   await Promise.race([probeLan(), new Promise((r) => setTimeout(r, 1500))])
+  void reportLan()
   return lanUrl ?? API_BASE
+}
+// 로그인한 뒤 한 번 확인 결과를 알린다(처음 확인은 로그인 전에 끝났을 수 있다)
+export function reportLanAfterLogin() {
+  void probeLan().then(() => reportLan())
 }
 // 사내망 주소로 보내다 연결이 끊기면 이번 화면에서는 중계로 돌아간다
 function lanFailed(base: string) {

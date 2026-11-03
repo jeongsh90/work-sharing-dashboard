@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 import acme from 'acme-client'
 
@@ -101,6 +101,70 @@ export function deleteLanIp(user: PublicUser, id: string) {
   return { ok: true }
 }
 
+// ── 못 탄 PC 알아보기 ──
+// 공유기가 PC 의 IP 를 바꾸면 그 PC 는 말없이 바깥 중계(느림)로 돌아간다. 누가 그런지 관리 화면에 보이게 한다.
+// 등록 안 된 IP 로 사내망 주소에 오면 표(nonce)를 돌려주고, 화면이 그 표를 로그인한 채로 본 주소에 알려 준다(누가·어느 IP).
+// 사내망 주소에 아예 닿지 않으면(브라우저 허용 안 함·네트워크) 화면이 "닿지 않음"으로 알려 준다. 메모리에만 두고 3일 지나면 버린다.
+const NONCE_MS = 10 * 60 * 1000
+const MISS_MS = 3 * DAY
+const nonces = new Map<string, { ip: string; at: number }>()
+type Miss = { userId: string; ip: string | null; kind: 'unregistered' | 'unreachable'; at: number }
+const misses = new Map<string, Miss>()
+
+function issueNonce(ip: string) {
+  const now = Date.now()
+  for (const [k, v] of nonces) if (now - v.at > NONCE_MS) nonces.delete(k)
+  if (nonces.size > 500) nonces.clear()
+  const nonce = randomBytes(18).toString('base64url')
+  nonces.set(nonce, { ip, at: now })
+  return nonce
+}
+
+// 회사 공인 IP(서버 PC 가 바깥으로 나가는 주소). "닿지 않음"은 이 주소에서 온 사람만 남긴다(재택·외근은 원래 중계를 쓴다)
+let officeIp: { ip: string; at: number } | null = null
+async function officePublicIp() {
+  if (officeIp && Date.now() - officeIp.at < 60 * 60 * 1000) return officeIp.ip
+  try {
+    const ip = (await (await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(5000) })).text()).trim()
+    if (/^[\d.:a-f]+$/i.test(ip)) officeIp = { ip, at: Date.now() }
+  } catch {
+    /* 모르면 거르지 않는다 */
+  }
+  return officeIp?.ip ?? null
+}
+
+export async function reportLan(user: PublicUser, body: Record<string, unknown>, publicIp: string) {
+  const now = Date.now()
+  if (body.unreachable === true) {
+    const office = await officePublicIp()
+    if (office && publicIp && publicIp !== office) {
+      misses.delete(user.id)
+      return { ok: true }
+    }
+  }
+  if (body.ok === true) {
+    misses.delete(user.id)
+  } else if (typeof body.nonce === 'string') {
+    const n = nonces.get(body.nonce)
+    nonces.delete(body.nonce)
+    if (n && now - n.at < NONCE_MS) misses.set(user.id, { userId: user.id, ip: n.ip, kind: 'unregistered', at: now })
+  } else if (body.unreachable === true) {
+    const prev = misses.get(user.id)
+    // 방금 "등록 안 된 IP"로 알아낸 게 있으면 그쪽이 더 쓸모 있어 덮지 않는다
+    if (!prev || prev.kind !== 'unregistered' || now - prev.at > 60 * 60 * 1000) misses.set(user.id, { userId: user.id, ip: null, kind: 'unreachable', at: now })
+  }
+  return { ok: true }
+}
+
+export function listLanMisses(user: PublicUser) {
+  requireSuperadmin(user)
+  const now = Date.now()
+  const registered = new Set(all<{ ip: string }>('SELECT ip FROM lan_ips').map((r) => r.ip))
+  return [...misses.values()]
+    .filter((m) => now - m.at < MISS_MS && !(m.ip && registered.has(m.ip)))
+    .sort((a, b) => b.at - a.at)
+}
+
 // 사내망 주소의 문지기: 등록한 IP 만 지나간다(확인 요청 OPTIONS 는 그대로).
 function gate(handler: (req: IncomingMessage, res: ServerResponse) => void) {
   return (req: IncomingMessage, res: ServerResponse) => {
@@ -114,7 +178,7 @@ function gate(handler: (req: IncomingMessage, res: ServerResponse) => void) {
         res.setHeader('Vary', 'Origin')
       }
       res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' })
-      res.end(JSON.stringify({ error: '사내망 직통에 등록하지 않은 PC 입니다.' }))
+      res.end(JSON.stringify({ error: '사내망 직통에 등록하지 않은 PC 입니다.', nonce: issueNonce(remoteIp(req)) }))
       return
     }
     run('UPDATE lan_ips SET last_seen = :now WHERE id = :id', { id: row.id, now: Date.now() })

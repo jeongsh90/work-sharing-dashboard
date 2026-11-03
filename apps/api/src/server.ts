@@ -52,7 +52,7 @@ import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateL
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { renderDetail } from './detail-render.ts'
 import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, updateDetailDraft } from './detail-drafts.ts'
-import { addLanIp, deleteLanIp, lanAddress, listLanIps, startLan, updateLanIp } from './lan.ts'
+import { addLanIp, deleteLanIp, lanAddress, listLanIps, listLanMisses, reportLan, startLan, updateLanIp } from './lan.ts'
 import {
   addFtpServer,
   deleteFtpServer,
@@ -377,6 +377,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   touchSeen(user.id)
 
   // ── 사내망 직통 PC(IP) 등록(관리 → 사내망 직통, 슈퍼관리자, lan.ts) ──
+  if (path === '/api/lan/report' && method === 'POST') return sendJson(res, 200, await reportLan(user, await readJson(req), String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()))
+  if (path === '/api/lan/misses' && method === 'GET') return sendJson(res, 200, listLanMisses(user))
   if (path === '/api/lan/ips') {
     if (method === 'GET') return sendJson(res, 200, listLanIps(user))
     if (method === 'POST') return sendJson(res, 201, addLanIp(user, await readJson(req)))

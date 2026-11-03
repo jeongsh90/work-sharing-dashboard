@@ -52,10 +52,12 @@ export function LanPage() {
         </div>
       </Section>
 
+      <div className="col-span-12 flex flex-col gap-8 lg:col-span-8">
+      <Misses registered={data} />
+
       <Section
         title="등록한 PC"
         aside={<span className="text-sm text-muted-foreground tabular-nums">{data.length}대</span>}
-        className="col-span-12 lg:col-span-8"
       >
         {data.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">아직 등록한 PC 가 없습니다.</p>
@@ -101,6 +103,7 @@ export function LanPage() {
           주세요. 공유기에서 PC 별 IP 를 고정해 두면 바뀌지 않습니다.
         </p>
       </Section>
+      </div>
 
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="sm:max-w-md">
@@ -123,6 +126,80 @@ export function LanPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// ── 직통을 못 탄 PC: 사무실에 있는데 바깥 중계(느림)로 주고받는 사람(최근 3일) ──
+// 등록 안 된 IP 로 들어온 사람은 그 IP 를 바로 등록하거나, 이름이 같은 등록 PC 의 IP 를 바꾼다(공유기가 IP 를 바꾼 경우)
+type Miss = { userId: string; ip: string | null; kind: "unregistered" | "unreachable"; at: number }
+
+function Misses({ registered }: { registered: LanIp[] }) {
+  const { data } = useApi<Miss[]>("/lan/misses", 30_000)
+  const userName = useUserNames()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  if (!data || data.length === 0) return null
+
+  const apply = async (m: Miss, existing: LanIp | undefined) => {
+    if (!m.ip) return
+    setBusy(m.userId)
+    setError(null)
+    try {
+      if (existing) await api(`/lan/ips/${existing.id}`, { method: "PATCH", body: { ip: m.ip, name: existing.name } })
+      else await api("/lan/ips", { body: { ip: m.ip, name: userName(m.userId) } })
+      invalidate()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "저장하지 못했습니다.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Section
+      title="직통을 못 탄 PC"
+      aside={<span className="text-sm text-muted-foreground tabular-nums">{data.length}명</span>}
+    >
+      <div className="rounded-xl border border-amber-500/40 bg-amber-500/5">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>사람</TableHead>
+              <TableHead>지금 IP</TableHead>
+              <TableHead>확인한 때</TableHead>
+              <TableHead className="text-right">처리</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((m) => {
+              const name = userName(m.userId)
+              const existing = registered.find((r) => r.name.includes(name))
+              return (
+                <TableRow key={m.userId}>
+                  <TableCell className="font-medium">{name}</TableCell>
+                  <TableCell className="tabular-nums">{m.ip ?? <span className="text-muted-foreground">닿지 않음</span>}</TableCell>
+                  <TableCell className="text-muted-foreground tabular-nums">{formatDateTime(new Date(m.at))}</TableCell>
+                  <TableCell className="text-right">
+                    {m.ip ? (
+                      <Button size="sm" disabled={busy !== null} onClick={() => void apply(m, existing)}>
+                        {existing ? `IP 바꾸기 (${existing.ip} → ${m.ip})` : "이 IP 로 등록"}
+                      </Button>
+                    ) : (
+                      <span className="text-xs break-keep text-muted-foreground">그 PC 브라우저에서 로컬 네트워크 접근 허용 확인</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      {error && <FieldError>{error}</FieldError>}
+      <p className="text-xs break-keep text-muted-foreground">
+        사무실 PC 인데 바깥 중계로 주고받는 사람입니다(파일 받기·올리기가 느림). "닿지 않음"은 회사 밖이거나, 브라우저가 로컬 네트워크 접근을 막은 경우입니다
+        (주소창 왼쪽 자물쇠 → 사이트 설정에서 허용).
+      </p>
+    </Section>
   )
 }
 
