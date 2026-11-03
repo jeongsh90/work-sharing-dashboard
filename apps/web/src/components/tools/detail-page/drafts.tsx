@@ -64,11 +64,38 @@ async function serialize(state: DraftState) {
 }
 
 // 저장해 둔 섹션의 그림을 다시 받아 넣고, 섹션·항목 번호를 새로 매긴다
-export async function deserializeSections(list: Section[]): Promise<Section[]> {
+// 불러오기 진행: 그림 몇 장 중 몇 장째, 지금 그림을 얼마나 받았는지(0~1)
+export type LoadProgress = { done: number; total: number; ratio: number; name: string }
+
+export async function deserializeSections(list: Section[], onProgress?: (p: LoadProgress) => void): Promise<Section[]> {
+  // 먼저 그림 수를 센다
+  let total = 0
+  await mapPictures<PicRef, null>(list ?? [], async () => {
+    total++
+    return null
+  })
+  let done = 0
+  onProgress?.({ done, total, ratio: 0, name: "" })
   const sections = await mapPictures<PicRef, Picture>(list ?? [], async (r) => {
     const res = await apiFetch(`/files/${r.fileId}`)
     if (!res.ok) throw new ApiError(res.status, `그림(${r.name})을 불러오지 못했습니다.`)
-    const blob = await res.blob()
+    // 받는 대로 진행률을 알린다(큰 그림도 멈춘 것처럼 보이지 않게)
+    const size = Number(res.headers.get("content-length")) || 0
+    const reader = res.body?.getReader()
+    const chunks: Uint8Array[] = []
+    let got = 0
+    if (reader) {
+      for (;;) {
+        const { done: end, value } = await reader.read()
+        if (end) break
+        chunks.push(value)
+        got += value.length
+        onProgress?.({ done, total, ratio: size ? Math.min(1, got / size) : 0, name: r.name })
+      }
+    }
+    const blob = reader ? new Blob(chunks as BlobPart[], { type: res.headers.get("content-type") ?? "" }) : await res.blob()
+    done++
+    onProgress?.({ done, total, ratio: 0, name: r.name })
     const file = new File([blob], r.name, { type: blob.type })
     uploaded.set(file, r.fileId)
     return { url: URL.createObjectURL(file), name: r.name, width: r.width, height: r.height, file }
@@ -76,8 +103,8 @@ export async function deserializeSections(list: Section[]): Promise<Section[]> {
   return renumber(sections)
 }
 
-async function deserialize(data: DraftState): Promise<DraftState> {
-  const fresh = await deserializeSections(data.sections ?? [])
+async function deserialize(data: DraftState, onProgress?: (p: LoadProgress) => void): Promise<DraftState> {
+  const fresh = await deserializeSections(data.sections ?? [], onProgress)
   return { product: data.product ?? "", category: data.category ?? "", number: data.number ?? "", sections: fresh }
 }
 
@@ -99,12 +126,14 @@ export function DraftBar({
   onSaved,
   onLoad,
   controlRef,
+  onProgress,
 }: {
   state: DraftState
   current: CurrentDraft | null
   onSaved: (d: CurrentDraft) => void
   onLoad: (state: DraftState, d: CurrentDraft) => void
   controlRef?: Ref<DraftControls>
+  onProgress?: (p: LoadProgress | null) => void // 불러오는 동안 진행률(끝나면 null)
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -148,19 +177,20 @@ export function DraftBar({
     setError(null)
     try {
       const d = await api<{ id: string; title: string; data: DraftState; updatedAt: number }>(`/tools/detail-drafts/${item.id}`)
-      onLoad(await deserialize(d.data), { id: d.id, title: d.title, savedAt: d.updatedAt })
       setListOpen(false)
+      onLoad(await deserialize(d.data, onProgress), { id: d.id, title: d.title, savedAt: d.updatedAt })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "불러오지 못했습니다.")
     } finally {
       setBusy(null)
+      onProgress?.(null)
     }
   }
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" disabled={busy !== null} onClick={quickSave}>
+        <Button size="sm" disabled={busy !== null} onClick={quickSave}>
           {busy === "저장 중" ? <LoaderCircle data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <Save data-icon="inline-start" />}
           임시 저장
         </Button>
@@ -169,7 +199,7 @@ export function DraftBar({
             새 이름으로 저장
           </Button>
         )}
-        <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => setListOpen(true)}>
+        <Button size="sm" disabled={busy !== null} onClick={() => setListOpen(true)}>
           {busy === "불러오는 중" ? <LoaderCircle data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <FolderOpen data-icon="inline-start" />}
           불러오기
         </Button>

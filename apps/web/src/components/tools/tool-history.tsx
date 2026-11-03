@@ -24,10 +24,13 @@ export function ToolHistory<F>({
   tool,
   onLoad,
   fileName = (title) => `${title}_r.jpg`,
+  meta,
 }: {
   tool: string
   onLoad?: (form: F) => void | Promise<void>
   fileName?: (title: string) => string
+  // 주면 썸네일 없이 목록으로 보여 준다(상세페이지: 카테고리·번호 같은 정보 한 줄)
+  meta?: (form: F) => string
 }) {
   const { data } = useApi<HistoryItem<F>[]>(`/tools/${tool}/history`, 60_000)
   const [query, setQuery] = useState("")
@@ -59,6 +62,35 @@ export function ToolHistory<F>({
         <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
           {data && data.length > 0 ? "검색 결과가 없습니다." : "아직 만든 이미지가 없습니다. 다운로드하면 여기에 남습니다."}
         </p>
+      ) : meta ? (
+        // 목록형: 제목 · 정보(카테고리·번호) · 만든 사람·시각 · 불러오기·지우기
+        <ul className="flex flex-col gap-2">
+          {list.map((h) => (
+            <li key={h.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 flex-col text-left disabled:opacity-50"
+                disabled={!onLoad}
+                title={onLoad ? "누르면 입력 내용을 불러옵니다" : undefined}
+                onClick={() => onLoad && void onLoad(h.form)}
+              >
+                <span className="truncate font-medium hover:underline">{h.title}</span>
+                <span className="truncate text-xs text-muted-foreground tabular-nums">
+                  {[meta(h.form), h.authorName, formatDateTime(new Date(h.createdAt))].filter(Boolean).join(" · ")}
+                </span>
+              </button>
+              {onLoad && (
+                <Button size="sm" variant="outline" onClick={() => void onLoad(h.form)}>
+                  <FileInput data-icon="inline-start" />
+                  불러오기
+                </Button>
+              )}
+              <Button size="icon-sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label={`${h.title} 지우기`} onClick={() => remove(h)}>
+                <Trash2 />
+              </Button>
+            </li>
+          ))}
+        </ul>
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4">
           {list.map((h) => (

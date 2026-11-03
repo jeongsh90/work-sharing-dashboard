@@ -101,7 +101,7 @@ export function newSection(kind: Kind): Section {
 // ── 파일 이름(레이어명) · 번호 ─────────────────────────────────────────
 // 원본 상세 이미지 이름 관례: 메인 d, POINT g·h·i…, POINT 뒤 사진 g2-1…, 움짤 g0·g1…, Q&A o, 배송 p, 고시 r·r2…, 레시피 recipe01…
 // NN = 상세 안 순서(01부터). 공통 이미지는 번호를 쓰지 않는다(ftp-upload.md).
-export type Planned = { section: Section; file: string | null; layer: string; ext: "jpg" | "gif" | null }
+export type Planned = { section: Section; file: string | null; layer: string; ext: "jpg" | "gif" | "webp" | null }
 
 export function plan(sections: Section[]): Planned[] {
   const out: Planned[] = []
@@ -151,7 +151,8 @@ export function plan(sections: Section[]): Planned[] {
       continue
     }
     const layer = s.layer.trim() || auto
-    const ext = s.kind === "gif" ? "gif" : "jpg"
+    // 움짤은 넣은 파일 형식 그대로(앞으로 WebP 로 올림. 예전 GIF 는 .gif). 아직 안 넣었으면 .webp
+    const ext = s.kind === "gif" ? (s.image && /gif/i.test(s.image.file.type || s.image.name) && !/webp/i.test(s.image.file.type || s.image.name) ? "gif" : "webp") : "jpg"
     out.push({ section: s, file: `${String(++n).padStart(2, "0")}_${layer}.${ext}`, layer, ext })
   }
   return out

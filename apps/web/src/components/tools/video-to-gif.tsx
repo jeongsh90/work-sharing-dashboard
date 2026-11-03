@@ -606,7 +606,7 @@ export function VideoConvertTool() {
               </TabsList>
             </Tabs>
             <FieldDescription>
-              {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 이름을 .gif 로 바꿔 올립니다."}
+              {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 .webp 그대로 올립니다."}
             </FieldDescription>
           </Field>
           <Field>

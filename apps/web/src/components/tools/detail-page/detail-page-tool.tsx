@@ -57,7 +57,8 @@ import {
   type Section,
   type ShipProduct,
 } from "./sections"
-import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftControls, type DraftState } from "./drafts"
+import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftControls, type DraftState, type LoadProgress } from "./drafts"
+import { Progress } from "@/components/ui/progress"
 import { ToolHistory } from "@/components/tools/tool-history"
 import { invalidate } from "@/lib/store"
 import iceboxUrl from "./assets/icebox.png"
@@ -74,7 +75,7 @@ const ADD: { kind: Kind; label: string; icon: LucideIcon }[] = [
   { kind: "hero", label: "썸네일", icon: LayoutTemplate },
   { kind: "point", label: "타이틀", icon: Type },
   { kind: "photo", label: "이미지", icon: ImageIcon },
-  { kind: "gif", label: "움짤(GIF)", icon: Film },
+  { kind: "gif", label: "움짤", icon: Film },
   { kind: "qa", label: "Q&A", icon: HelpCircle },
   { kind: "recipe", label: "레시피", icon: UtensilsCrossed },
   { kind: "ship", label: "이렇게 보내드려요", icon: Package },
@@ -131,6 +132,9 @@ export async function assetDataUrls() {
 
 export const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
 
+// 제작 전에 빠진 것: 입력 칸 id 또는 섹션 번호(누르면 그리로 이동)
+type Problem = { text: string; el?: string; section?: number }
+
 type Result = { files: { file: string; size: number }[]; zipUrl: string; zipName: string; html: string }
 
 export function DetailPageTool() {
@@ -145,6 +149,8 @@ export function DetailPageTool() {
   const [draft, setDraft] = useState<CurrentDraft | null>(null)
   const cards = useRef(new Map<number, HTMLDivElement>())
   const drafts = useRef<DraftControls>(null)
+  // 임시 저장·히스토리를 불러오는 동안 그림 받는 진행률
+  const [loading, setLoading] = useState<LoadProgress | null>(null)
   // 접어 둔 섹션(id). 접으면 머리줄만 보이고 입력 칸은 숨긴다
   const [folded, setFolded] = useState<Set<number>>(new Set())
   const allFolded = sections.length > 0 && sections.every((x) => folded.has(x.id))
@@ -207,28 +213,53 @@ export function DetailPageTool() {
       return next
     })
 
-  // 빠진 것 확인
+  // 빠진 것 확인. 문구를 누르면 그 칸(입력 id) 또는 그 섹션(번호)으로 옮겨 간다
   const problems = useMemo(() => {
-    const out: string[] = []
-    if (!product.trim()) out.push("상품명을 입력해 주세요.")
-    if (!folder) out.push("업로드 폴더(카테고리·번호)를 정해 주세요.")
-    if (planned.every((p) => !p.file)) out.push("섹션을 하나 이상 추가해 주세요.")
+    const out: Problem[] = []
+    if (!product.trim()) out.push({ text: "상품명을 입력해 주세요.", el: "dp-product" })
+    if (!folder) out.push({ text: "업로드 폴더(카테고리·번호)를 정해 주세요.", el: category ? "dp-num" : "dp-cat" })
+    if (planned.every((p) => !p.file)) out.push({ text: "섹션을 하나 이상 추가해 주세요." })
     planned.forEach((p, i) => {
       const s = p.section
       const n = `${i + 1}번 ${KIND_LABEL[s.kind]}`
-      if ((s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) out.push(`${n}: 그림을 넣어 주세요.`)
-      if (s.kind === "ship" && [...s.products, ...s.ice].some((pr) => !pr.image)) out.push(`${n}: 내용량·아이스박스 포장의 빈 사진 칸에 사진을 넣거나 칸을 빼 주세요.`)
-      if (s.kind === "common" && s.which === "url" && !/^https?:\/\//.test(s.url.trim())) out.push(`${n}: 공통 이미지 주소를 넣어 주세요.`)
-      if (s.kind === "common" && s.which === "url" && !s.alt.trim()) out.push(`${n}: 공통 이미지 alt 를 넣어 주세요.`)
-      if (p.file && !altOf(p, product).replace(/[-\s]/g, "")) out.push(`${n}: alt 가 비었습니다.`)
+      const at = (text: string) => out.push({ text: `${n}: ${text}`, section: i })
+      if ((s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) at("그림을 넣어 주세요.")
+      if (s.kind === "ship" && [...s.products, ...s.ice].some((pr) => !pr.image)) at("내용량·아이스박스 포장의 빈 사진 칸에 사진을 넣거나 칸을 빼 주세요.")
+      if (s.kind === "common" && s.which === "url" && !/^https?:\/\//.test(s.url.trim())) at("공통 이미지 주소를 넣어 주세요.")
+      if (s.kind === "common" && s.which === "url" && !s.alt.trim()) at("공통 이미지 alt 를 넣어 주세요.")
+      if (p.file && !altOf(p, product).replace(/[-\s]/g, "")) at("alt 가 비었습니다.")
     })
-    const names = planned.map((p) => p.file).filter(Boolean)
-    if (new Set(names).size !== names.length) out.push("파일 이름이 겹칩니다. 섹션의 파일 이름을 바꿔 주세요.")
+    const names = planned.map((p) => p.file)
+    const dup = names.findIndex((f, i) => f && names.indexOf(f) !== i)
+    if (dup >= 0) out.push({ text: "파일 이름이 겹칩니다. 섹션의 파일 이름을 바꿔 주세요.", section: dup })
     return out
-  }, [planned, product, folder])
+  }, [planned, product, folder, category])
+
+  // 빠진 칸으로 이동: 섹션이면 펼쳐서 그 카드로, 입력이면 그 칸에 커서
+  const [errorAt, setErrorAt] = useState<Problem | null>(null)
+  const goTo = (pr: Problem) => {
+    if (pr.section !== undefined) {
+      const s = sections[pr.section]
+      if (!s) return
+      setSelected(pr.section)
+      setFolded((f) => (f.has(s.id) ? new Set([...f].filter((x) => x !== s.id)) : f))
+      requestAnimationFrame(() => cards.current.get(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+      return
+    }
+    const el = pr.el ? document.getElementById(pr.el) : null
+    if (!el) return
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
+    el.focus({ preventScroll: true })
+  }
 
   const finish = async () => {
-    if (problems.length) return setError(problems[0])
+    if (problems.length) {
+      setError(problems[0].text)
+      setErrorAt(problems[0])
+      goTo(problems[0])
+      return
+    }
+    setErrorAt(null)
     setError(null)
     setResult(null)
     try {
@@ -302,20 +333,39 @@ export function DetailPageTool() {
       return
     setBusy("히스토리 불러오는 중")
     try {
-      loadState({ product: f.product ?? "", category: f.category ?? "", number: f.number ?? "", sections: await deserializeSections(f.sections ?? []) }, null)
+      loadState({ product: f.product ?? "", category: f.category ?? "", number: f.number ?? "", sections: await deserializeSections(f.sections ?? [], setLoading) }, null)
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "불러오지 못했습니다.")
     } finally {
       setBusy(null)
+      setLoading(null)
     }
   }
 
   return (
     <div className="flex w-full flex-col gap-4 p-4 md:p-6 lg:pr-28">
+      {/* 불러오는 중: 화면 가운데 진행 막대(그림 n / 전체 장, 지금 그림 받은 정도) */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]" role="status" aria-live="polite">
+          <div className="flex w-80 flex-col gap-3 rounded-xl border bg-card p-5 shadow-xl">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+              그림 불러오는 중
+              <span className="ml-auto text-muted-foreground tabular-nums">
+                {Math.min(loading.done + 1, Math.max(loading.total, 1))} / {Math.max(loading.total, 1)}장
+              </span>
+            </div>
+            <Progress value={loading.total ? ((loading.done + loading.ratio) / loading.total) * 100 : 100} />
+            <span className="truncate text-xs text-muted-foreground tabular-nums">
+              {loading.total ? `${Math.round(((loading.done + loading.ratio) / loading.total) * 100)}%${loading.name ? ` · ${loading.name}` : ""}` : "내용 불러오는 중…"}
+            </span>
+          </div>
+        </div>
+      )}
       {/* 맨 위: 임시 저장(본사 자료를 기다리는 동안 만든 내용을 저장해 두고 나중에 이어서) */}
       <div className="rounded-xl border bg-card px-3 py-2">
-        <DraftBar controlRef={drafts} state={{ product, category, number, sections }} current={draft} onSaved={setDraft} onLoad={(st, d) => loadState(st, d)} />
+        <DraftBar controlRef={drafts} onProgress={setLoading} state={{ product, category, number, sections }} current={draft} onSaved={setDraft} onLoad={(st, d) => loadState(st, d)} />
       </div>
     <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-start">
       {/* 왼쪽: 미리보기 */}
@@ -472,8 +522,17 @@ export function DetailPageTool() {
         )}
 
         <div className="sticky bottom-0 flex flex-col gap-2 rounded-xl border bg-background/95 p-3 backdrop-blur">
-          {error && <FieldError>{error}</FieldError>}
-          {!error && problems.length > 0 && sections.length > 0 && <p className="text-xs text-muted-foreground">남은 것: {problems[0]}</p>}
+          {/* 빠진 것: 누르면 그 칸으로. 이미 고친 것이면 다음 남은 것을 보여 준다 */}
+          {error && !errorAt && <FieldError>{error}</FieldError>}
+          {problems.length > 0 && (sections.length > 0 || errorAt) && (
+            <button
+              type="button"
+              className={`text-left underline-offset-2 hover:underline ${errorAt ? "text-sm text-destructive" : "text-xs text-muted-foreground"}`}
+              onClick={() => goTo(problems[0])}
+            >
+              {errorAt ? problems[0].text : `남은 것: ${problems[0].text}`} <span className="text-xs opacity-70">(눌러서 이동)</span>
+            </button>
+          )}
           <Button size="lg" disabled={busy !== null} onClick={() => void finish()}>
             {busy ? <LoaderCircle data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <Wand2 data-icon="inline-start" />}
             {busy ? `${busy}…` : "제작 완료 (이미지 + HTML 내려받기)"}
@@ -509,20 +568,35 @@ export function DetailPageTool() {
     </div>
 
       {/* 아래: 제작 완료한 상세페이지 히스토리(상품명·첫 섹션 썸네일·검색·불러오기) */}
-      <ToolHistory<DraftState> tool="detail-page" onLoad={loadHistory} fileName={(t) => `${t}_썸네일.jpg`} />
+      <ToolHistory<DraftState>
+        tool="detail-page"
+        onLoad={loadHistory}
+        fileName={(t) => `${t}_썸네일.jpg`}
+        // 목록형(썸네일 없이): 카테고리 · 번호 · 섹션 수
+        meta={(f) =>
+          [
+            CATEGORIES.find((c) => c.value === f.category)?.label ?? f.category,
+            f.number ? `${f.number}번` : "",
+            f.sections?.length ? `섹션 ${f.sections.length}개` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        }
+      />
     </div>
   )
 }
 
 // 미리보기: 860 폭 문서를 칸 너비에 맞춰 줄여 보여 준다
-// 보기 배율: 오른쪽 위 − / + 로 40% ~ 100%(10% 단위). 가운데 숫자를 누르면 칸 너비에 맞춤으로 돌아간다
+// 보기 배율: 처음은 70%, 오른쪽 위 − / + 로 40% ~ 100%(10% 단위). 가운데 숫자를 누르면 칸 너비에 맞춤
+const DEFAULT_ZOOM = 0.7
 const ZOOMS = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 
 export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const frame = useRef<HTMLIFrameElement>(null)
   const [fit, setFit] = useState(0.6)
-  const [zoom, setZoom] = useState<number | null>(null) // null = 칸 너비에 맞춤
+  const [zoom, setZoom] = useState<number | null>(DEFAULT_ZOOM) // null = 칸 너비에 맞춤
   const scale = zoom ?? fit
   const [height, setHeight] = useState(400)
 
@@ -540,6 +614,9 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
   const measure = () => {
     const d = frame.current?.contentDocument
     if (!d?.body) return
+    // 미리보기 문서 자체에는 스크롤 막대를 두지 않는다(높이를 문서에 맞추므로 바깥에서 스크롤)
+    d.documentElement.style.overflow = "hidden"
+    d.body.style.overflow = "hidden"
     setHeight(d.documentElement.scrollHeight)
     const ro = new ResizeObserver(() => setHeight(d.documentElement.scrollHeight))
     ro.observe(d.body)
@@ -565,7 +642,10 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
           </Button>
         </div>
       )}
-    <SmoothScrollArea className="max-h-[calc(100svh-9rem)] overflow-auto rounded-xl border bg-[#444]" contentClassName="p-0">
+    <SmoothScrollArea
+      className="max-h-[calc(100svh-9rem)] overflow-auto rounded-xl border bg-[#444] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      contentClassName="p-0"
+    >
       <div ref={box} className="w-full">
         {empty ? (
           <div className="flex h-80 flex-col items-center justify-center gap-2 text-sm text-white/70">
@@ -580,6 +660,7 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
               title="상세페이지 미리보기"
               srcDoc={doc}
               onLoad={measure}
+              scrolling="no"
               style={{ width: 860, height, transform: `scale(${scale})`, transformOrigin: "0 0", border: 0, display: "block" }}
             />
           </div>
@@ -750,9 +831,11 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
       return (
         <FieldGroup>
           <Field>
-            <FieldLabel>움짤 파일 (GIF 또는 WebP)</FieldLabel>
-            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} accept="image/gif,image/webp" label="움짤 넣기" />
-            <FieldDescription>동영상은 디자인 툴의 "동영상 → WebP·GIF"로 만든 뒤 넣어 주세요. 그대로 올라가고, 이름은 .gif 로 맞춥니다.</FieldDescription>
+            <FieldLabel>움짤 파일 (WebP)</FieldLabel>
+            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} accept="image/webp,image/gif" label="움짤 넣기" />
+            <FieldDescription>
+              동영상은 디자인 툴의 "동영상 → WebP·GIF"에서 WebP 로 만든 뒤 넣어 주세요. 이름 바꾸지 않고 .webp 그대로 올라갑니다(예전 GIF 를 넣으면 .gif).
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor={`${id}-desc`}>장면 설명 (alt)</FieldLabel>
