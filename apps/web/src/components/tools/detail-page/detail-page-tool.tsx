@@ -147,6 +147,7 @@ export function DetailPageTool() {
   const drafts = useRef<DraftControls>(null)
   // 접어 둔 섹션(id). 접으면 머리줄만 보이고 입력 칸은 숨긴다
   const [folded, setFolded] = useState<Set<number>>(new Set())
+  const allFolded = sections.length > 0 && sections.every((x) => folded.has(x.id))
   const toggleFold = (id: number) =>
     setFolded((f) => {
       const next = new Set(f)
@@ -347,8 +348,10 @@ export function DetailPageTool() {
           {[
             { label: "임시 저장", icon: Save, onClick: () => drafts.current?.save(), title: draft ? `"${draft.title}" 에 덮어쓰기` : "이름을 정해 임시 저장" },
             { label: "불러오기", icon: FolderOpen, onClick: () => drafts.current?.open(), title: "임시 저장한 것 불러오기" },
-            { label: "모두 접기", icon: ChevronsDownUp, onClick: () => setFolded(new Set(sections.map((x) => x.id))), title: "섹션 입력을 모두 접기", off: sections.length === 0 },
-            { label: "모두 펼치기", icon: ChevronsUpDown, onClick: () => setFolded(new Set()), title: "섹션 입력을 모두 펼치기", off: sections.length === 0 },
+            // 접기·펼치기 하나로: 모두 접혀 있으면 펼치기, 아니면 접기
+            allFolded
+              ? { label: "모두 펼치기", icon: ChevronsUpDown, onClick: () => setFolded(new Set()), title: "섹션 입력을 모두 펼치기", off: sections.length === 0 }
+              : { label: "모두 접기", icon: ChevronsDownUp, onClick: () => setFolded(new Set(sections.map((x) => x.id))), title: "섹션 입력을 모두 접기", off: sections.length === 0 },
           ].map((b) => (
             <Button
               key={b.label}
