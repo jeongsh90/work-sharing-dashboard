@@ -19,10 +19,30 @@ export type ShipProduct = { id: number; image: Picture | null; cap: string }
 // WHY(많은 분들이 왜 … 찾을까?) 카드: 왼쪽 정사각 사진 + 오른쪽 번호·제목·설명
 export type WhyItem = { id: number; image: Picture | null; title: string; body: string }
 
+// 그라데이션 한 끝: 색(#rrggbb, 입력 중엔 틀릴 수 있음) + 불투명도(0~100%)
+export type GradStop = { color: string; opacity: number }
+export const DEFAULT_GRAD_FROM: GradStop = { color: "#000000", opacity: 60 }
+export const DEFAULT_GRAD_TO: GradStop = { color: "#000000", opacity: 0 }
+
+// "#fff" / "#ffffff" / "ffffff" → [r,g,b]. 틀리면 null
+export function parseHex(text: string): [number, number, number] | null {
+  let h = text.trim().replace(/^#/, "")
+  if (/^[0-9a-f]{3}$/i.test(h)) h = h.replace(/./g, "$&$&")
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]
+}
+export function gradRgba(stop: GradStop | undefined, fallback: GradStop) {
+  const rgb = parseHex(stop?.color ?? "") ?? parseHex(fallback.color)!
+  const raw = Number(stop?.opacity)
+  const a = Math.min(100, Math.max(0, Number.isFinite(raw) ? raw : fallback.opacity)) / 100
+  return `rgba(${rgb.join(",")},${+a.toFixed(2)})`
+}
+
 type Base = { id: number; layer: string; alt: string } // layer·alt 가 비면 자동
 export type Section = Base &
   (
-    | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string }
+    // gradFrom·gradTo: 글자 뒤 그라데이션 위(시작)·아래(끝) 색. 없으면(예전 저장본) 기본 검정 60% → 투명
+    | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string; gradFrom?: GradStop; gradTo?: GradStop }
     // em1·em2: 그 제목 줄을 주황 굵게(강조). 없으면(예전 저장본) 제목 2만 강조
     | { kind: "point"; title1: string; title2: string; body: string; kick: boolean; em1?: boolean; em2?: boolean }
     | { kind: "photo"; image: Picture | null; tag: string; desc: string }
@@ -195,7 +215,9 @@ function sectionHtml(p: Planned, urls: Map<Picture, string> | null, asset: (u: s
     case "hero": {
       const img = pictureUrl(s.image, urls)
       const h = s.image ? Math.round((s.image.height * 860) / s.image.width) : 1000
-      return `<section${out}${idx} class="hero${s.grad ? " grad" : ""}" style="background-image:url('${img}'); height:${h}px;${img ? "" : " background-color:#c9c9cf;"}">
+      // 색을 고른 경우만 --hero-grad 로 덮는다(안 고르면 detail.css 기본 그라데이션 그대로)
+      const grad = s.grad && (s.gradFrom || s.gradTo) ? ` --hero-grad:linear-gradient(to bottom, ${gradRgba(s.gradFrom, DEFAULT_GRAD_FROM)} 0%, ${gradRgba(s.gradTo, DEFAULT_GRAD_TO)} 100%);` : ""
+      return `<section${out}${idx} class="hero${s.grad ? " grad" : ""}" style="background-image:url('${img}'); height:${h}px;${img ? "" : " background-color:#c9c9cf;"}${grad}">
   <div class="text">
     <div class="head">
       <img class="logo" src="${asset(logoUrl)}" alt="">

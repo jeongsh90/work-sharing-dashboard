@@ -45,12 +45,16 @@ import {
   buildDocument,
   CATEGORIES,
   COMMON,
+  DEFAULT_GRAD_FROM,
+  DEFAULT_GRAD_TO,
+  gradRgba,
   KIND_LABEL,
   newSection,
   nextId,
   PHOTO_TAGS,
   SHIP_MAX,
   plan,
+  type GradStop,
   type Kind,
   type Picture,
   type Planned,
@@ -750,10 +754,30 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
           <div className="flex flex-wrap gap-4">
             <Label className="flex items-center gap-2 font-normal">
               <Checkbox checked={s.grad} onCheckedChange={(v) => onChange({ grad: v === true })} />
-              글자 뒤 어둡게(그라데이션)
+              글자 뒤 그라데이션
             </Label>
             <TagSelect value={s.tag} onChange={(tag) => onChange({ tag })} />
           </div>
+          {s.grad && (
+            // 그라데이션 색: 위(시작) → 아래(끝). 색은 #ffffff 처럼, 불투명도는 0~100%
+            <div className="flex flex-col gap-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">그라데이션 색</span>
+                {(s.gradFrom || s.gradTo) && (
+                  <Button variant="ghost" size="sm" onClick={() => onChange({ gradFrom: undefined, gradTo: undefined })}>
+                    기본값(검정 60% → 0%)
+                  </Button>
+                )}
+              </div>
+              <GradStopField id={`${id}-gfrom`} label="위(시작)" value={s.gradFrom} fallback={DEFAULT_GRAD_FROM} onChange={(gradFrom) => onChange({ gradFrom, gradTo: s.gradTo ?? DEFAULT_GRAD_TO })} />
+              <GradStopField id={`${id}-gto`} label="아래(끝)" value={s.gradTo} fallback={DEFAULT_GRAD_TO} onChange={(gradTo) => onChange({ gradTo, gradFrom: s.gradFrom ?? DEFAULT_GRAD_FROM })} />
+              <div
+                className="h-6 rounded border"
+                style={{ backgroundImage: `linear-gradient(to right, ${gradRgba(s.gradFrom, DEFAULT_GRAD_FROM)}, ${gradRgba(s.gradTo, DEFAULT_GRAD_TO)}), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%)`, backgroundSize: "auto, 12px 12px" }}
+                aria-hidden
+              />
+            </div>
+          )}
           {common}
         </FieldGroup>
       )
@@ -1052,6 +1076,43 @@ export function ShipGroup({
 }
 
 // 사진 표기(오른쪽 아래): 없음 / 연출 이미지 / 이해를 돕기 위한 이미지
+// 그라데이션 한 끝: 색 견본 + #색상값 + 불투명도 %
+function GradStopField({ id, label, value, fallback, onChange }: { id: string; label: string; value: GradStop | undefined; fallback: GradStop; onChange: (v: GradStop) => void }) {
+  const v = value ?? fallback
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={id} className="w-16 shrink-0 font-normal text-muted-foreground">{label}</Label>
+      <span
+        className="size-8 shrink-0 rounded border"
+        style={{ backgroundImage: `linear-gradient(${gradRgba(v, fallback)}, ${gradRgba(v, fallback)}), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%)`, backgroundSize: "auto, 8px 8px" }}
+        aria-hidden
+      />
+      <Input
+        id={id}
+        value={v.color}
+        onChange={(e) => onChange({ ...v, color: e.target.value })}
+        placeholder="#000000"
+        aria-label={`${label} 색상값`}
+        aria-invalid={!/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v.color.trim())}
+        className="w-28 font-mono"
+      />
+      <div className="relative w-24">
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          step={5}
+          value={v.opacity}
+          onChange={(e) => onChange({ ...v, opacity: e.target.value === "" ? 0 : Math.min(100, Math.max(0, Number(e.target.value))) })}
+          aria-label={`${label} 불투명도(%)`}
+          className="pr-7 tabular-nums"
+        />
+        <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+      </div>
+    </div>
+  )
+}
+
 function TagSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <Field className="w-auto">

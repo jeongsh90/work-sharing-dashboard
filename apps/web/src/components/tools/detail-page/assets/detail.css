@@ -46,7 +46,7 @@ b, .b { font-weight: 700; }
 .hero .logo { width: 61px; height: 56px; display: block; }
 .hero .text { display: flex; flex-direction: column; gap: 40px; }
 /* 히어로(썸네일) 글자 가독용 그라데이션: 위 검정 60% → 55% 지점 32% → 900px 에서 투명 (Figma hero 433:213 의 text-gradient 레이어) */
-.hero.grad::before { content: ""; position: absolute; left: 0; top: 0; width: 860px; height: 900px; background: linear-gradient(to bottom, rgba(0,0,0,.6) 0%, rgba(0,0,0,.32) 55%, rgba(0,0,0,0) 100%); }
+.hero.grad::before { content: ""; position: absolute; left: 0; top: 0; width: 860px; height: 900px; background: var(--hero-grad, linear-gradient(to bottom, rgba(0,0,0,.6) 0%, rgba(0,0,0,.32) 55%, rgba(0,0,0,0) 100%)); } /* 툴에서 색을 고르면 --hero-grad 로 바뀜 */
 .hero.grad .text { position: relative; z-index: 1; }
 
 /* ── POINT (g/h/i): 패턴 배경, 가운데 정렬 ──────────────────────────────── */
