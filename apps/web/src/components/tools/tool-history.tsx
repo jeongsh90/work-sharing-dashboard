@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Download, FileInput, History, Search, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -34,8 +34,26 @@ export function ToolHistory<F>({
 }) {
   const { data } = useApi<HistoryItem<F>[]>(`/tools/${tool}/history`, 60_000)
   const [query, setQuery] = useState("")
+  // 같은 제품(제목)은 가장 최근 것만 보여 주고, 그 전 것들은 "과거 내역" 버튼을 눌러야 보인다
+  const [showOld, setShowOld] = useState(false)
+  const { latest, old } = useMemo(() => {
+    const sorted = [...(data ?? [])].sort((a, b) => b.createdAt - a.createdAt)
+    const seen = new Set<string>()
+    const latest: HistoryItem<F>[] = []
+    const old: HistoryItem<F>[] = []
+    for (const h of sorted) {
+      const key = h.title.trim()
+      if (seen.has(key)) old.push(h)
+      else {
+        seen.add(key)
+        latest.push(h)
+      }
+    }
+    return { latest, old }
+  }, [data])
+  const base = showOld ? old : latest
   const q = query.trim().toLowerCase()
-  const list = (data ?? []).filter((h) => !q || `${h.title} ${h.authorName}`.toLowerCase().includes(q))
+  const list = base.filter((h) => !q || `${h.title} ${h.authorName}`.toLowerCase().includes(q))
 
   const remove = async (h: HistoryItem<F>) => {
     if (!(await confirmDialog({ title: `"${h.title}" 기록을 지울까요?`, confirmText: "삭제", destructive: true }))) return
@@ -48,11 +66,17 @@ export function ToolHistory<F>({
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="flex items-center gap-2 font-semibold">
           <History className="size-4" aria-hidden />
-          히스토리
+          {showOld ? "과거 내역" : "히스토리"}
         </h3>
         <span className="text-sm text-muted-foreground tabular-nums">
-          {q && data ? `${list.length} / ${data.length}건` : `${data?.length ?? 0}건`}
+          {q ? `${list.length} / ${base.length}건` : `${base.length}건`}
         </span>
+        {(old.length > 0 || showOld) && (
+          <Button size="sm" variant={showOld ? "secondary" : "outline"} onClick={() => setShowOld((v) => !v)}>
+            <History data-icon="inline-start" />
+            {showOld ? "최신 내역 보기" : `과거 내역 ${old.length}건`}
+          </Button>
+        )}
         <div className="relative ml-auto w-full sm:w-64">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="제품명·만든 사람 검색" aria-label="히스토리 검색" className="pl-8" />
@@ -60,7 +84,7 @@ export function ToolHistory<F>({
       </div>
       {list.length === 0 ? (
         <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          {data && data.length > 0 ? "검색 결과가 없습니다." : "아직 만든 이미지가 없습니다. 다운로드하면 여기에 남습니다."}
+          {showOld && !q ? "과거 내역이 없습니다." : data && data.length > 0 ? "검색 결과가 없습니다." : "아직 만든 이미지가 없습니다. 다운로드하면 여기에 남습니다."}
         </p>
       ) : meta ? (
         // 목록형: 제목 · 정보(카테고리·번호) · 만든 사람·시각 · 불러오기·지우기
