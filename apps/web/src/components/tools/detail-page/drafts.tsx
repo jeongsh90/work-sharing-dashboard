@@ -32,7 +32,11 @@ async function mapPictures<A, B>(sections: Section[], fn: (p: A) => Promise<B>):
   for (const s of sections) {
     const x = s as Record<string, unknown> & Section
     if (s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") out.push({ ...x, image: await one(x.image) } as Section)
-    else if (s.kind === "ship") {
+    else if (s.kind === "why") {
+      const items = []
+      for (const it of s.items) items.push({ ...it, image: await one(it.image) })
+      out.push({ ...s, items } as Section)
+    } else if (s.kind === "ship") {
       const products = []
       for (const pr of s.products) products.push({ ...pr, image: await one(pr.image) })
       const ice = []
@@ -112,6 +116,7 @@ function renumber(sections: Section[]) {
   // 섹션·항목 번호는 이 화면에서 새로 매긴다(새로 더하는 섹션과 겹치지 않게)
   return sections.map((s) => {
     const base = { ...s, id: nextId() } as Section
+    if (base.kind === "why") return { ...base, items: base.items.map((it) => ({ ...it, id: nextId() })) }
     if (base.kind === "qa") return { ...base, items: base.items.map((it) => ({ ...it, id: nextId() })) }
     if (base.kind === "ship") {
       return { ...base, products: base.products.map((p) => ({ ...p, id: nextId() })), ice: base.ice.map((p) => ({ ...p, id: nextId() })) }

@@ -15,6 +15,8 @@ export type Picture = { url: string; name: string; width: number; height: number
 
 export type QaItem = { id: number; q: string; lead: string; a: string }
 export type ShipProduct = { id: number; image: Picture | null; cap: string }
+// WHY(많은 분들이 왜 … 찾을까?) 카드: 왼쪽 정사각 사진 + 오른쪽 번호·제목·설명
+export type WhyItem = { id: number; image: Picture | null; title: string; body: string }
 
 type Base = { id: number; layer: string; alt: string } // layer·alt 가 비면 자동
 export type Section = Base &
@@ -26,6 +28,7 @@ export type Section = Base &
     | { kind: "gif"; image: Picture | null; desc: string }
     | { kind: "qa"; header: string; items: QaItem[] }
     | { kind: "recipe"; no: string; title: string; body: string }
+    | { kind: "why"; eyebrow: string; title1: string; title2: string; items: WhyItem[] }
     | { kind: "ship"; products: ShipProduct[]; productNote: string; ice: ShipProduct[]; iceNote: string }
     | { kind: "notice"; image: Picture | null }
     | { kind: "common"; which: CommonKey; url: string }
@@ -66,6 +69,7 @@ export const KIND_LABEL: Record<Kind, string> = {
   gif: "움짤",
   qa: "Q&A",
   recipe: "레시피",
+  why: "WHY",
   ship: "이렇게 보내드려요",
   notice: "상품정보고시",
   common: "공통 이미지",
@@ -89,6 +93,15 @@ export function newSection(kind: Kind): Section {
       return { ...base, kind, header: "가장 궁금했던 질문들만 모아", items: [{ id: nextId(), q: "", lead: "", a: "" }] }
     case "recipe":
       return { ...base, kind, no: "", title: "", body: "" }
+    case "why":
+      return {
+        ...base,
+        kind,
+        eyebrow: "WHY?",
+        title1: "많은 분들이 왜",
+        title2: "",
+        items: [1, 2, 3].map(() => ({ id: nextId(), image: null, title: "", body: "" })),
+      }
     case "ship":
       return { ...base, kind, products: [{ id: nextId(), image: null, cap: "" }], productNote: "", ice: [{ id: nextId(), image: null, cap: "" }], iceNote: "아이스박스에 아이스팩을 넣어 신선하게 배송해 드립니다." }
     case "notice":
@@ -135,6 +148,9 @@ export function plan(sections: Section[]): Planned[] {
         break
       case "qa":
         auto = "o"
+        break
+      case "why":
+        auto = "e"
         break
       case "recipe":
         auto = `recipe${String(++recipes).padStart(2, "0")}`
@@ -227,6 +243,23 @@ ${s.items
   <div class="t-h3">${esc(s.title.trim())}</div>
   <div class="t-body2 body">${rich(s.body, "ink")}</div>
 </section>`
+    case "why": {
+      // 많은 분들이 왜 … 찾을까? — 카드(720×280): 왼쪽 280 정사각 사진, 오른쪽 "01. 제목" + 설명
+      const card = (it: WhyItem, k: number) => {
+        const src = pictureUrl(it.image, urls)
+        const img = src ? `<img src="${src}" alt="">` : `<div class="ph-empty">${PHOTO_ICON}</div>`
+        return `  <div class="why-card">${img}<div class="why-text"><div class="why-title"><span class="no">${String(k + 1).padStart(2, "0")}.</span> ${esc(it.title.trim())}</div>${it.body.trim() ? `<div class="why-body pre">${rich(it.body, "ink")}</div>` : ""}</div></div>`
+      }
+      return `<section${out}${idx} class="why">
+  <div class="why-head">
+    <div class="eyebrow">${esc(s.eyebrow.trim())}</div>
+    <div class="t-section pre">${[s.title1.trim() && esc(s.title1.trim()), s.title2.trim() && `<span class="em">${esc(s.title2.trim())}</span>`].filter(Boolean).join("\n")}</div>
+  </div>
+  <div class="why-cards">
+${s.items.map(card).join("\n")}
+  </div>
+</section>`
+    }
     case "ship": {
       // 내용량·아이스박스 포장은 같은 모양: 정사각형 사진(최대 4장) + 사진 아래 글 + ※ 안내.
       // 3장까지는 템플릿 크기(210), 4장이면 한 줄(720 칸)에 들어가게 152 로 줄인다. 아래 글이 없으면 사진만(박스 위아래 여백이 같아 세로 가운데).
@@ -327,6 +360,13 @@ export function autoAlt(p: Planned, productName: string): string {
         .join(" / ")}`
     case "recipe":
       return `Recipe ${s.no.trim() || String(recipeNo(p)).padStart(2, "0")} ${plain(s.title)} - ${plain(s.body)}`
+    case "why": {
+      const title = [plain(s.title1), plain(s.title2)].filter(Boolean).join(" ")
+      const items = s.items
+        .filter((it) => it.title.trim() || it.body.trim())
+        .map((it, k) => `${String(k + 1).padStart(2, "0")}. ${[plain(it.title), plain(it.body)].filter(Boolean).join(" ")}`)
+      return [title, items.join(" / ")].filter(Boolean).join(" - ")
+    }
     case "ship": {
       const part = (items: ShipProduct[], note: string) => [items.map((pr) => plain(pr.cap)).filter(Boolean).join(", "), plain(note)].filter(Boolean).join(" ")
       return `이렇게 보내드려요 - 내용량: ${part(s.products, s.productNote)} / 아이스박스 포장: ${part(s.ice, s.iceNote)}`

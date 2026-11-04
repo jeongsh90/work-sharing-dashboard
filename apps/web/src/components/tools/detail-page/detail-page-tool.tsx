@@ -21,6 +21,7 @@ import {
   Trash2,
   Type,
   UtensilsCrossed,
+  ListChecks,
   Wand2,
   X,
   type LucideIcon,
@@ -56,6 +57,7 @@ import {
   type Planned,
   type Section,
   type ShipProduct,
+  type WhyItem,
 } from "./sections"
 import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftControls, type DraftState, type LoadProgress } from "./drafts"
 import { Progress } from "@/components/ui/progress"
@@ -78,6 +80,7 @@ const ADD: { kind: Kind; label: string; icon: LucideIcon }[] = [
   { kind: "gif", label: "움짤", icon: Film },
   { kind: "qa", label: "Q&A", icon: HelpCircle },
   { kind: "recipe", label: "레시피", icon: UtensilsCrossed },
+  { kind: "why", label: "WHY", icon: ListChecks },
   { kind: "ship", label: "이렇게 보내드려요", icon: Package },
   { kind: "notice", label: "상품정보고시", icon: ClipboardList },
 ]
@@ -224,6 +227,8 @@ export function DetailPageTool() {
       const n = `${i + 1}번 ${KIND_LABEL[s.kind]}`
       const at = (text: string) => out.push({ text: `${n}: ${text}`, section: i })
       if ((s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) at("그림을 넣어 주세요.")
+      if (s.kind === "why" && s.items.some((it) => !it.image)) at("카드마다 사진을 넣어 주세요.")
+      if (s.kind === "why" && s.items.some((it) => !it.title.trim())) at("카드마다 제목을 넣어 주세요.")
       if (s.kind === "ship" && [...s.products, ...s.ice].some((pr) => !pr.image)) at("내용량·아이스박스 포장의 빈 사진 칸에 사진을 넣거나 칸을 빼 주세요.")
       if (s.kind === "common" && s.which === "url" && !/^https?:\/\//.test(s.url.trim())) at("공통 이미지 주소를 넣어 주세요.")
       if (s.kind === "common" && s.which === "url" && !s.alt.trim()) at("공통 이미지 alt 를 넣어 주세요.")
@@ -268,7 +273,7 @@ export function DetailPageTool() {
       for (const p of planned) {
         const s = p.section
         const pics: (Picture | null)[] =
-          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products, ...s.ice].map((pr) => pr.image) : []
+          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products, ...s.ice].map((pr) => pr.image) : s.kind === "why" ? s.items.map((it) => it.image) : []
         for (const pic of pics) if (pic && !urls.has(pic)) urls.set(pic, await toDataUrl(pic))
       }
       const assets = await assetDataUrls()
@@ -889,6 +894,44 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
             <EmphasisTextarea id={`${id}-body`} value={s.body} onValueChange={(body) => onChange({ body })} className="min-h-20 break-keep" />
             <FieldDescription>레시피 사진은 이 섹션 뒤에 "이미지"로 넣어 주세요.</FieldDescription>
           </Field>
+          {common}
+        </FieldGroup>
+      )
+    case "why":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${id}-eyebrow`}>윗글 (주황 작은 글)</FieldLabel>
+            <Input id={`${id}-eyebrow`} value={s.eyebrow} onChange={(e) => onChange({ eyebrow: e.target.value })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-t1`}>제목 1줄</FieldLabel>
+            <Input id={`${id}-t1`} value={s.title1} onChange={(e) => onChange({ title1: e.target.value })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-t2`}>제목 2줄 (주황 굵게)</FieldLabel>
+            <Input id={`${id}-t2`} value={s.title2} onChange={(e) => onChange({ title2: e.target.value })} placeholder={`${product || "상품명"}을 찾을까?`} className="font-bold text-[#ff4d00]" />
+          </Field>
+          {s.items.map((it, k) => {
+            const set = (patch: Partial<WhyItem>) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, ...patch } : x)) })
+            return (
+              <div key={it.id} className="flex flex-col gap-2 rounded-lg border p-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">카드 {String(k + 1).padStart(2, "0")}</span>
+                  <Button variant="ghost" size="icon-xs" className="ml-auto" aria-label="카드 빼기" disabled={s.items.length === 1} onClick={() => onChange({ items: s.items.filter((x) => x.id !== it.id) })}>
+                    <X />
+                  </Button>
+                </div>
+                <PicturePicker value={it.image} onChange={(image) => set({ image })} label="사진 (정사각으로 잘림)" />
+                <Input value={it.title} onChange={(e) => set({ title: e.target.value })} placeholder="제목 (예: 맛있으니까!)" aria-label={`카드 ${k + 1} 제목`} />
+                <EmphasisTextarea value={it.body} onValueChange={(body) => set({ body })} className="min-h-16 break-keep" placeholder="설명 (줄을 바꾸면 그대로 줄이 바뀝니다)" aria-label={`카드 ${k + 1} 설명`} />
+              </div>
+            )
+          })}
+          <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ items: [...s.items, { id: nextId(), image: null, title: "", body: "" }] })}>
+            <Plus data-icon="inline-start" />
+            카드 추가
+          </Button>
           {common}
         </FieldGroup>
       )

@@ -179,3 +179,16 @@ b, .b { font-weight: 700; }
 .recipe-head { padding: 120px 70px 60px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
 .recipe-head .eyebrow { font-size: 18px; line-height: 27px; letter-spacing: 0.15em; font-weight: 500; color: var(--orange-500); }
 .recipe-head .desc { width: 720px; }
+
+/* ── [선택] WHY 많은 분들이 왜 … 찾을까? (Figma 575:1593) ── */
+.why { padding: 120px 70px; display: flex; flex-direction: column; align-items: center; gap: 80px; background: #fff; }
+.why-head { display: flex; flex-direction: column; align-items: center; gap: 24px; text-align: center; }
+.why-head .eyebrow { font-size: 22px; line-height: 32px; letter-spacing: 0.15em; font-weight: 700; color: var(--orange); }
+.why-head .t-section .em { font-weight: 900; }
+.why-cards { display: flex; flex-direction: column; gap: 24px; }
+.why-card { width: 720px; height: 280px; display: flex; background: #fff; border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.06); }
+.why-card > img, .why-card > .ph-empty { width: 280px; height: 280px; flex: none; object-fit: cover; display: block; }
+.why-text { flex: 1; padding: 0 40px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+.why-title { font-size: 34px; line-height: 48px; letter-spacing: -0.025em; font-weight: 700; color: var(--ink); }
+.why-title .no { color: var(--orange); }
+.why-body { font-size: 28px; line-height: 44px; letter-spacing: -0.02em; color: var(--body); }
