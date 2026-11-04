@@ -67,6 +67,7 @@ import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, ty
 import { Progress } from "@/components/ui/progress"
 import { ToolHistory } from "@/components/tools/tool-history"
 import { DEFAULT_ZOOM, ZoomControl } from "@/components/tools/zoom-control"
+import { ColorSwatchPicker } from "@/components/tools/color-palette"
 import { invalidate } from "@/lib/store"
 import iceboxUrl from "./assets/icebox.png"
 import logoUrl from "./assets/logo.svg"
@@ -1094,7 +1095,7 @@ function TextColorField({ label, value, onChange }: { label: string; value: stri
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-xs text-muted-foreground">글자색</span>
-      <span className="size-6 shrink-0 rounded border" style={{ background: rgb ? `rgb(${rgb.join(",")})` : "#ffffff" }} aria-hidden />
+      <ColorSwatchPicker value={text || "#ffffff"} label={`${label} 글자색`} swatch={{ background: rgb ? `rgb(${rgb.join(",")})` : "#ffffff" }} onPick={onChange} />
       <Input
         value={text}
         onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
@@ -1113,10 +1114,12 @@ function GradStopField({ id, label, value, fallback, onChange }: { id: string; l
   return (
     <div className="flex items-center gap-2">
       <Label htmlFor={id} className="w-16 shrink-0 font-normal text-muted-foreground">{label}</Label>
-      <span
-        className="size-8 shrink-0 rounded border"
-        style={{ backgroundImage: `linear-gradient(${gradRgba(v, fallback)}, ${gradRgba(v, fallback)}), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%)`, backgroundSize: "auto, 8px 8px" }}
-        aria-hidden
+      <ColorSwatchPicker
+        value={v.color}
+        label={`${label} 그라데이션`}
+        className="size-8"
+        swatch={{ backgroundImage: `linear-gradient(${gradRgba(v, fallback)}, ${gradRgba(v, fallback)}), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%)`, backgroundSize: "auto, 8px 8px" }}
+        onPick={(color) => onChange({ ...v, color })}
       />
       <Input
         id={id}

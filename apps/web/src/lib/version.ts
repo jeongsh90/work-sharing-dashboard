@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.8',
+    date: '2026-11-05',
+    changes: [
+      '디자인 툴 > 상세페이지 썸네일: 글자색·그라데이션 색 견본을 누르면 팔레트(Figma 라이브러리처럼 묶음별 견본) — 맨 위 셰프애찬 상세페이지 색, 그 아래 Tailwind 색(50~950), 색 이름 검색',
+    ],
+  },
+  {
     version: '0.6.7',
     date: '2026-11-04',
     changes: [
