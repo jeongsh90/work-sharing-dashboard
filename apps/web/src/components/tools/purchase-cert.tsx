@@ -6,6 +6,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { apiFetch, ApiError } from "@/lib/api"
 import { FONT, loadFonts } from "@/lib/canvas-text"
+import { useZoom, ZoomControl } from "@/components/tools/zoom-control"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 
 // 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
@@ -228,6 +229,7 @@ export function PurchaseCertTool() {
   const [date, setDate] = useState("") // 생산일자: PDF 에 적힌 그대로(이것만 고칠 수 있다)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { boxRef, zoom, setZoom, scale } = useZoom() // 보기 배율(처음 70%)
 
   // 입력이 바뀔 때마다 다시 그린다
   useEffect(() => {
@@ -280,10 +282,13 @@ export function PurchaseCertTool() {
   return (
     <div className="grid w-full grid-cols-12 gap-6 p-4 md:p-6">
       {/* 왼쪽: 수매확인서(내려받는 이미지 그대로) */}
-      <div className="col-span-12 flex justify-center lg:col-span-8">
+      {/* 보기 배율: 처음 70%, 오른쪽 위 − / + (상세페이지 미리보기와 같음) */}
+      <div ref={boxRef} className="relative col-span-12 flex justify-center lg:col-span-8">
+        <ZoomControl zoom={zoom} scale={scale} onZoom={setZoom} />
         <canvas
           ref={canvasRef}
-          className="h-auto w-full max-w-[860px] rounded-lg border bg-white shadow-sm"
+          style={{ width: 860 * scale }}
+          className="h-auto max-w-full rounded-lg border bg-white shadow-sm"
           aria-label="수매확인서 미리보기"
         />
       </div>

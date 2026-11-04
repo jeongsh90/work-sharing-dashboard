@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmphasisTextarea } from "@/components/tools/emphasis-textarea"
 import { ToolHistory } from "@/components/tools/tool-history"
+import { useZoom, ZoomControl } from "@/components/tools/zoom-control"
 import { SortableList } from "@/components/sortable-list"
 import { api } from "@/lib/api"
 import { applyFont, fillRich, loadFonts, stripEmphasis, wrapRich, wrapText, type RichRun, type TextStyle } from "@/lib/canvas-text"
@@ -296,6 +297,7 @@ function altText(f: Form) {
 
 export function ProductNoticeTool() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const { boxRef, zoom, setZoom, scale } = useZoom() // 보기 배율(처음 70%)
   const [form, setForm] = useState<Form>(initialForm)
   const [copied, setCopied] = useState(false)
   // 내려받을 때마다 이름을 r.jpg → r2.jpg → r3.jpg 처럼 늘린다(한 화면에서 여러 상품을 만들 때)
@@ -361,8 +363,10 @@ export function ProductNoticeTool() {
       {/* 위: 미리보기 + 입력. 오른쪽 입력이 따라다니는 범위를 이 묶음 안으로 한정한다(아래 히스토리를 덮지 않게) */}
       <div className="grid grid-cols-12 gap-6">
       {/* 왼쪽: 미리보기(내려받는 이미지 그대로) */}
-      <div className="col-span-12 flex justify-center lg:col-span-7">
-        <canvas ref={canvasRef} className="h-auto w-full max-w-[860px] self-start rounded-lg border bg-white shadow-sm" aria-label="상품정보고시 미리보기" />
+      <div ref={boxRef} className="relative col-span-12 flex justify-center lg:col-span-7">
+        {/* 보기 배율: 처음 70%, 오른쪽 위 − / + (상세페이지 미리보기와 같음) */}
+        <ZoomControl zoom={zoom} scale={scale} onZoom={setZoom} />
+        <canvas ref={canvasRef} style={{ width: 860 * scale }} className="h-auto max-w-full self-start rounded-lg border bg-white shadow-sm" aria-label="상품정보고시 미리보기" />
       </div>
 
       {/* 오른쪽 입력: 화면보다 길어서 따로 스크롤하지 않고 페이지와 함께 내려간다(위아래가 잘리지 않게) */}

@@ -14,7 +14,6 @@ import {
   ImagePlus,
   LayoutTemplate,
   LoaderCircle,
-  Minus,
   Package,
   Save,
   Plus,
@@ -62,6 +61,7 @@ import {
 import { DraftBar, deserializeSections, serializeSections, type CurrentDraft, type DraftControls, type DraftState, type LoadProgress } from "./drafts"
 import { Progress } from "@/components/ui/progress"
 import { ToolHistory } from "@/components/tools/tool-history"
+import { DEFAULT_ZOOM, ZoomControl } from "@/components/tools/zoom-control"
 import { invalidate } from "@/lib/store"
 import iceboxUrl from "./assets/icebox.png"
 import logoUrl from "./assets/logo.svg"
@@ -593,9 +593,7 @@ export function DetailPageTool() {
 }
 
 // 미리보기: 860 폭 문서를 칸 너비에 맞춰 줄여 보여 준다
-// 보기 배율: 처음은 70%, 오른쪽 위 − / + 로 40% ~ 100%(10% 단위). 가운데 숫자를 누르면 칸 너비에 맞춤
-const DEFAULT_ZOOM = 0.7
-const ZOOMS = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+// 보기 배율: 처음은 70%, 오른쪽 위 − / + 로 40% ~ 100%(zoom-control.tsx)
 
 export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
   const box = useRef<HTMLDivElement>(null)
@@ -612,9 +610,6 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const smaller = [...ZOOMS].reverse().find((z) => z < scale - 0.001)
-  const bigger = ZOOMS.find((z) => z > scale + 0.001)
-
   // 문서 높이를 따라간다(웹폰트·그림이 늦게 들어와도)
   const measure = () => {
     const d = frame.current?.contentDocument
@@ -629,24 +624,7 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
 
   return (
     <div className="relative">
-      {!empty && (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 rounded-full border bg-background/90 p-0.5 shadow-md backdrop-blur" role="group" aria-label="보기 배율">
-          <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="작게 보기" disabled={!smaller} onClick={() => smaller && setZoom(smaller)}>
-            <Minus />
-          </Button>
-          <button
-            type="button"
-            className="min-w-12 rounded-full px-1 text-xs font-medium tabular-nums hover:bg-accent"
-            title={zoom === null ? "칸 너비에 맞춤" : "누르면 칸 너비에 맞춤"}
-            onClick={() => setZoom(null)}
-          >
-            {Math.round(scale * 100)}%
-          </button>
-          <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="크게 보기" disabled={!bigger} onClick={() => bigger && setZoom(bigger)}>
-            <Plus />
-          </Button>
-        </div>
-      )}
+      {!empty && <ZoomControl zoom={zoom} scale={scale} onZoom={setZoom} />}
     <SmoothScrollArea
       className="max-h-[calc(100svh-9rem)] overflow-auto rounded-xl border bg-[#444] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       contentClassName="p-0"
