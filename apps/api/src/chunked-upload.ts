@@ -21,6 +21,8 @@ type Pending = { uploaderId: string; name: string; mime: string; size: number; r
 const pending = new Map<string, Pending>()
 
 const partPath = (id: string) => join(UPLOAD_DIR, `${id}.part`)
+// 지금 받는 중인 올리기인지(저장 공간 정리가 지우지 않게)
+export const isPendingChunked = (id: string) => pending.has(id)
 
 function sweep() {
   const now = Date.now()

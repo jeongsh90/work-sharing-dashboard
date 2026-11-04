@@ -44,6 +44,7 @@ import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions }
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry, worklog } from './worklog.ts'
 import { startBackupSchedule } from './backup.ts'
+import { startStorageSweep } from './storage-sweep.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
 import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, schedulePlans, updatePlanLine } from './schedule-plans.ts'
@@ -815,6 +816,8 @@ server.requestTimeout = 0
 
 // 외장 하드 백업(BACKUP_DIR 이 있을 때만)
 if (BACKUP_DIR) startBackupSchedule()
+// 쓰지 않는 업로드 파일(끊긴 조각·기록이 지워진 원본·줄인 이미지) 정리
+startStorageSweep()
 
 server.listen(PORT, () => {
   console.log(`WSD 서버: http://localhost:${PORT} (화면 ${WEB_DIR})`)
