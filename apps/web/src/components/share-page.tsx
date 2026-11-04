@@ -200,15 +200,8 @@ export function SharePage({ session }: { session: Session }) {
           </span>
         }
         action={
-          <Button onClick={() => setWriting({ files: [] })}>
-            <FilePlus2 data-icon="inline-start" />
-            파일 업로드
-          </Button>
-        }
-      >
-        {/* 위: 필터(왼쪽) · 검색(오른쪽) */}
-        <div className="flex flex-col gap-3 rounded-xl border bg-card p-3">
-          <div className="flex flex-wrap items-center gap-2">
+          // 디자인팀 자료실처럼: 제목 줄 오른쪽에 형식·올린 사람·기간·검색·올리기
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Select value={kind} onValueChange={reset(setKind)}>
               <SelectTrigger className="w-36" aria-label="형식">
                 <SelectValue />
@@ -262,26 +255,32 @@ export function SharePage({ session }: { session: Session }) {
                 필터 지우기
               </Button>
             )}
-            <div className="relative w-full sm:ml-auto sm:w-80">
+            <div className="relative w-56">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => reset(setQuery)(e.target.value)}
-                placeholder="제목·내용·파일 이름·올린 사람 검색"
+                placeholder="제목·내용·파일 이름·올린 사람"
                 aria-label="공유 자료 검색"
                 className="pl-8"
               />
             </div>
+            <Button onClick={() => setWriting({ files: [] })}>
+              <FilePlus2 data-icon="inline-start" />
+              파일 업로드
+            </Button>
           </div>
-          {categories.length > 0 && (
-            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="분류">
-              <CategoryChip active={!category} label="전체" count={data.length} onClick={() => reset(setCategory)(null)} />
-              {categories.map(([c, n]) => (
-                <CategoryChip key={c} active={category === c} label={c} count={n} onClick={() => reset(setCategory)(category === c ? null : c)} />
-              ))}
-            </div>
-          )}
-        </div>
+        }
+      >
+        {/* 분류 칩(제목 아래) */}
+        {categories.length > 0 && (
+          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="분류">
+            <CategoryChip active={!category} label="전체" count={data.length} onClick={() => reset(setCategory)(null)} />
+            {categories.map(([c, n]) => (
+              <CategoryChip key={c} active={category === c} label={c} count={n} onClick={() => reset(setCategory)(category === c ? null : c)} />
+            ))}
+          </div>
+        )}
 
         {/* 아래: 공유한 글 */}
         {data.length === 0 ? (
