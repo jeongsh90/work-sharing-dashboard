@@ -48,6 +48,7 @@ import {
   DEFAULT_GRAD_FROM,
   DEFAULT_GRAD_TO,
   gradRgba,
+  parseHex,
   KIND_LABEL,
   newSection,
   nextId,
@@ -740,15 +741,24 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
             <PicturePicker value={s.image} onChange={(image) => onChange({ image })} />
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${id}-sub`}>윗줄</FieldLabel>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor={`${id}-sub`}>윗줄</FieldLabel>
+              <TextColorField label="윗줄" value={s.subColor} onChange={(subColor) => onChange({ subColor })} />
+            </div>
             <Input id={`${id}-sub`} value={s.sub} onChange={(e) => onChange({ sub: e.target.value })} />
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${id}-name`}>상품명</FieldLabel>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor={`${id}-name`}>상품명</FieldLabel>
+              <TextColorField label="상품명" value={s.nameColor} onChange={(nameColor) => onChange({ nameColor })} />
+            </div>
             <Input id={`${id}-name`} value={s.name} onChange={(e) => onChange({ name: e.target.value })} placeholder={product || "상품명"} />
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${id}-desc`}>설명</FieldLabel>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor={`${id}-desc`}>설명</FieldLabel>
+              <TextColorField label="설명" value={s.descColor} onChange={(descColor) => onChange({ descColor })} />
+            </div>
             <Textarea id={`${id}-desc`} value={s.desc} onChange={(e) => onChange({ desc: e.target.value })} className="min-h-20 break-keep" placeholder="줄을 바꾸면 그대로 줄이 바뀝니다" />
           </Field>
           <div className="flex flex-wrap gap-4">
@@ -1076,6 +1086,27 @@ export function ShipGroup({
 }
 
 // 사진 표기(오른쪽 아래): 없음 / 연출 이미지 / 이해를 돕기 위한 이미지
+// 글자색: 색 견본 + #색상값(비우면 흰색)
+function TextColorField({ label, value, onChange }: { label: string; value: string | undefined; onChange: (v: string | undefined) => void }) {
+  const text = value ?? ""
+  const rgb = parseHex(text)
+  const bad = text.trim() !== "" && !rgb
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">글자색</span>
+      <span className="size-6 shrink-0 rounded border" style={{ background: rgb ? `rgb(${rgb.join(",")})` : "#ffffff" }} aria-hidden />
+      <Input
+        value={text}
+        onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
+        placeholder="#ffffff"
+        aria-label={`${label} 글자색`}
+        aria-invalid={bad}
+        className="h-7 w-24 font-mono text-xs"
+      />
+    </div>
+  )
+}
+
 // 그라데이션 한 끝: 색 견본 + #색상값 + 불투명도 %
 function GradStopField({ id, label, value, fallback, onChange }: { id: string; label: string; value: GradStop | undefined; fallback: GradStop; onChange: (v: GradStop) => void }) {
   const v = value ?? fallback

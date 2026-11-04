@@ -31,6 +31,11 @@ export function parseHex(text: string): [number, number, number] | null {
   if (!/^[0-9a-f]{6}$/i.test(h)) return null
   return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]
 }
+// 글자색: 올바른 색상값일 때만 style="color:…" (틀리거나 비면 기본색)
+export function colorStyle(text: string | undefined) {
+  const rgb = parseHex(text ?? "")
+  return rgb ? ` style="color:#${rgb.map((n) => n.toString(16).padStart(2, "0")).join("")}"` : ""
+}
 export function gradRgba(stop: GradStop | undefined, fallback: GradStop) {
   const rgb = parseHex(stop?.color ?? "") ?? parseHex(fallback.color)!
   const raw = Number(stop?.opacity)
@@ -41,8 +46,9 @@ export function gradRgba(stop: GradStop | undefined, fallback: GradStop) {
 type Base = { id: number; layer: string; alt: string } // layer·alt 가 비면 자동
 export type Section = Base &
   (
+    // subColor·nameColor·descColor: 윗줄·상품명·설명 글자색(#rrggbb). 비면 흰색(detail.css 기본)
     // gradFrom·gradTo: 글자 뒤 그라데이션 위(시작)·아래(끝) 색. 없으면(예전 저장본) 기본 검정 60% → 투명
-    | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string; gradFrom?: GradStop; gradTo?: GradStop }
+    | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string; gradFrom?: GradStop; gradTo?: GradStop; subColor?: string; nameColor?: string; descColor?: string }
     // em1·em2: 그 제목 줄을 주황 굵게(강조). 없으면(예전 저장본) 제목 2만 강조
     | { kind: "point"; title1: string; title2: string; body: string; kick: boolean; em1?: boolean; em2?: boolean }
     | { kind: "photo"; image: Picture | null; tag: string; desc: string }
@@ -222,11 +228,11 @@ function sectionHtml(p: Planned, urls: Map<Picture, string> | null, asset: (u: s
     <div class="head">
       <img class="logo" src="${asset(logoUrl)}" alt="">
       <div>
-        <div class="hero-sub">${esc(s.sub)}</div>
-        <div class="hero-name">${esc(s.name) || "상품명"}</div>
+        <div class="hero-sub"${colorStyle(s.subColor)}>${esc(s.sub)}</div>
+        <div class="hero-name"${colorStyle(s.nameColor)}>${esc(s.name) || "상품명"}</div>
       </div>
     </div>
-    <div class="hero-desc pre">${rich(s.desc, "b")}</div>
+    <div class="hero-desc pre"${colorStyle(s.descColor)}>${rich(s.desc, "b")}</div>
   </div>${s.tag ? `\n  <div class="tag">${esc(s.tag)}</div>` : ""}
 </section>`
     }
