@@ -13,6 +13,7 @@ import { scrollToElement } from "@/lib/smooth-scroll"
 import { useUserNames } from "@/lib/store"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { useFloatingZoom } from "@/components/home/floating-dock"
+import { DEFAULT_ZOOM, ZoomControl } from "@/components/tools/zoom-control"
 
 // 시안 이미지 위에 핀을 꽂고, 핀마다 댓글을 단다.
 // 핀 위치는 이미지 크기 대비 비율(0~1)로 저장해 화면 폭이 달라도 같은 자리에 보인다.
@@ -54,6 +55,9 @@ export function ReviewBoard({
   // 전체 화면 보기(모달). 핀을 꽂을 수 없을 땐 이미지를 누르면, 꽂을 수 있을 땐 오른쪽 위 버튼으로 연다.
   const images = submission.files.filter((f) => f.mime.startsWith("image/"))
   const [viewing, setViewing] = useState<number | null>(null)
+  // 보기 배율: 시안 칸 너비 기준 처음 70%, − / + 로 40% ~ 100%(숫자 누르면 칸에 맞춤 = 100%). 핀은 비율 위치라 그대로 따라간다
+  const [zoom, setZoom] = useState<number | null>(DEFAULT_ZOOM)
+  const scale = zoom ?? 1
   // 시안 이미지 칸 너비에 맞춘 크기로 받는다(칸보다 작은 이미지는 원래 크기). 창을 줄일 때는 다시 받지 않는다.
   const columnRef = useRef<HTMLDivElement>(null)
   const [imageSize, setImageSize] = useState<ImageSize | null>(null)
@@ -120,8 +124,14 @@ export function ReviewBoard({
             수정할 곳을 이미지에서 누르면 핀이 꽂히고 댓글을 남길 수 있습니다.
           </p>
         )}
+        {images.length > 0 && (
+          // 배율 버튼: 시안 칸 오른쪽 위에 붙어 내려도 따라온다(자리는 차지하지 않음)
+          <div className="pointer-events-none sticky top-20 z-20 -mb-14 flex h-10 justify-end pr-2">
+            <ZoomControl zoom={zoom} scale={scale} onZoom={setZoom} className="pointer-events-auto relative" />
+          </div>
+        )}
         {submission.files.map((file) => (
-          <figure key={file.id} className="flex flex-col gap-1">
+          <figure key={file.id} className="flex flex-col gap-1" style={images.includes(file) ? { width: `${scale * 100}%` } : undefined}>
             <div
               data-image-index={images.includes(file) ? images.indexOf(file) : undefined}
               className={`relative min-h-12 w-fit max-w-full min-w-12 overflow-visible rounded-lg border bg-muted/30 ${canPin ? "cursor-crosshair" : "cursor-zoom-in"}`}

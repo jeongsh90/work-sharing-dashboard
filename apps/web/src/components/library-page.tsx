@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react"
-import { Download, EllipsisVertical, FolderPlus, Pencil, Search, Trash2, Upload, X } from "lucide-react"
+import { Download, EllipsisVertical, FolderPlus, LayoutGrid, List, Pencil, Search, Trash2, Upload, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,7 @@ import {
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { confirmDialog } from "@/components/confirm-dialog"
@@ -53,6 +54,17 @@ const DEFAULT_CATEGORIES = ["템플릿", "로고·CI", "폰트", "이미지 소�
 const NEW_CATEGORY = "__new__"
 const NO_CATEGORY = "미분류"
 
+// 보기 방식: 기본은 목록(표). 이 브라우저에 기억해 둔다
+type View = "list" | "card"
+const VIEW_KEY = "library-view"
+function loadView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "card" ? "card" : "list"
+  } catch {
+    return "list"
+  }
+}
+
 export function LibraryPage({ session }: { session: Session }) {
   const { data, error } = useApi<LibraryItem[]>("/library", 60_000)
   const [query, setQuery] = useState("")
@@ -61,6 +73,15 @@ export function LibraryPage({ session }: { session: Session }) {
   const [uploading, setUploading] = useState<File[] | null>(null)
   const [editing, setEditing] = useState<LibraryItem | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [view, setViewState] = useState<View>(loadView)
+  const setView = (v: View) => {
+    setViewState(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      // 저장 못 해도 이번 화면에서는 바뀐다
+    }
+  }
   const dragDepth = useRef(0)
   const picker = useRef<HTMLInputElement>(null)
 
@@ -168,6 +189,16 @@ export function LibraryPage({ session }: { session: Session }) {
                 className="pl-8"
               />
             </div>
+            <div className="flex items-center rounded-lg border p-0.5" role="group" aria-label="보기 방식">
+              <Button variant={view === "list" ? "secondary" : "ghost"} size="sm" aria-pressed={view === "list"} onClick={() => setView("list")}>
+                <List data-icon="inline-start" />
+                리스트로 보기
+              </Button>
+              <Button variant={view === "card" ? "secondary" : "ghost"} size="sm" aria-pressed={view === "card"} onClick={() => setView("card")}>
+                <LayoutGrid data-icon="inline-start" />
+                카드로 보기
+              </Button>
+            </div>
             <Button onClick={() => picker.current?.click()}>
               <Upload data-icon="inline-start" />
               자료 올리기
@@ -196,6 +227,60 @@ export function LibraryPage({ session }: { session: Session }) {
           </button>
         ) : list.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">조건에 맞는 자료가 없습니다.</p>
+        ) : view === "list" ? (
+          // 목록(표): 형식·이름(메모) · 분류 · 크기 · 올린 사람 · 올린 날 · 내려받기·메뉴
+          <div className="overflow-hidden rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>파일 이름</TableHead>
+                  <TableHead className="hidden w-32 md:table-cell">분류</TableHead>
+                  <TableHead className="w-24 text-right">크기</TableHead>
+                  <TableHead className="hidden w-28 lg:table-cell">올린 사람</TableHead>
+                  <TableHead className="hidden w-40 lg:table-cell">올린 날</TableHead>
+                  <TableHead className="w-24" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="max-w-0 whitespace-normal">
+                      <button
+                        type="button"
+                        className="group flex w-full min-w-0 items-center gap-3 text-left"
+                        onClick={() => void downloadLargeFile(item.file.id, item.file.name)}
+                        title={`${item.file.name} 내려받기`}
+                      >
+                        {PREVIEWABLE.has(item.file.mime) ? (
+                          <AuthImage fileId={item.file.id} size="thumb" alt="" className="size-10 shrink-0 rounded border bg-muted/50 object-cover" />
+                        ) : (
+                          <TypeBadge name={item.file.name} className="h-6 min-w-10 shrink-0 px-1 text-[10px]" />
+                        )}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium group-hover:underline">{item.file.name}</span>
+                          {item.note && <span className="truncate text-xs text-muted-foreground">{item.note}</span>}
+                        </span>
+                      </button>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">{item.category || NO_CATEGORY}</span>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">{formatBytes(item.file.size)}</TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{item.uploaderName}</TableCell>
+                    <TableCell className="hidden text-muted-foreground tabular-nums lg:table-cell">{formatDateTime(new Date(item.createdAt))}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-0.5">
+                        <Button variant="ghost" size="icon-sm" aria-label={`${item.file.name} 내려받기`} onClick={() => void downloadLargeFile(item.file.id, item.file.name)}>
+                          <Download />
+                        </Button>
+                        <ItemMenu item={item} canEdit={canEdit(item)} onEdit={() => setEditing(item)} onRemove={() => void remove(item)} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         ) : (
           <ul className="grid grid-cols-12 gap-4">
             {list.map((item) => (
@@ -226,32 +311,7 @@ export function LibraryPage({ session }: { session: Session }) {
                     <span className="min-w-0 flex-1 text-sm font-medium break-all" title={item.file.name}>
                       {item.file.name}
                     </span>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" className="-mt-1 -mr-1 shrink-0" aria-label="자료 메뉴">
-                          <EllipsisVertical />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => void downloadLargeFile(item.file.id, item.file.name)}>
-                          <Download />
-                          내려받기
-                        </DropdownMenuItem>
-                        {canEdit(item) && (
-                          <>
-                            <DropdownMenuItem onSelect={() => setEditing(item)}>
-                              <Pencil />
-                              고치기
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem variant="destructive" onSelect={() => void remove(item)}>
-                              <Trash2 />
-                              지우기
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <ItemMenu item={item} canEdit={canEdit(item)} onEdit={() => setEditing(item)} onRemove={() => void remove(item)} className="-mt-1 -mr-1" />
                   </div>
                   {item.note && <p className="text-xs break-keep whitespace-pre-line text-muted-foreground">{item.note}</p>}
                   <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-xs text-muted-foreground">
@@ -277,6 +337,38 @@ export function LibraryPage({ session }: { session: Session }) {
       )}
       {editing && <EditDialog key={editing.id} item={editing} categories={categories.map(([c]) => c)} onClose={() => setEditing(null)} />}
     </div>
+  )
+}
+
+// 자료 하나의 메뉴(내려받기 · 고치기 · 지우기)
+function ItemMenu({ item, canEdit, onEdit, onRemove, className = "" }: { item: LibraryItem; canEdit: boolean; onEdit: () => void; onRemove: () => void; className?: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" className={`shrink-0 ${className}`} aria-label="자료 메뉴">
+          <EllipsisVertical />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => void downloadLargeFile(item.file.id, item.file.name)}>
+          <Download />
+          내려받기
+        </DropdownMenuItem>
+        {canEdit && (
+          <>
+            <DropdownMenuItem onSelect={onEdit}>
+              <Pencil />
+              고치기
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+              <Trash2 />
+              지우기
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
