@@ -192,3 +192,6 @@ b, .b { font-weight: 700; }
 .why-title { font-size: 34px; line-height: 48px; letter-spacing: -0.025em; font-weight: 700; color: var(--ink); }
 .why-title .no { color: var(--orange); }
 .why-body { font-size: 28px; line-height: 44px; letter-spacing: -0.02em; color: var(--body); }
+
+/* 답변 아래 사진(디자인 툴): 답변 글과 같은 왼쪽(A 배지 뒤)에서 시작, 높이는 사진 비율대로 */
+.qa .chart img.qa-img { height: auto; }

@@ -273,7 +273,7 @@ export function DetailPageTool() {
       for (const p of planned) {
         const s = p.section
         const pics: (Picture | null)[] =
-          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products, ...s.ice].map((pr) => pr.image) : s.kind === "why" ? s.items.map((it) => it.image) : []
+          s.kind === "hero" || s.kind === "photo" || s.kind === "notice" ? [s.image] : s.kind === "ship" ? [...s.products, ...s.ice].map((pr) => pr.image) : s.kind === "why" ? s.items.map((it) => it.image) : s.kind === "qa" ? s.items.map((it) => it.image ?? null) : []
         for (const pic of pics) if (pic && !urls.has(pic)) urls.set(pic, await toDataUrl(pic))
       }
       const assets = await assetDataUrls()
@@ -867,6 +867,7 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
               <Input value={it.q} onChange={(e) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, q: e.target.value } : x)) })} placeholder="Q. 질문" aria-label={`질문 ${k + 1}`} />
               <Input value={it.lead} onChange={(e) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, lead: e.target.value } : x)) })} placeholder="A. 첫 핵심 문장(주황 굵게, 없어도 됨)" aria-label={`답변 ${k + 1} 핵심 문장`} />
               <EmphasisTextarea value={it.a} onValueChange={(a) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, a } : x)) })} className="min-h-20 break-keep" placeholder="답변 본문 (골라서 강조하면 주황 굵게)" aria-label={`답변 ${k + 1}`} />
+              <PicturePicker value={it.image ?? null} onChange={(image) => onChange({ items: s.items.map((x) => (x.id === it.id ? { ...x, image } : x)) })} label="답변 아래 사진 (없어도 됨)" />
             </div>
           ))}
           <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ items: [...s.items, { id: nextId(), q: "", lead: "", a: "" }] })}>

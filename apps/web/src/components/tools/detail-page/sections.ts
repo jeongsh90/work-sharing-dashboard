@@ -13,7 +13,8 @@ import commonAlts from "./common-alts.json"
 // 첨부한 그림: url 은 미리보기용(blob:), 렌더할 때는 860 폭 JPG data: 로 바꿔 보낸다
 export type Picture = { url: string; name: string; width: number; height: number; file: File }
 
-export type QaItem = { id: number; q: string; lead: string; a: string }
+// image: 답변 아래 사진(없어도 됨, 예전 저장본에는 없음)
+export type QaItem = { id: number; q: string; lead: string; a: string; image?: Picture | null }
 export type ShipProduct = { id: number; image: Picture | null; cap: string }
 // WHY(많은 분들이 왜 … 찾을까?) 카드: 왼쪽 정사각 사진 + 오른쪽 번호·제목·설명
 export type WhyItem = { id: number; image: Picture | null; title: string; body: string }
@@ -232,7 +233,7 @@ ${s.items
   .map(
     (it) => `  <div class="item">
     <div class="q"><div class="badge-q">Q</div><div class="t-h3">${esc(it.q.trim())}</div></div>
-    <div class="answers"><div class="a"><div class="slot${it.lead.trim() ? " l30" : ""}"><div class="badge-a">A</div></div><div class="txt pre">${it.lead.trim() ? `<span class="lead">${esc(it.lead.trim())}</span>` : ""}${rich(it.a, "em28")}</div></div></div>
+    <div class="answers"><div class="a"><div class="slot${it.lead.trim() ? " l30" : ""}"><div class="badge-a">A</div></div><div class="txt pre">${it.lead.trim() ? `<span class="lead">${esc(it.lead.trim())}</span>` : ""}${rich(it.a, "em28")}</div></div>${it.image ? `<div class="chart"><img class="qa-img" src="${pictureUrl(it.image, urls)}" alt=""></div>` : ""}</div>
   </div>`,
   )
   .join("\n")}
