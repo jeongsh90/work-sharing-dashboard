@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Tip } from "@/components/tip"
 
 // 단계별 안내 이미지 슬라이드. 이미지 크기가 달라도 같은 크기의 틀(16:10, 흰 바탕)에 맞춰 보여 준다.
 export type GuideStep = { src: string; caption: string }
@@ -29,9 +30,9 @@ export function GuideSlider({ title, steps }: { title: string; steps: GuideStep[
         <span className="text-xs text-muted-foreground tabular-nums">
           {i + 1} / {steps.length}
         </span>
-        <Button variant="ghost" size="icon-sm" aria-label="전체 화면으로 보기" title="전체 화면" onClick={() => setFull(true)}>
+        <Tip content={"전체 화면"}><Button variant="ghost" size="icon-sm" aria-label="전체 화면으로 보기" onClick={() => setFull(true)}>
           <Maximize2 />
-        </Button>
+        </Button></Tip>
       </div>
 
       {/* 같은 크기의 틀: 이미지는 비율을 지킨 채 가운데 맞춘다 */}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
 import { downloadFile, formatBytes, useFileUrl, type ImageSize } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
+import { Tip } from "@/components/tip"
 
 // 로그인이 필요한 서버 이미지를 보여 준다.
 export function AuthImage({
@@ -43,19 +44,18 @@ export function AuthImage({
 // 파일 이름과 내려받기 버튼
 export function FileChip({ file }: { file: FileInfo }) {
   return (
-    <Button
+    <Tip content={`${file.name} 내려받기`}><Button
       type="button"
       variant="outline"
       size="sm"
       className="max-w-full"
       onClick={() => downloadFile(file.id, file.name)}
-      title={`${file.name} 내려받기`}
     >
       <FileText data-icon="inline-start" />
       <span className="truncate">{file.name}</span>
       <span className="text-muted-foreground">{formatBytes(file.size)}</span>
       <Download data-icon="inline-end" />
-    </Button>
+    </Button></Tip>
   )
 }
 
@@ -85,11 +85,10 @@ export function FileGallery({
         <ul className={`grid gap-2 ${maxImages ? "grid-cols-4" : "grid-cols-3 sm:grid-cols-4"}`}>
           {shown.map((f, i) => (
             <li key={f.id}>
-              <button
+              <Tip content={`${f.name} 크게 보기`}><button
                 type="button"
                 className="relative block w-full overflow-hidden rounded-lg border"
                 onClick={() => setOpen(i)}
-                title={`${f.name} 크게 보기`}
               >
                 <AuthImage fileId={f.id} alt={f.name} size="thumb" className="aspect-square w-full object-cover" />
                 {hidden > 0 && i === shown.length - 1 && (
@@ -97,7 +96,7 @@ export function FileGallery({
                     +{hidden}
                   </span>
                 )}
-              </button>
+              </button></Tip>
             </li>
           ))}
         </ul>

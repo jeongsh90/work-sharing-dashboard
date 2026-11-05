@@ -31,6 +31,7 @@ import { formatDateTime, type FileInfo, type RequestSummaryDto } from "@/lib/req
 import { openRequest } from "@/lib/router"
 import { useApi, useUserNames } from "@/lib/store"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { Tip } from "@/components/tip"
 
 type ArchiveItem = RequestSummaryDto & { files: FileInfo[] }
 
@@ -204,9 +205,9 @@ export function FilesPage() {
                       <OriginalInfo kind={item.originalKind} link={item.originalLink} tool={item.originalTool} compact />
                     </div>
                     <button type="button" className="flex min-w-0 flex-col gap-0.5 text-left" onClick={() => openRequest(item.id)}>
-                      <span className="truncate font-medium hover:underline" title={item.title}>
+                      <Tip content={item.title}><span className="truncate font-medium hover:underline">
                         {item.title}
-                      </span>
+                      </span></Tip>
                       {/* 요청자·작업자를 이름표로 나눠 보여 준다 */}
                       <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                         <span className="flex items-center gap-1">

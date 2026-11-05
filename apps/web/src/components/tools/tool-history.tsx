@@ -8,6 +8,7 @@ import { confirmDialog } from "@/components/confirm-dialog"
 import { api, downloadFile } from "@/lib/api"
 import { formatDateTime } from "@/lib/requests"
 import { invalidate, useApi } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 디자인 툴 히스토리: 툴로 만든 이미지를 제목·썸네일로 모아 보여 주고 다시 내려받는다(서버 tool-history.ts).
 export type HistoryItem<F> = {
@@ -91,18 +92,17 @@ export function ToolHistory<F>({
         <ul className="flex flex-col gap-2">
           {list.map((h) => (
             <li key={h.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
-              <button
+              <Tip content={onLoad ? "누르면 입력 내용을 불러옵니다" : undefined}><button
                 type="button"
                 className="flex min-w-0 flex-1 flex-col text-left disabled:opacity-50"
                 disabled={!onLoad}
-                title={onLoad ? "누르면 입력 내용을 불러옵니다" : undefined}
                 onClick={() => onLoad && void onLoad(h.form)}
               >
                 <span className="truncate font-medium hover:underline">{h.title}</span>
                 <span className="truncate text-xs text-muted-foreground tabular-nums">
                   {[meta(h.form), h.authorName, formatDateTime(new Date(h.createdAt))].filter(Boolean).join(" · ")}
                 </span>
-              </button>
+              </button></Tip>
               {onLoad && (
                 <Button size="sm" variant="outline" onClick={() => void onLoad(h.form)}>
                   <FileInput data-icon="inline-start" />
@@ -119,18 +119,17 @@ export function ToolHistory<F>({
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4">
           {list.map((h) => (
             <li key={h.id} className="flex flex-col overflow-hidden rounded-xl border bg-card">
-              <button
+              <Tip content={`${h.title} 다운로드`}><button
                 type="button"
                 className="relative block aspect-[3/4] overflow-hidden bg-white"
                 onClick={() => downloadFile(h.fileId, fileName(h.title))}
-                title={`${h.title} 다운로드`}
               >
                 <AuthImage fileId={h.fileId} alt={h.title} size="w640" className="size-full object-cover object-top" />
-              </button>
+              </button></Tip>
               <div className="flex flex-col gap-1 p-3">
-                <p className="truncate text-sm font-medium" title={h.title}>
+                <Tip content={h.title}><p className="truncate text-sm font-medium">
                   {h.title}
-                </p>
+                </p></Tip>
                 <p className="truncate text-xs text-muted-foreground">
                   {h.authorName} · {formatDateTime(new Date(h.createdAt))}
                 </p>
@@ -140,9 +139,9 @@ export function ToolHistory<F>({
                     다운로드
                   </Button>
                   {onLoad && (
-                    <Button size="icon-sm" variant="ghost" aria-label="입력 내용 불러오기" title="입력 내용 불러오기" onClick={() => void onLoad(h.form)}>
+                    <Tip content={"입력 내용 불러오기"}><Button size="icon-sm" variant="ghost" aria-label="입력 내용 불러오기" onClick={() => void onLoad(h.form)}>
                       <FileInput />
-                    </Button>
+                    </Button></Tip>
                   )}
                   <Button size="icon-sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label="삭제" onClick={() => remove(h)}>
                     <Trash2 />

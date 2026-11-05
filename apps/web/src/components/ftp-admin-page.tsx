@@ -15,6 +15,7 @@ import { api, ApiError, formatBytes } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { invalidate, useApi, useUserNames } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 관리 → FTP 서버(슈퍼관리자): FTP 메뉴에서 쓸 FTP 접속 정보를 넣는다(서버 apps/api/src/ftp.ts).
 // 비밀번호는 서버 PC 에 암호화해 두고 화면에는 다시 보여 주지 않는다. 고칠 때 비워 두면 원래 비밀번호를 그대로 쓴다.
@@ -94,9 +95,9 @@ export function FtpAdminPage() {
                     <TableCell className="text-muted-foreground">{row.root}</TableCell>
                     <TableCell>
                       <div className="flex justify-end">
-                        <Button variant="ghost" size="icon-sm" aria-label={`${row.name} 비밀번호 변경`} title="비밀번호 변경" onClick={() => setPwFor(row)}>
+                        <Tip content={"비밀번호 변경"}><Button variant="ghost" size="icon-sm" aria-label={`${row.name} 비밀번호 변경`} onClick={() => setPwFor(row)}>
                           <KeyRound />
-                        </Button>
+                        </Button></Tip>
                         <Button variant="ghost" size="icon-sm" aria-label={`${row.name} 고치기`} onClick={() => setEditing(row)}>
                           <Pencil />
                         </Button>
@@ -460,9 +461,9 @@ function FtpHistory() {
                     <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${ACTION[l.action]?.className ?? ""}`}>{ACTION[l.action]?.label ?? l.action}</span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{l.serverName}</TableCell>
-                  <TableCell className="max-w-0 truncate" title={l.path}>
+                  <Tip content={l.path}><TableCell className="max-w-0 truncate">
                     {l.path}
-                  </TableCell>
+                  </TableCell></Tip>
                   <TableCell className="text-right text-muted-foreground tabular-nums">{l.size === null ? "" : formatBytes(l.size)}</TableCell>
                 </TableRow>
               ))}

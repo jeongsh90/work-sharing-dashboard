@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Minus, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Tip } from "@/components/tip"
 
 // 디자인 툴 미리보기 보기 배율: 처음 70%, − / + 로 40% ~ 100%(10% 단위). 가운데 숫자를 누르면 칸 너비에 맞춤(zoom = null)
 export const DEFAULT_ZOOM = 0.7
@@ -15,14 +16,13 @@ export function ZoomControl({ zoom, scale, onZoom, className = "absolute top-2 r
       <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="작게 보기" disabled={!smaller} onClick={() => smaller && onZoom(smaller)}>
         <Minus />
       </Button>
-      <button
+      <Tip content={zoom === null ? "칸 너비에 맞춤" : "누르면 칸 너비에 맞춤"}><button
         type="button"
         className="min-w-12 rounded-full px-1 text-xs font-medium tabular-nums hover:bg-accent"
-        title={zoom === null ? "칸 너비에 맞춤" : "누르면 칸 너비에 맞춤"}
         onClick={() => onZoom(null)}
       >
         {Math.round(scale * 100)}%
-      </button>
+      </button></Tip>
       <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="크게 보기" disabled={!bigger} onClick={() => bigger && onZoom(bigger)}>
         <Plus />
       </Button>

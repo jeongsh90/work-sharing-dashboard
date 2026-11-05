@@ -42,6 +42,7 @@ import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type FileInfo } from "@/lib/requests"
 import { invalidate, useApi } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 파일공유자료실: 로그인한 누구나 글과 파일을 올려 함께 본다(부서 상관없이).
 // 위: 분류 · 검색 · 형식 · 올린 사람 · 기간 필터 / 아래: 공유한 글(내용 + 첨부 파일)
@@ -363,9 +364,9 @@ function PostCard({ post, canEdit, onEdit, onRemove }: { post: SharePost; canEdi
       <div className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="text-xs text-muted-foreground">{post.category || NO_CATEGORY}</span>
-          <span className="truncate font-medium" title={post.title}>
+          <Tip content={post.title}><span className="truncate font-medium">
             {post.title}
-          </span>
+          </span></Tip>
           <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <span className="flex items-center gap-1">
               <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">올림</span>
@@ -624,9 +625,9 @@ function PostDialog({
                   {kept.map((f) => (
                     <div key={f.id} className="flex items-center gap-2 px-3 py-2">
                       <TypeBadge name={f.name} className="h-5 min-w-9 shrink-0 px-1 text-[10px]" />
-                      <span className="min-w-0 flex-1 truncate text-sm" title={f.name}>
+                      <Tip content={f.name}><span className="min-w-0 flex-1 truncate text-sm">
                         {f.name}
-                      </span>
+                      </span></Tip>
                       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(f.size)}</span>
                       {!busy && (
                         <Button type="button" variant="ghost" size="icon-xs" aria-label={`${f.name} 빼기`} onClick={() => setKept((l) => l.filter((x) => x.id !== f.id))}>
@@ -639,9 +640,9 @@ function PostDialog({
                     <div key={`${f.name}-${i}`} className="flex flex-col gap-1.5 px-3 py-2">
                       <div className="flex items-center gap-2">
                         <TypeBadge name={f.name} className="h-5 min-w-9 shrink-0 px-1 text-[10px]" />
-                        <span className="min-w-0 flex-1 truncate text-sm" title={f.name}>
+                        <Tip content={f.name}><span className="min-w-0 flex-1 truncate text-sm">
                           {f.name}
-                        </span>
+                        </span></Tip>
                         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(f.size)}</span>
                         {!busy && (
                           <Button type="button" variant="ghost" size="icon-xs" aria-label={`${f.name} 빼기`} onClick={() => setFiles((l) => l.filter((_, j) => j !== i))}>

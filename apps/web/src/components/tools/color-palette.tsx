@@ -4,6 +4,7 @@ import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { Tip } from "@/components/tip"
 
 // 색 견본을 누르면 뜨는 팔레트(Figma Libraries 처럼 묶음 제목 + 견본 줄).
 // 맨 위는 상세페이지 디자인 색(detail.css :root), 그 아래는 Tailwind 기본 색(50~950, hex).
@@ -85,10 +86,8 @@ export function ColorSwatchPicker({ value, swatch, label, onPick, className = "s
               </div>
               <div className="flex flex-wrap gap-1">
                 {g.colors.map(([n, h]) => (
-                  <button
-                    key={n}
+                  <Tip key={n} content={`${n} ${h}`}><button
                     type="button"
-                    title={`${n} ${h}`}
                     aria-label={`${n} ${h}`}
                     onClick={() => {
                       onPick(h)
@@ -96,7 +95,7 @@ export function ColorSwatchPicker({ value, swatch, label, onPick, className = "s
                     }}
                     className={`size-6 cursor-pointer rounded border border-black/10 transition-transform hover:scale-110 dark:border-white/15 ${current === h ? "ring-2 ring-primary ring-offset-1 ring-offset-popover" : ""}`}
                     style={{ background: h }}
-                  />
+                  /></Tip>
                 ))}
               </div>
             </div>

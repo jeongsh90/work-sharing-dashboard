@@ -2,6 +2,7 @@ import { ExternalLink, FileX, LayoutGrid, Link2, PenTool, Upload } from "lucide-
 
 import { Button } from "@/components/ui/button"
 import { ORIGINAL_LABEL, type OriginalKind } from "@/lib/requests"
+import { Tip } from "@/components/tip"
 
 // 작업 원본 형태 표시: "Figma 로 작업"·"디자인 툴로 제작 · 수매확인서" 등과 링크 열기 버튼.
 // 파일만 올린 요청(예전 요청 포함)은 아무것도 보이지 않는다.
@@ -29,10 +30,10 @@ export function OriginalInfo({
       </span>
       {link && (
         <Button asChild variant="outline" size={compact ? "xs" : "sm"} onClick={(e) => e.stopPropagation()}>
-          <a href={link} target="_blank" rel="noopener noreferrer" title={link}>
+          <Tip content={link}><a href={link} target="_blank" rel="noopener noreferrer">
             <ExternalLink data-icon="inline-start" />
             {kind === "figma" ? "Figma 열기" : "링크 열기"}
-          </a>
+          </a></Tip>
         </Button>
       )}
     </div>

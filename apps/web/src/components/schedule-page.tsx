@@ -21,6 +21,7 @@ import { invalidate, useApi, useDesigners, useRequests, useUserNames } from "@/l
 import { dateKey, useHolidays } from "@/lib/holidays"
 import { api, ApiError } from "@/lib/api"
 import { isManager, type Session } from "@/lib/auth"
+import { Tip } from "@/components/tip"
 
 // 디자인팀 일정(달력). 프로젝트마다 작업 기간(시작일 ~ 마감일)을 한 달 달력 위에 가로 막대로 그린다.
 // 여러 날·여러 주에 걸친 일정은 주마다 이어지는 막대로 보인다. 막대를 누르면 요청 상세로 간다.
@@ -175,10 +176,9 @@ const isWeekly = (l: PlanLine) => !l.marks.length && l.text.startsWith("주간�
 function PlanText({ line, owners, onEdit }: { line: PlanLine; owners: string; onEdit?: () => void }) {
   const Tag = onEdit ? "button" : "div"
   return (
-    <Tag
+    <Tip content={owners ? `${line.text} · ${owners}${line.done ? " (완료)" : ""}` : line.text}><Tag
       {...(onEdit ? { type: "button" as const, onClick: onEdit } : {})}
       className={`flex min-w-0 items-start gap-1 text-left text-xs leading-[1.4] break-keep ${onEdit ? "-mx-1 rounded px-1 hover:bg-muted" : ""}`}
-      title={owners ? `${line.text} · ${owners}${line.done ? " (완료)" : ""}` : line.text}
     >
       {line.marks.map((m, i) => (
         <PlanMark key={i} mark={m} />
@@ -189,7 +189,7 @@ function PlanText({ line, owners, onEdit }: { line: PlanLine; owners: string; on
       >
         {line.text}
       </span>
-    </Tag>
+    </Tag></Tip>
   )
 }
 
@@ -564,9 +564,9 @@ export function SchedulePage({ session }: { session: Session }) {
                         </span>
                         {/* 공휴일 이름 */}
                         {holiday && (
-                          <span className={`min-w-0 truncate pt-1 text-xs text-destructive ${other ? "opacity-60" : ""}`} title={holiday}>
+                          <Tip content={holiday}><span className={`min-w-0 truncate pt-1 text-xs text-destructive ${other ? "opacity-60" : ""}`}>
                             {holiday}
-                          </span>
+                          </span></Tip>
                         )}
                         {/* 주간보고: 날짜·공휴일 오른쪽 */}
                         {weekly.map(({ line, index }) => {
@@ -615,11 +615,9 @@ export function SchedulePage({ session }: { session: Session }) {
                     const overdue = isActive(r) && !r.onHold && startOfDay(r.dueAt) < today
                     const names = r.designers.map(userName).join(", ") || "미배정"
                     return (
-                      <button
-                        key={`${r.id}-${b.col}`}
+                      <Tip key={`${r.id}-${b.col}`} content={`${r.title}\n${statusText(r)} · ${names}\n${period(r).start.toLocaleDateString("ko-KR")} ~ ${r.onHold ? "보류" : r.ongoing ? "계속 업무" : r.dueAt.toLocaleString("ko-KR")}`}><button
                         type="button"
                         onClick={() => openRequest(r.id)}
-                        title={`${r.title}\n${statusText(r)} · ${names}\n${period(r).start.toLocaleDateString("ko-KR")} ~ ${r.onHold ? "보류" : r.ongoing ? "계속 업무" : r.dueAt.toLocaleString("ko-KR")}`}
                         className={`mx-0.5 flex min-w-0 items-center gap-1 overflow-hidden px-1.5 text-left text-xs leading-none transition-opacity hover:opacity-80 ${
                           b.startsHere ? "rounded-l-md" : ""
                         } ${b.endsHere ? "rounded-r-md" : ""}`}
@@ -633,7 +631,7 @@ export function SchedulePage({ session }: { session: Session }) {
                         <span className="min-w-0 truncate font-medium">{r.title}</span>
                         <span className="hidden shrink-0 text-muted-foreground sm:inline">· {names}</span>
                         {overdue && b.endsHere && <span className="shrink-0 font-medium text-destructive">마감 지남</span>}
-                      </button>
+                      </button></Tip>
                     )
                   })}
                 </div>

@@ -45,6 +45,7 @@ import { api, ApiError } from "@/lib/api"
 import { canEditAnytime, EDIT_ON_OPEN_KEY, loadSession } from "@/lib/auth"
 import { openRequest } from "@/lib/router"
 import { invalidate, useUserNames, useUsers } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 const PAGE_SIZE = 15
 const COLUMN_COUNT = 8
@@ -231,9 +232,9 @@ export function RequestTable({
                   onClick={() => openRequest(r.id)}
                 >
                   <TableCell className="pl-4">
-                    <div className="truncate font-medium" title={r.title}>
+                    <Tip content={r.title}><div className="truncate font-medium">
                       {r.title}
-                    </div>
+                    </div></Tip>
                     <div className="text-xs text-muted-foreground">
                       {r.code} · {r.workType}
                     </div>

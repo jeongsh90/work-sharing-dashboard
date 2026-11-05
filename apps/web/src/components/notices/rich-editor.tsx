@@ -35,6 +35,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator"
 import { ApiError, fileUrl, uploadFile } from "@/lib/api"
 import { copyFormat, FormatPainter, setPainterArmed, type PainterStorage } from "@/components/notices/format-painter"
+import { Tip } from "@/components/tip"
 
 // 공지사항 에디터(Tiptap). 굵게·기울임·밑줄·취소선·제목·글자색·정렬·목록·인용·구분선·링크·그림.
 // 그림은 고르거나 붙여 넣으면 바로 서버에 올리고, 본문에는 파일 id(data-file-id)를 남긴다(lib/notices.ts).
@@ -136,12 +137,11 @@ export function RichEditor({
 
 function Tool({ icon: Icon, label, active, onClick, disabled }: { icon: LucideIcon; label: string; active?: boolean; onClick: () => void; disabled?: boolean }) {
   return (
-    <Button
+    <Tip content={label} wrap><Button
       type="button"
       variant={active ? "secondary" : "ghost"}
       size="icon-sm"
       aria-label={label}
-      title={label}
       aria-pressed={active}
       disabled={disabled}
       // 누를 때 본문 선택이 풀리지 않게
@@ -149,7 +149,7 @@ function Tool({ icon: Icon, label, active, onClick, disabled }: { icon: LucideIc
       onClick={onClick}
     >
       <Icon />
-    </Button>
+    </Button></Tip>
   )
 }
 
@@ -214,22 +214,20 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
       <Tool icon={Strikethrough} label="취소선" active={s.strike} onClick={() => c().toggleStrike().run()} />
       <Popover open={colorOpen} onOpenChange={setColorOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="글자 색" title="글자 색" onMouseDown={(e) => e.preventDefault()}>
+          <Tip content={"글자 색"}><Button type="button" variant="ghost" size="icon-sm" aria-label="글자 색" onMouseDown={(e) => e.preventDefault()}>
             <Palette style={s.color ? { color: s.color } : undefined} />
-          </Button>
+          </Button></Tip>
         </PopoverTrigger>
         <PopoverContent className="flex w-auto flex-row gap-1 p-2" onOpenAutoFocus={(e) => e.preventDefault()}>
           {COLORS.map((col) => (
-            <button
-              key={col.label}
+            <Tip key={col.label} content={col.label}><button
               type="button"
-              title={col.label}
               aria-label={col.label}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pickColor(col.value)}
               className={`size-7 rounded-md border ${s.color === col.value ? "ring-2 ring-ring" : ""}`}
               style={{ background: col.value ?? "var(--foreground)" }}
-            />
+            /></Tip>
           ))}
         </PopoverContent>
       </Popover>
@@ -251,16 +249,15 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
         }}
       >
         <PopoverTrigger asChild>
-          <Button
+          <Tip content={"링크"}><Button
             type="button"
             variant={s.link ? "secondary" : "ghost"}
             size="icon-sm"
             aria-label="링크"
-            title="링크"
             onMouseDown={(e) => e.preventDefault()}
           >
             <Link2 />
-          </Button>
+          </Button></Tip>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-2">
           <form

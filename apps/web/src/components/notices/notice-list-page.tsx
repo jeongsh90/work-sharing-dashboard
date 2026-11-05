@@ -21,6 +21,7 @@ import { isRecent, type NoticeSummary } from "@/lib/notices"
 import { formatDateTime } from "@/lib/requests"
 import { navigate } from "@/lib/router"
 import { useApi } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 공지사항 목록: 고정 글이 맨 위, 나머지는 최신 순. 안 읽은 글은 굵게 + N.
 const PAGE_SIZE = 15
@@ -113,14 +114,13 @@ export function NoticeListPage({ session }: { session: Session }) {
                       <TableCell>
                         <div className="flex min-w-0 items-center gap-1.5">
                           <CategoryBadge category={n.category} />
-                          <a
+                          <Tip content={n.title}><a
                             href={`#/notices/${n.id}`}
                             className={`truncate hover:underline ${unread ? "font-bold" : n.pinned ? "font-semibold" : "font-normal"}`}
-                            title={n.title}
                             onClick={(e) => e.stopPropagation()}
                           >
                             {n.title}
-                          </a>
+                          </a></Tip>
                           {n.attachments > 0 && <Paperclip className="size-3.5 shrink-0 text-muted-foreground" aria-label="첨부 파일" />}
                           {unread && isRecent(n.createdAt) && (
                             <span className="shrink-0 rounded-full bg-destructive px-1.5 text-[10px] leading-4 font-bold text-white" aria-label="새 글">

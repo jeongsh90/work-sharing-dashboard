@@ -17,6 +17,7 @@ import { isManager, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { useApi } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // FTP: 슈퍼관리자가 등록한 FTP 서버(카페24 등)를 사이트 안에서 쓴다(서버 apps/api/src/ftp.ts 가 대신 접속).
 // 폴더를 눌러 들어가고, 파일을 끌어다 놓거나 "파일 업로드"로 올리고, 줄의 받기 버튼으로 내려받는다. 지우기는 관리자만.
@@ -276,9 +277,9 @@ export function FtpPage({ session }: { session: Session }) {
           <div className="flex flex-col gap-2 rounded-xl border bg-card p-3">
             {uploads.map((u) => (
               <div key={u.key} className="flex items-center gap-3 text-sm">
-                <span className="w-48 truncate sm:w-80" title={u.name}>
+                <Tip content={u.name}><span className="w-48 truncate sm:w-80">
                   {u.name}
-                </span>
+                </span></Tip>
                 {u.error ? (
                   <>
                     <span className="flex-1 text-destructive">{u.error}</span>
@@ -348,9 +349,9 @@ export function FtpPage({ session }: { session: Session }) {
                         ) : (
                           <TypeBadge name={item.name} className="h-5 min-w-9 shrink-0 px-1 text-[10px]" />
                         )}
-                        <span className={`truncate ${item.dir ? "font-medium" : ""}`} title={item.name}>
+                        <Tip content={item.name}><span className={`truncate ${item.dir ? "font-medium" : ""}`}>
                           {item.name}
-                        </span>
+                        </span></Tip>
                       </span>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">{item.dir ? "" : formatBytes(item.size)}</TableCell>
@@ -360,16 +361,15 @@ export function FtpPage({ session }: { session: Session }) {
                     <TableCell>
                       <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                         {!item.dir && isImage(item.name) && (
-                          <Button
+                          <Tip content={item.url ? "<img src> 복사" : "관리 → FTP 서버에서 웹 주소를 넣으면 쓸 수 있습니다"} wrap><Button
                             variant="ghost"
                             size="icon-sm"
                             aria-label={`${item.name} img src 복사`}
-                            title={item.url ? "<img src> 복사" : "관리 → FTP 서버에서 웹 주소를 넣으면 쓸 수 있습니다"}
                             disabled={!item.url}
                             onClick={() => void copySrc(item)}
                           >
                             {copied === item.name ? <Check className="text-emerald-600" /> : <Code />}
-                          </Button>
+                          </Button></Tip>
                         )}
                         {!item.dir && (
                           <Button variant="ghost" size="icon-sm" aria-label={`${item.name} 내려받기`} disabled={busy === item.name} onClick={() => void download(item)}>
@@ -553,9 +553,9 @@ function PreviewDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle className="truncate pr-6" title={item?.name}>
+          <Tip content={item?.name}><DialogTitle className="truncate pr-6">
             {item?.name}
-          </DialogTitle>
+          </DialogTitle></Tip>
           <DialogDescription className="tabular-nums">
             {item && formatBytes(item.size)}
             {item && size?.name === item.name && ` · ${size.w} × ${size.h}px`}
@@ -593,9 +593,9 @@ function PreviewDialog({
         </div>
         {item && (
           <DialogFooter className="items-center gap-2 sm:justify-between">
-            <code className="min-w-0 truncate text-xs text-muted-foreground" title={item.url ? imgTag(item.url) : undefined}>
+            <Tip content={item.url ? imgTag(item.url) : undefined}><code className="min-w-0 truncate text-xs text-muted-foreground">
               {item.url ? imgTag(item.url) : "웹 주소를 넣지 않은 FTP 라 img src 를 만들 수 없습니다(관리 → FTP 서버)."}
-            </code>
+            </code></Tip>
             <div className="flex shrink-0 gap-2">
               <Button variant="outline" onClick={() => onDownload(item)}>
                 <Download data-icon="inline-start" />

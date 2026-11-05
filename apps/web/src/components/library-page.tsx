@@ -34,6 +34,7 @@ import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { OTHER, PREVIEWABLE, TYPES, TypeBadge, typeOf } from "@/components/file-type"
 import { invalidate, useApi } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 디자인팀 자료실: 작업할 때 쓰는 자료(PSD·AI·FIG 템플릿, 로고, 폰트, 이미지 소스 등)를 올려 두고 함께 내려받는다.
 // 화면 어디에 파일을 끌어 놓아도 올리기 창이 열린다.
@@ -245,11 +246,10 @@ export function LibraryPage({ session }: { session: Session }) {
                 {list.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="max-w-0 whitespace-normal">
-                      <button
+                      <Tip content={`${item.file.name} 내려받기`}><button
                         type="button"
                         className="group flex w-full min-w-0 items-center gap-3 text-left"
                         onClick={() => void downloadLargeFile(item.file.id, item.file.name)}
-                        title={`${item.file.name} 내려받기`}
                       >
                         {PREVIEWABLE.has(item.file.mime) ? (
                           <AuthImage fileId={item.file.id} size="thumb" alt="" className="size-10 shrink-0 rounded border bg-muted/50 object-cover" />
@@ -260,7 +260,7 @@ export function LibraryPage({ session }: { session: Session }) {
                           <span className="truncate font-medium group-hover:underline">{item.file.name}</span>
                           {item.note && <span className="truncate text-xs text-muted-foreground">{item.note}</span>}
                         </span>
-                      </button>
+                      </button></Tip>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">{item.category || NO_CATEGORY}</span>
@@ -285,11 +285,10 @@ export function LibraryPage({ session }: { session: Session }) {
           <ul className="grid grid-cols-12 gap-4">
             {list.map((item) => (
               <li key={item.id} className="col-span-12 flex flex-col overflow-hidden rounded-xl border bg-card transition-colors hover:border-primary/50 sm:col-span-6 lg:col-span-4 xl:col-span-3">
-                <button
+                <Tip content={`${item.file.name} 내려받기`}><button
                   type="button"
                   className="group relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
                   onClick={() => void downloadLargeFile(item.file.id, item.file.name)}
-                  title={`${item.file.name} 내려받기`}
                 >
                   {PREVIEWABLE.has(item.file.mime) ? (
                     <AuthImage fileId={item.file.id} size="thumb" alt={item.file.name} className="size-full object-contain" />
@@ -304,13 +303,13 @@ export function LibraryPage({ session }: { session: Session }) {
                     <span className="text-sm font-medium">내려받기</span>
                     <span className="text-xs text-white/70 tabular-nums">{formatBytes(item.file.size)}</span>
                   </span>
-                </button>
+                </button></Tip>
                 <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
                   <div className="flex items-start gap-2">
                     <TypeBadge name={item.file.name} className="mt-0.5 h-5 min-w-9 shrink-0 px-1 text-[10px]" />
-                    <span className="min-w-0 flex-1 text-sm font-medium break-all" title={item.file.name}>
+                    <Tip content={item.file.name}><span className="min-w-0 flex-1 text-sm font-medium break-all">
                       {item.file.name}
-                    </span>
+                    </span></Tip>
                     <ItemMenu item={item} canEdit={canEdit(item)} onEdit={() => setEditing(item)} onRemove={() => void remove(item)} className="-mt-1 -mr-1" />
                   </div>
                   {item.note && <p className="text-xs break-keep whitespace-pre-line text-muted-foreground">{item.note}</p>}
@@ -491,9 +490,9 @@ function UploadDialog({
               <div key={`${f.name}-${i}`} className="flex flex-col gap-1.5 px-3 py-2">
                 <div className="flex items-center gap-2">
                   <TypeBadge name={f.name} className="h-5 min-w-9 shrink-0 px-1 text-[10px]" />
-                  <span className="min-w-0 flex-1 truncate text-sm" title={f.name}>
+                  <Tip content={f.name}><span className="min-w-0 flex-1 truncate text-sm">
                     {f.name}
-                  </span>
+                  </span></Tip>
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(f.size)}</span>
                   {!busy && (
                     <Button

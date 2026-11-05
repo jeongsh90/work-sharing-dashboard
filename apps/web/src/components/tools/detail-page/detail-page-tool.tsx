@@ -74,6 +74,7 @@ import iceboxUrl from "./assets/icebox.png"
 import logoUrl from "./assets/logo.svg"
 import patternUrl from "./assets/point-pattern.png"
 import bubbleUrl from "./assets/qa-bubble.svg"
+import { Tip } from "@/components/tip"
 
 // 디자인 툴 > 상세페이지: 섹션을 하나씩 더해 상세페이지를 만든다(상세페이지 스킬 디자인 그대로).
 // 왼쪽 = 미리보기(860 폭을 줄여 보여 줌, 누르면 그 섹션 입력으로), 오른쪽 = 입력(위 버튼으로 섹션 추가).
@@ -441,16 +442,14 @@ export function DetailPageTool() {
       <div className="flex shrink-0 flex-col gap-1 lg:fixed lg:top-[85px] lg:right-4 lg:z-20" role="toolbar" aria-label="섹션 추가">
         <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1 lg:w-[76px] lg:flex-col">
           {ADD.map((a) => (
-            <Button
-              key={a.kind}
+            <Tip key={a.kind} content={`${a.label} 추가${selected !== null && sections[selected] ? " (고른 섹션 뒤에)" : ""}`}><Button
               variant="ghost"
               className="h-auto flex-col gap-1 px-1 py-2 text-[11px] leading-tight font-normal break-keep whitespace-normal lg:w-full [@media(max-height:880px)]:gap-0.5 [@media(max-height:880px)]:py-1"
-              title={`${a.label} 추가${selected !== null && sections[selected] ? " (고른 섹션 뒤에)" : ""}`}
               onClick={() => add(a.kind)}
             >
               <a.icon className="size-5" />
               {a.label}
-            </Button>
+            </Button></Tip>
           ))}
         </div>
         {/* 임시 저장·불러오기, 섹션 모두 접기·펼치기 */}
@@ -463,17 +462,15 @@ export function DetailPageTool() {
               ? { label: "모두 펼치기", icon: ChevronsUpDown, onClick: () => setFolded(new Set()), title: "섹션 입력을 모두 펼치기", off: sections.length === 0 }
               : { label: "모두 접기", icon: ChevronsDownUp, onClick: () => setFolded(new Set(sections.map((x) => x.id))), title: "섹션 입력을 모두 접기", off: sections.length === 0 },
           ].map((b) => (
-            <Button
-              key={b.label}
+            <Tip key={b.label} content={b.title} wrap className="lg:w-full"><Button
               variant="ghost"
               className="h-auto flex-col gap-1 px-1 py-2 text-[11px] leading-tight font-normal break-keep whitespace-normal lg:w-full [@media(max-height:880px)]:gap-0.5 [@media(max-height:880px)]:py-1"
-              title={b.title}
               disabled={b.off}
               onClick={b.onClick}
             >
               <b.icon className="size-5" />
               {b.label}
-            </Button>
+            </Button></Tip>
           ))}
         </div>
       </div>

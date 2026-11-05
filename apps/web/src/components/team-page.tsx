@@ -25,6 +25,7 @@ import { COMPANY_EMAIL_DOMAIN, ROLE_LABEL, type Role, type Session } from "@/lib
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { DESIGN_TEAM, invalidate, isDesignWorker, useApi, useUserNames, useUsers, type UserInfo } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 팀 관리(관리자): 계정 만들기, 역할·부서 바꾸기, 비밀번호 정해 주기, 사용 중지
 export function TeamPage({ session }: { session: Session }) {
@@ -406,10 +407,10 @@ function FinalApprover({ team, members, approvers, editable }: { team: string; m
   }
   return (
     <Select value={current?.userId ?? NONE} onValueChange={(v) => void change(v)} disabled={busy}>
-      <SelectTrigger size="sm" className="ml-auto h-7 w-auto gap-1 text-xs" aria-label={`${team} 최종 컨펌`} title="이 부서 요청은 고른 사람이 컨펌해야 완료됩니다">
+      <Tip content={"이 부서 요청은 고른 사람이 컨펌해야 완료됩니다"}><SelectTrigger size="sm" className="ml-auto h-7 w-auto gap-1 text-xs" aria-label={`${team} 최종 컨펌`}>
         <span className="text-muted-foreground">최종 컨펌</span>
         <SelectValue />
-      </SelectTrigger>
+      </SelectTrigger></Tip>
       <SelectContent align="end">
         <SelectItem value={NONE}>없음(요청자·관리자)</SelectItem>
         {members

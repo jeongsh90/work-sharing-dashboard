@@ -13,6 +13,7 @@ import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
 import { ShipTool } from "@/components/tools/detail-page/ship-tool"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { Tip } from "@/components/tip"
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
 // 누르면 전체 화면 창이 열린다. 도구를 만들면 TOOLS 에 하나씩 추가하고 body 에 화면을 넣는다.
@@ -151,11 +152,10 @@ function ToolsList({ onOpen }: { onOpen: (t: Tool) => void }) {
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-x-4 gap-y-6">
             {list.map((t) => (
               <li key={t.id}>
-                <button
+                <Tip content={t.description}><button
                   type="button"
                   className="group flex w-full flex-col items-center gap-2 rounded-xl p-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   onClick={() => onOpen(t)}
-                  title={t.description}
                 >
                   <span className="relative transition-transform group-hover:scale-105 group-active:scale-95">
                     <AppIcon tool={t} />
@@ -166,7 +166,7 @@ function ToolsList({ onOpen }: { onOpen: (t: Tool) => void }) {
                     )}
                   </span>
                   <span className="w-full truncate text-center text-sm">{t.name}</span>
-                </button>
+                </button></Tip>
               </li>
             ))}
           </ul>

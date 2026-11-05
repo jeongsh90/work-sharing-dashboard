@@ -25,6 +25,7 @@ import { PAGE_GRID } from "@/lib/layout"
 import { timeAgo } from "@/lib/requests"
 import { markSeen } from "@/lib/seen"
 import { invalidate, useApi, useUserNames } from "@/lib/store"
+import { Tip } from "@/components/tip"
 
 // 건의게시판. 누구나 쓰고, 관리자가 처리 상태와 답변을 남긴다(apps/api/src/suggestions.ts).
 
@@ -365,9 +366,9 @@ function Roadmap() {
         <CardDescription>건의와 운영 의견을 모아 순서대로 반영합니다.</CardDescription>
         {canEdit && (
           <CardAction>
-            <Button variant="ghost" size="icon-sm" aria-label="업데이트 예정 기능 추가" title="추가" onClick={() => setEditing("new")}>
+            <Tip content={"추가"}><Button variant="ghost" size="icon-sm" aria-label="업데이트 예정 기능 추가" onClick={() => setEditing("new")}>
               <SquarePen />
-            </Button>
+            </Button></Tip>
           </CardAction>
         )}
       </CardHeader>

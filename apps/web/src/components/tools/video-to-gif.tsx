@@ -12,6 +12,7 @@ import { formatBytes } from "@/lib/api"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
+import { Tip } from "@/components/tip"
 
 // 동영상 → GIF · 동영상 → WebP: 동영상 파일(MP4·MOV·WebM)을 골라 구간·크기·초당 장수를 정하고 GIF(또는 움직이는 WebP)로 바꾼다.
 // 서버에 올리지 않고 이 브라우저 안에서 바꾼다. 장면을 한 장씩 뽑아(canvas) Web Worker 가 GIF·WebP 로 묶는다.
@@ -617,9 +618,9 @@ export function VideoConvertTool() {
                   <Film className="size-5" />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-medium" title={source.file.name}>
+                  <Tip content={source.file.name}><span className="truncate text-sm font-medium">
                     {source.file.name}
-                  </span>
+                  </span></Tip>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {source.width}×{source.height} · {fmt(source.duration)} · {formatBytes(source.file.size)}
                   </span>
@@ -1034,12 +1035,11 @@ function AdjustPanel({ value, onChange, disabled }: { value: Adjust; onChange: (
                   aria-label={row.label}
                   className="flex-1"
                 />
-                <Input
+                <Tip content={"두 번 누르면 기본값"} wrap><Input
                   id={`adj-${row.key}`}
                   value={drafts[row.key] ?? showNum(row, v)}
                   disabled={disabled}
                   inputMode="decimal"
-                  title="두 번 누르면 기본값"
                   className="h-8 w-20 text-right tabular-nums"
                   onChange={(e) => {
                     const text = e.target.value
@@ -1052,7 +1052,7 @@ function AdjustPanel({ value, onChange, disabled }: { value: Adjust; onChange: (
                     clearDraft(row.key)
                     set(row.key, NO_ADJUST[row.key])
                   }}
-                />
+                /></Tip>
               </div>
             </div>
           )

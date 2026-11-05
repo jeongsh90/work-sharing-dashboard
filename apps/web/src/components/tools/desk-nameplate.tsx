@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Tip } from "@/components/tip"
 
 // 디자인 툴 > 데스크 명찰: 팀 이름·직급(직책)·이름을 넣어 가로 8.5cm × 세로 5.5cm 명찰을 인쇄한다.
 // 모양은 Figma(셰프애찬 570-1433) 그대로: 850×550 좌표(1 = 0.1mm)의 SVG 로 그린다.
@@ -271,21 +272,20 @@ export function DeskNameplateTool() {
                   <label htmlFor={`np-check-${e.id}`} className="text-sm font-semibold tabular-nums">
                     {i + 1}번
                   </label>
-                  <Button
+                  <Tip content={full ? `최대 ${MAX_ENTRIES}명까지 넣을 수 있습니다` : !e.name.trim() ? "이름을 넣어야 복사할 수 있습니다" : "같은 내용으로 하나 더"} wrap className="ml-auto"><Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
                     className="ml-auto"
                     aria-label={`${i + 1}번 복사하기`}
-                    title={full ? `최대 ${MAX_ENTRIES}명까지 넣을 수 있습니다` : !e.name.trim() ? "이름을 넣어야 복사할 수 있습니다" : "같은 내용으로 하나 더"}
                     disabled={full || !e.name.trim()}
                     onClick={() => duplicate(e)}
                   >
                     <Copy />
-                  </Button>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`${i + 1}번 지우기`} title="지우기" onClick={() => remove(e.id)}>
+                  </Button></Tip>
+                  <Tip content={"지우기"}><Button type="button" variant="ghost" size="icon-sm" aria-label={`${i + 1}번 지우기`} onClick={() => remove(e.id)}>
                     <Trash2 />
-                  </Button>
+                  </Button></Tip>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <Field data-invalid={!!er.team}>
@@ -349,20 +349,18 @@ export function DeskNameplateTool() {
                     {PLAIN_COLORS.map((c) => {
                       const on = e.color === c.id
                       return (
-                        <Button
-                          key={c.id}
+                        <Tip key={c.id} content={c.band}><Button
                           type="button"
                           size="icon-sm"
                           role="radio"
                           aria-checked={on}
                           aria-label={c.band}
-                          title={c.band}
                           className={`rounded-full border-0 text-white hover:opacity-90 ${on ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "opacity-70"}`}
                           style={{ backgroundColor: c.band }}
                           onClick={() => patch(e.id, { color: c.id })}
                         >
                           {on && <Check />}
-                        </Button>
+                        </Button></Tip>
                       )
                     })}
                   </div>

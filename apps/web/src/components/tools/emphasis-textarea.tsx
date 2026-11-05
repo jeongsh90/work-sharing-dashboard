@@ -3,6 +3,7 @@ import { Highlighter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Tip } from "@/components/tip"
 
 // 글을 드래그해 고르면 오른쪽 위에 "강조" 버튼이 뜬다(또는 Ctrl+B). 고른 부분을 **…** 로 감싸고, 이미지에서는 그 부분만 브랜드 색으로 그린다.
 // 이미 강조한 부분을 다시 고르고 누르면 강조를 푼다.
@@ -82,18 +83,17 @@ export function EmphasisTextarea({
         {...props}
       />
       {selected && (
-        <Button
+        <Tip content={"고른 글을 브랜드 색으로 강조 (Ctrl+B, 다시 누르면 풀기)"}><Button
           type="button"
           size="xs"
           // 누를 때 입력 칸의 선택이 풀리지 않게
           onMouseDown={(e) => e.preventDefault()}
           onClick={apply}
           className="absolute -top-3 right-2 z-10 bg-orange-500 text-white shadow-sm hover:bg-orange-600"
-          title="고른 글을 브랜드 색으로 강조 (Ctrl+B, 다시 누르면 풀기)"
         >
           <Highlighter data-icon="inline-start" />
           강조
-        </Button>
+        </Button></Tip>
       )}
     </div>
   )
