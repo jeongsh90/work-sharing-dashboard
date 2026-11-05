@@ -47,7 +47,12 @@ CREATE TABLE IF NOT EXISTS lan_ips (
 );
 `)
 
-type IpRow = { id: string; ip: string; name: string; created_by: string; created_at: number; last_seen: number | null }
+// user_id: 이 PC 를 쓰는 사람. 공유기가 IP 를 바꾸면 그 사람이 들어올 때 새 IP 로 저절로 고친다(reportLan)
+if (!all<{ name: string }>('PRAGMA table_info(lan_ips)').some((c) => c.name === 'user_id')) {
+  db.exec('ALTER TABLE lan_ips ADD COLUMN user_id TEXT')
+}
+
+type IpRow = { id: string; ip: string; name: string; created_by: string; created_at: number; last_seen: number | null; user_id: string | null }
 
 // 사내망 주소로 들어온 요청을 보낸 PC 의 IP(::ffff: 는 뗀다)
 const remoteIp = (req: IncomingMessage) => (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
@@ -81,7 +86,9 @@ export function addLanIp(user: PublicUser, body: Record<string, unknown>) {
   const f = fields(body)
   if (get('SELECT id FROM lan_ips WHERE ip = :ip', { ip: f.ip })) throw new HttpError(400, '이미 등록한 IP 입니다.')
   const id = randomUUID()
-  run('INSERT INTO lan_ips (id, ip, name, created_by, created_at) VALUES (:id, :ip, :name, :me, :now)', { id, ...f, me: user.id, now: Date.now() })
+  // 못 탄 PC 목록에서 "이 IP 로 등록"하면 그 사람(userId)을 같이 적어 둔다 → 다음부터 IP 가 바뀌어도 저절로 고침
+  const owner = typeof body.userId === 'string' && body.userId ? body.userId : null
+  run('INSERT INTO lan_ips (id, ip, name, created_by, created_at, user_id) VALUES (:id, :ip, :name, :me, :now, :owner)', { id, ...f, me: user.id, now: Date.now(), owner })
   return toDto(get<IpRow>('SELECT * FROM lan_ips WHERE id = :id', { id })!)
 }
 
@@ -90,6 +97,7 @@ export function updateLanIp(user: PublicUser, id: string, body: Record<string, u
   const f = fields(body)
   if (get('SELECT id FROM lan_ips WHERE ip = :ip AND id != :id', { ip: f.ip, id })) throw new HttpError(400, '이미 등록한 IP 입니다.')
   run('UPDATE lan_ips SET ip = :ip, name = :name WHERE id = :id', { id, ...f })
+  if (typeof body.userId === 'string' && body.userId) run('UPDATE lan_ips SET user_id = :u WHERE id = :id', { id, u: body.userId })
   const row = get<IpRow>('SELECT * FROM lan_ips WHERE id = :id', { id })
   if (!row) throw new HttpError(404, '등록한 PC 를 찾을 수 없습니다.')
   return toDto(row)
@@ -133,6 +141,22 @@ async function officePublicIp() {
   return officeIp?.ip ?? null
 }
 
+// 등록된 이 사람의 PC 를 새 IP 로 옮긴다. 사람(user_id)으로 찾고, 없으면 PC 이름에 그 사람 이름이 든 것이 딱 하나일 때(처음 한 번) 그것.
+// 새 IP 를 이미 다른 PC 가 쓰고 있으면 건드리지 않는다(관리 화면에서 사람이 고른다)
+export function autoMove(user: PublicUser, ip: string) {
+  if (!PRIVATE_IP.test(ip)) return false
+  if (get('SELECT id FROM lan_ips WHERE ip = :ip', { ip })) return false
+  let row = get<IpRow>('SELECT * FROM lan_ips WHERE user_id = :u', { u: user.id })
+  if (!row && user.name.trim()) {
+    const named = all<IpRow>("SELECT * FROM lan_ips WHERE user_id IS NULL AND instr(name, :n) > 0", { n: user.name.trim() })
+    if (named.length === 1) row = named[0]
+  }
+  if (!row) return false
+  run('UPDATE lan_ips SET ip = :ip, user_id = :u WHERE id = :id', { id: row.id, ip, u: user.id })
+  log(`${row.name}: IP 자동 변경 ${row.ip} → ${ip}`)
+  return true
+}
+
 export async function reportLan(user: PublicUser, body: Record<string, unknown>, publicIp: string) {
   const now = Date.now()
   if (body.unreachable === true) {
@@ -147,7 +171,11 @@ export async function reportLan(user: PublicUser, body: Record<string, unknown>,
   } else if (typeof body.nonce === 'string') {
     const n = nonces.get(body.nonce)
     nonces.delete(body.nonce)
-    if (n && now - n.at < NONCE_MS) misses.set(user.id, { userId: user.id, ip: n.ip, kind: 'unregistered', at: now })
+    if (n && now - n.at < NONCE_MS) {
+      // 이 사람의 PC 가 이미 등록돼 있으면(공유기가 IP 를 바꾼 경우) 새 IP 로 바로 고친다. 없을 때만 관리 화면에 남긴다
+      if (autoMove(user, n.ip)) misses.delete(user.id)
+      else misses.set(user.id, { userId: user.id, ip: n.ip, kind: 'unregistered', at: now })
+    }
   } else if (body.unreachable === true) {
     const prev = misses.get(user.id)
     // 방금 "등록 안 된 IP"로 알아낸 게 있으면 그쪽이 더 쓸모 있어 덮지 않는다

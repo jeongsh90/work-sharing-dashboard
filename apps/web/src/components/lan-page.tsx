@@ -145,8 +145,8 @@ function Misses({ registered }: { registered: LanIp[] }) {
     setBusy(m.userId)
     setError(null)
     try {
-      if (existing) await api(`/lan/ips/${existing.id}`, { method: "PATCH", body: { ip: m.ip, name: existing.name } })
-      else await api("/lan/ips", { body: { ip: m.ip, name: userName(m.userId) } })
+      if (existing) await api(`/lan/ips/${existing.id}`, { method: "PATCH", body: { ip: m.ip, name: existing.name, userId: m.userId } })
+      else await api("/lan/ips", { body: { ip: m.ip, name: userName(m.userId), userId: m.userId } })
       invalidate()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "저장하지 못했습니다.")
@@ -196,7 +196,7 @@ function Misses({ registered }: { registered: LanIp[] }) {
       </div>
       {error && <FieldError>{error}</FieldError>}
       <p className="text-xs break-keep text-muted-foreground">
-        사무실 PC 인데 바깥 중계로 주고받는 사람입니다(파일 받기·올리기가 느림). "닿지 않음"은 회사 밖이거나, 브라우저가 로컬 네트워크 접근을 막은 경우입니다
+        사무실 PC 인데 바깥 중계로 주고받는 사람입니다(파일 받기·올리기가 느림). 등록한 PC 의 IP 가 바뀐 경우는 그 사람이 사이트에 들어오면 저절로 새 IP 로 고쳐집니다(여기에는 처음 등록할 사람만 남음). "닿지 않음"은 회사 밖이거나, 브라우저가 로컬 네트워크 접근을 막은 경우입니다
         (주소창 왼쪽 자물쇠 → 사이트 설정에서 허용).
       </p>
     </Section>
