@@ -56,11 +56,12 @@ function ServicePeriod({ start, end, url, admin }: { start?: string; end?: strin
     const e = new Date(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 1, Number(end.slice(8, 10)))
     left = Math.round((e.getTime() - today.getTime()) / 86_400_000)
   }
-  const tone = left === null ? "text-muted-foreground" : left < 0 ? "text-destructive" : left <= 30 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+  // 남은 날 배지: 넉넉하면 초록, 30일 안이면 주황, 지나면 빨강
+  const tone = left === null ? "" : left < 0 ? "bg-red-500/15 text-red-600 ring-red-500/30 dark:text-red-400" : left <= 30 ? "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-400" : "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-400"
   return (
     <span className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground tabular-nums">
       <span>서비스 이용기간 {start ? fmt(start) : ""} ~ {end ? fmt(end) : ""}</span>
-      {left !== null && <span className={`font-medium ${tone}`}>{left < 0 ? `만료 ${-left}일 지남` : left === 0 ? "오늘 만료" : `D-${left}`}</span>}
+      {left !== null && <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${tone}`}>{left < 0 ? `만료 ${-left}일 지남` : left === 0 ? "오늘 만료" : `D-${left}`}</span>}
       {check}
     </span>
   )
@@ -270,6 +271,12 @@ export function FtpPage({ session }: { session: Session }) {
                 size="sm"
                 className="rounded-full"
                 onClick={() => {
+                  // 지금 열린 서버를 다시 누르면 시작 폴더를 다시 불러온다(목록만 비우면 빈 폴더로 보임)
+                  if (s.id === server.id) {
+                    if (nav === "") void load("")
+                    else setNav("")
+                    return
+                  }
                   setServerId(s.id)
                   setListing(null)
                   setNav(null)
