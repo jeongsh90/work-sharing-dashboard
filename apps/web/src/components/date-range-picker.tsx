@@ -23,7 +23,9 @@ export function DateRangePicker({
   placeholder = "기간을 골라 주세요",
   invalid,
   single = false,
+  yearNav = false,
 }: {
+  yearNav?: boolean // 몇 년 단위 기간(계약 기간 등): 위쪽에 년·월 고르기
   single?: boolean // 한 날짜만 고른다(value.from 만 쓴다)
   id?: string
   value: DateRange | undefined
@@ -37,6 +39,8 @@ export function DateRangePicker({
   const year = (value?.from ?? new Date()).getFullYear()
   const holidayMap = useHolidays(year, year + 1)
   const holidayDates = [...holidayMap.keys()].map((k) => new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10))))
+  const now = new Date().getFullYear()
+  const nav = { captionLayout: "dropdown" as const, startMonth: new Date(now - 10, 0), endMonth: new Date(now + 10, 11) }
   const holidayProps = { modifiers: { holiday: holidayDates }, modifiersClassNames: { holiday: "text-destructive font-semibold" } }
 
   return (
@@ -69,6 +73,7 @@ export function DateRangePicker({
             onSelect={(d) => onChange(d ? { from: d, to: undefined } : undefined)}
             disabled={disabled}
             locale={ko}
+            {...(yearNav ? nav : {})}
             {...holidayProps}
           />
         ) : (
@@ -80,6 +85,7 @@ export function DateRangePicker({
             numberOfMonths={isMobile ? 1 : 2}
             disabled={disabled}
             locale={ko}
+            {...(yearNav ? nav : {})}
             {...holidayProps}
           />
         )}

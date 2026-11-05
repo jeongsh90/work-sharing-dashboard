@@ -23,7 +23,27 @@ import { Tip } from "@/components/tip"
 // 폴더를 눌러 들어가고, 파일을 끌어다 놓거나 "파일 업로드"로 올리고, 줄의 받기 버튼으로 내려받는다. 지우기는 관리자만.
 // 이미지는 누르면 미리보기, 줄의 <> 버튼은 <img src="웹 주소"> 를 복사한다(웹 주소는 관리 → FTP 서버에서 넣음).
 
-type Server = { id: string; name: string; root: string }
+type Server = { id: string; name: string; root: string; serviceStart?: string; serviceEnd?: string }
+
+// 제목 옆 서비스 이용기간. 만료 30일 안이면 주황, 지나면 빨강
+function ServicePeriod({ start, end }: { start?: string; end?: string }) {
+  if (!start && !end) return null
+  const fmt = (s: string) => s.replace(/-/g, ". ")
+  let left: number | null = null
+  if (end) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const e = new Date(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 1, Number(end.slice(8, 10)))
+    left = Math.round((e.getTime() - today.getTime()) / 86_400_000)
+  }
+  const tone = left === null ? "text-muted-foreground" : left < 0 ? "text-destructive" : left <= 30 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground tabular-nums">
+      <span>서비스 이용기간 {start ? fmt(start) : ""} ~ {end ? fmt(end) : ""}</span>
+      {left !== null && <span className={`font-medium ${tone}`}>{left < 0 ? `만료 ${-left}일 지남` : left === 0 ? "오늘 만료" : `D-${left}`}</span>}
+    </span>
+  )
+}
 type Item = { name: string; raw: string; dir: boolean; size: number; modifiedAt: number | string | null; url: string | null }
 // path·root·raw: FTP 의 실제 이름 바이트(base64url). 한 서버에 UTF-8·EUC-KR 이름이 섞여 있어도 그대로 지정한다
 type Listing = { path: string; root: string; display: string; crumbs: { label: string; path: string }[]; items: Item[] }
@@ -194,7 +214,8 @@ export function FtpPage({ session }: { session: Session }) {
   return (
     <div className={PAGE_GRID}>
       <Section
-        title="FTP"
+        title={server ? `FTP - ${server.name}` : "FTP"}
+        aside={server && <ServicePeriod start={server.serviceStart} end={server.serviceEnd} />}
         className="col-span-12"
         action={
           <div className="flex gap-2">

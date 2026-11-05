@@ -41,6 +41,13 @@ if (!all<{ name: string }>("PRAGMA table_info(ftp_servers)").some((c) => c.name 
   db.exec("ALTER TABLE ftp_servers ADD COLUMN web_url TEXT NOT NULL DEFAULT ''")
 }
 
+// 서비스 이용기간(호스팅 계약 시작·만료일, YYYY-MM-DD). FTP 메뉴 제목 옆에 보인다
+for (const col of ['service_start', 'service_end']) {
+  if (!all<{ name: string }>('PRAGMA table_info(ftp_servers)').some((c) => c.name === col)) {
+    db.exec(`ALTER TABLE ftp_servers ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
+  }
+}
+
 type Row = {
   id: string
   name: string
@@ -53,6 +60,8 @@ type Row = {
   sort: number
   encoding: string
   web_url: string
+  service_start: string
+  service_end: string
   created_by: string
   created_at: number
 }
@@ -89,7 +98,7 @@ function requireSuperadmin(user: PublicUser) {
 
 // 화면에 보내는 모양. 접속 정보(주소·아이디)는 슈퍼관리자에게만, 비밀번호는 누구에게도 보내지 않는다
 function toDto(r: Row, user: PublicUser) {
-  const base = { id: r.id, name: r.name, root: r.root }
+  const base = { id: r.id, name: r.name, root: r.root, serviceStart: r.service_start, serviceEnd: r.service_end }
   if (user.role !== 'superadmin') return base
   return { ...base, host: r.host, port: r.port, username: r.username, secure: r.secure === 1, encoding: r.encoding, webUrl: r.web_url, createdBy: r.created_by, createdAt: r.created_at }
 }
@@ -123,7 +132,18 @@ function fields(body: Record<string, unknown>, editing: Row | null) {
   // 웹 주소는 http(s)://주소[/폴더] 만. 끝의 / 는 뗀다
   const webUrl = str(body.webUrl, 300).replace(/\/+$/, '')
   if (webUrl && !/^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?(\/[^\s"'<>]*)?$/.test(webUrl)) throw new HttpError(400, '웹 주소는 https://… 로 입력해 주세요(예: https://yorihaeyou.cafe24.com).')
+  // 서비스 이용기간: 비워도 됨. 날짜는 YYYY-MM-DD
+  const day = (v: unknown, label: string) => {
+    const d = str(v, 10)
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, `${label}은 YYYY-MM-DD 로 입력해 주세요.`)
+    return d
+  }
+  const service_start = day(body.serviceStart, '이용 시작일')
+  const service_end = day(body.serviceEnd, '만료일')
+  if (service_start && service_end && service_start > service_end) throw new HttpError(400, '만료일이 시작일보다 빠릅니다.')
   return {
+    service_start,
+    service_end,
     name,
     host,
     port,
@@ -148,8 +168,8 @@ export function addFtpServer(user: PublicUser, body: Record<string, unknown>) {
   const id = randomUUID()
   const sort = (get<{ n: number }>('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM ftp_servers')?.n ?? 1)
   run(
-    `INSERT INTO ftp_servers (id, name, host, port, username, password, secure, root, encoding, web_url, sort, created_by, created_at)
-     VALUES (:id, :name, :host, :port, :username, :password, :secure, :root, :encoding, :web_url, :sort, :me, :now)`,
+    `INSERT INTO ftp_servers (id, name, host, port, username, password, secure, root, encoding, web_url, service_start, service_end, sort, created_by, created_at)
+     VALUES (:id, :name, :host, :port, :username, :password, :secure, :root, :encoding, :web_url, :service_start, :service_end, :sort, :me, :now)`,
     { id, ...f, sort, me: user.id, now: Date.now() },
   )
   return toDto(find(id), user)
@@ -160,7 +180,8 @@ export function updateFtpServer(user: PublicUser, id: string, body: Record<strin
   const f = fields(body, find(id))
   run(
     `UPDATE ftp_servers SET name = :name, host = :host, port = :port, username = :username, password = :password,
-     secure = :secure, root = :root, encoding = :encoding, web_url = :web_url WHERE id = :id`,
+     secure = :secure, root = :root, encoding = :encoding, web_url = :web_url,
+     service_start = :service_start, service_end = :service_end WHERE id = :id`,
     { id, ...f },
   )
   return toDto(find(id), user)

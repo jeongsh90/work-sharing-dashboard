@@ -16,11 +16,15 @@ import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { invalidate, useApi, useUserNames } from "@/lib/store"
 import { Tip } from "@/components/tip"
+import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
+import { dateKey } from "@/lib/holidays"
+
+const parseDay = (s: string) => new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)))
 
 // 관리 → FTP 서버(슈퍼관리자): FTP 메뉴에서 쓸 FTP 접속 정보를 넣는다(서버 apps/api/src/ftp.ts).
 // 비밀번호는 서버 PC 에 암호화해 두고 화면에는 다시 보여 주지 않는다. 고칠 때 비워 두면 원래 비밀번호를 그대로 쓴다.
 
-type FtpServer = { id: string; name: string; host: string; port: number; username: string; secure: boolean; root: string; encoding: string; webUrl: string }
+type FtpServer = { id: string; name: string; host: string; port: number; username: string; secure: boolean; root: string; encoding: string; webUrl: string; serviceStart: string; serviceEnd: string }
 type Body = {
   id?: string
   name: string
@@ -32,6 +36,8 @@ type Body = {
   root: string
   encoding: string
   webUrl: string
+  serviceStart: string
+  serviceEnd: string
 }
 
 export function FtpAdminPage() {
@@ -84,7 +90,14 @@ export function FtpAdminPage() {
               <TableBody>
                 {data.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {row.name}
+                      {(row.serviceStart || row.serviceEnd) && (
+                        <span className="block text-xs font-normal text-muted-foreground tabular-nums">
+                          {row.serviceStart} ~ {row.serviceEnd}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.host}:{row.port}
                       {row.secure && " (FTPS)"}
@@ -169,12 +182,13 @@ function ServerForm({
   const [root, setRoot] = useState(initial?.root ?? "/")
   const [encoding, setEncoding] = useState(initial?.encoding ?? "euc-kr")
   const [webUrl, setWebUrl] = useState(initial?.webUrl ?? "")
+  const [period, setPeriod] = useState<DateRange | undefined>(() => (initial?.serviceStart ? { from: parseDay(initial.serviceStart), to: initial.serviceEnd ? parseDay(initial.serviceEnd) : undefined } : undefined))
   const [pending, setPending] = useState<"save" | "test" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tested, setTested] = useState<string | null>(null)
   const id = initial ? "ftp-edit" : "ftp-add"
 
-  const body = (): Body => ({ id: initial?.id, name: name.trim(), host: host.trim(), port: port.trim(), username: username.trim(), password, secure, root: root.trim(), encoding, webUrl: webUrl.trim() })
+  const body = (): Body => ({ id: initial?.id, name: name.trim(), host: host.trim(), port: port.trim(), username: username.trim(), password, secure, root: root.trim(), encoding, webUrl: webUrl.trim(), serviceStart: period?.from ? dateKey(period.from) : "", serviceEnd: period?.to ? dateKey(period.to) : "" })
   const ready = name.trim() && host.trim() && username.trim() && (initial || password)
 
   const run = async (kind: "save" | "test") => {
@@ -201,6 +215,7 @@ function ServerForm({
         setRoot("/")
         setEncoding("euc-kr")
         setWebUrl("")
+        setPeriod(undefined)
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : kind === "test" ? "접속하지 못했습니다." : "저장하지 못했습니다.")
@@ -288,6 +303,11 @@ function ServerForm({
             <FieldDescription className="break-keep">
               FTP 의 / 가 웹에서 열리는 주소. 넣으면 FTP 메뉴에서 이미지마다 &lt;img src&gt; 를 복사할 수 있습니다.
             </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-period`}>서비스 이용기간</FieldLabel>
+            <DateRangePicker id={`${id}-period`} value={period} onChange={setPeriod} yearNav placeholder="시작일 - 만료일 (안 넣어도 됨)" />
+            <FieldDescription className="break-keep">호스팅 계약 기간. FTP 메뉴 제목 옆에 남은 날과 함께 보입니다.</FieldDescription>
           </Field>
           <Field orientation="horizontal">
             <Switch id={`${id}-secure`} checked={secure} onCheckedChange={setSecure} />
