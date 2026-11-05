@@ -399,7 +399,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   // ── 계정 정보(accounts.ts, 슈퍼관리자): 목록에는 비밀번호 없음, /secret 으로 하나씩
   if (path === '/api/accounts') {
-    if (method === 'GET') return sendJson(res, 200, listAccounts(user))
+    if (method === 'GET') return sendJson(res, 200, listAccounts(user, url.searchParams.has('secrets')))
     if (method === 'POST') return sendJson(res, 201, addAccount(user, await readJson(req)))
   }
   if ((m = path.match(/^\/api\/accounts\/([0-9a-f-]{36})\/secret$/)) && method === 'GET') return sendJson(res, 200, accountSecret(user, m[1]))

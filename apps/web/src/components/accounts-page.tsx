@@ -30,6 +30,9 @@ type Account = {
   hasPassword: boolean
   hasPassword2: boolean
   updatedAt: number
+  // ?secrets=1 로 받으면 함께 온다(화면에 처음부터 보임)
+  password?: string
+  password2?: string
 }
 type Secret = { password: string; password2: string }
 
@@ -73,12 +76,14 @@ function CopyCell({ label, value, mono }: { label: string; value: string; mono?:
   )
 }
 
-// 비밀번호 칸: ••• + 보기 + 복사(누를 때만 서버에서 꺼냄)
+// 비밀번호 칸: 기본은 보임 + 가리기 + 복사
 function SecretCell({ account, which, label }: { account: Account; which: "password" | "password2"; label: string }) {
   const has = which === "password" ? account.hasPassword : account.hasPassword2
-  const [shown, setShown] = useState<string | null>(null)
+  const value = account[which]
+  const [hidden, setHidden] = useState(false)
   if (!has) return <span className="text-muted-foreground/50">-</span>
-  const get = async () => (await secretOf(account.id))[which]
+  const get = async () => value ?? (await secretOf(account.id))[which]
+  const shown = hidden ? null : (value ?? null)
   return (
     <span className="flex min-w-0 items-center gap-1">
       <span className="min-w-0 font-mono text-[13px] break-all">{shown ?? "••••••••"}</span>
@@ -88,9 +93,9 @@ function SecretCell({ account, which, label }: { account: Account; which: "passw
           variant="ghost"
           size="icon-xs"
           aria-label={`${label} ${shown ? "가리기" : "보기"}`}
-          onClick={async (e) => {
+          onClick={(e) => {
             e.stopPropagation()
-            setShown(shown ? null : await get())
+            setHidden(!hidden)
           }}
         >
           {shown ? <EyeOff /> : <Eye />}
@@ -102,7 +107,7 @@ function SecretCell({ account, which, label }: { account: Account; which: "passw
 }
 
 export function AccountsPage() {
-  const { data, error } = useApi<Account[]>("/accounts", 300_000)
+  const { data, error } = useApi<Account[]>("/accounts?secrets=1", 300_000)
   const [query, setQuery] = useState("")
   const [editing, setEditing] = useState<Account | "new" | null>(null)
 
@@ -197,7 +202,7 @@ export function AccountsPage() {
           </Table>
         </div>
         <p className="text-xs text-muted-foreground break-keep">
-          슈퍼관리자만 봅니다. 비밀번호는 서버에 암호화해 두고, 보기·복사를 누를 때만 불러옵니다. 서비스 이름을 누르면 고치거나 지울 수 있습니다.
+          슈퍼관리자만 봅니다. 비밀번호는 서버에 암호화해 두고 이 화면에만 보입니다(눈 아이콘으로 가리기). 서비스 이름을 누르면 고치거나 지울 수 있습니다.
         </p>
       </Section>
       {editing && <AccountDialog account={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}

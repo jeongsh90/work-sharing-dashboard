@@ -7,7 +7,7 @@ import type { PublicUser } from './users.ts'
 
 // 계정 정보(슈퍼관리자): 회사에서 쓰는 외부 서비스 계정(서비스·아이디·비밀번호·호스트·링크·메모)을 모아 둔다.
 // 비밀번호 두 칸(password·password2)은 FTP 비밀번호와 같은 키(data/ftp-key)로 암호화해 DB 에 둔다.
-// 목록에는 비밀번호를 싣지 않고, 화면에서 보기·복사를 누를 때만 /secret 으로 하나씩 꺼낸다.
+// 목록은 ?secrets=1 일 때만 비밀번호를 함께 싣는다(화면 기본). 그 밖에는 /secret 으로 하나씩 꺼낸다.
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS accounts (
@@ -63,9 +63,12 @@ function find(id: string) {
   return row
 }
 
-export function listAccounts(user: PublicUser) {
+// secrets: 화면에 비밀번호를 처음부터 보여 줄 때(슈퍼관리자 화면 기본)
+export function listAccounts(user: PublicUser, secrets = false) {
   requireSuperadmin(user)
-  return all<Row>('SELECT * FROM accounts ORDER BY sort, created_at').map(toDto)
+  return all<Row>('SELECT * FROM accounts ORDER BY sort, created_at').map((r) =>
+    secrets ? { ...toDto(r), password: r.password ? decrypt(r.password) : '', password2: r.password2 ? decrypt(r.password2) : '' } : toDto(r),
+  )
 }
 
 export function accountSecret(user: PublicUser, id: string) {
