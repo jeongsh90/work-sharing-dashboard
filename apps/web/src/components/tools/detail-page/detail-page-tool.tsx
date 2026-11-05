@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   Package,
   Save,
+  Square as SquareIcon,
   Plus,
   Trash2,
   Type,
@@ -80,7 +81,8 @@ import bubbleUrl from "./assets/qa-bubble.svg"
 // 공통 이미지는 주소만 넣고, 맨 아래 공통(about8·award8·고객센터 z8)은 미리보기에 보이지 않고 완성 HTML 끝에 늘 붙는다.
 
 const ADD: { kind: Kind; label: string; icon: LucideIcon }[] = [
-  { kind: "hero", label: "썸네일", icon: LayoutTemplate },
+  { kind: "thumb", label: "썸네일", icon: SquareIcon },
+  { kind: "hero", label: "인트로", icon: LayoutTemplate },
   { kind: "point", label: "타이틀", icon: Type },
   { kind: "photo", label: "이미지", icon: ImageIcon },
   { kind: "gif", label: "움짤", icon: Film },
@@ -106,6 +108,25 @@ export function readPicture(file: File): Promise<Picture> {
 }
 
 // 렌더용: 860 폭보다 크면 860 으로 줄인 JPG, 아니면 원본 그대로(data:)
+// 썸네일: 가운데를 정사각으로 잘라 1200×1200 JPG
+export const THUMB_SIZE = 1200
+export async function squareJpg(p: Picture, size = THUMB_SIZE): Promise<Uint8Array> {
+  const img = new Image()
+  img.src = p.url
+  await img.decode()
+  const side = Math.min(img.naturalWidth, img.naturalHeight)
+  const canvas = document.createElement("canvas")
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext("2d")!
+  ctx.fillStyle = "#fff"
+  ctx.fillRect(0, 0, size, size)
+  ctx.imageSmoothingQuality = "high"
+  ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size)
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("썸네일을 만들지 못했습니다."))), "image/jpeg", 0.92))
+  return new Uint8Array(await blob.arrayBuffer())
+}
+
 export async function toDataUrl(p: Picture, max = 860): Promise<string> {
   if (p.width <= max) {
     return new Promise((resolve) => {
@@ -140,6 +161,11 @@ export async function assetDataUrls() {
 }
 
 export const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+export const bytesToB64 = (bytes: Uint8Array) => {
+  let s = ""
+  for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768))
+  return btoa(s)
+}
 
 // 제작 전에 빠진 것: 입력 칸 id 또는 섹션 번호(누르면 그리로 이동)
 type Problem = { text: string; el?: string; section?: number }
@@ -198,6 +224,20 @@ export function DetailPageTool() {
   useEffect(() => () => void (result && URL.revokeObjectURL(result.zipUrl)), [result])
 
   const add = (kind: Kind) => {
+    // 썸네일은 하나만, 늘 맨 위
+    if (kind === "thumb") {
+      const have = sections.findIndex((x) => x.kind === "thumb")
+      if (have >= 0) {
+        setSelected(have)
+        requestAnimationFrame(() => cards.current.get(sections[have].id)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+        return
+      }
+      const t = newSection("thumb")
+      setSections((list) => [t, ...list])
+      setSelected(0)
+      requestAnimationFrame(() => cards.current.get(t.id)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+      return
+    }
     const s = newSection(kind)
     // 고른 섹션 바로 뒤에, 없으면 맨 끝에
     const at = selected !== null && selected < sections.length ? selected + 1 : sections.length
@@ -232,7 +272,7 @@ export function DetailPageTool() {
       const s = p.section
       const n = `${i + 1}번 ${KIND_LABEL[s.kind]}`
       const at = (text: string) => out.push({ text: `${n}: ${text}`, section: i })
-      if ((s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) at("그림을 넣어 주세요.")
+      if ((s.kind === "thumb" || s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") && !s.image) at("그림을 넣어 주세요.")
       if (s.kind === "why" && s.items.some((it) => !it.image)) at("카드마다 사진을 넣어 주세요.")
       if (s.kind === "why" && s.items.some((it) => !it.title.trim())) at("카드마다 제목을 넣어 주세요.")
       if (s.kind === "ship" && [...s.products, ...s.ice].some((pr) => !pr.image)) at("내용량·아이스박스 포장의 빈 사진 칸에 사진을 넣거나 칸을 빼 주세요.")
@@ -298,7 +338,16 @@ export function DetailPageTool() {
         const bytes = s.kind === "gif" ? new Uint8Array(await s.image!.file.arrayBuffer()) : b64ToBytes(shotOf.get(p.file) ?? "")
         if (!bytes.length) throw new Error(`${p.file} 를 만들지 못했습니다.`)
         files[`${folder}/${p.file}`] = bytes
-        list.push({ file: p.file, size: bytes.length })
+        list.push({ file: `${folder}/${p.file}`, size: bytes.length })
+      }
+      // 썸네일(대표 이미지): zip 맨 위에 따로. 상세·content.html 에는 넣지 않는다
+      const thumbSec = sections.find((x): x is Extract<Section, { kind: "thumb" }> => x.kind === "thumb")
+      let thumbJpg: Uint8Array | null = null
+      if (thumbSec?.image) {
+        thumbJpg = await squareJpg(thumbSec.image)
+        const name = `썸네일_${product.trim()}_${THUMB_SIZE}x${THUMB_SIZE}.jpg`
+        files[name] = thumbJpg
+        list.unshift({ file: name, size: thumbJpg.length })
       }
       const content = buildContentHtml(planned, product, folder)
       files["content.html"] = new TextEncoder().encode(content)
@@ -311,7 +360,7 @@ export function DetailPageTool() {
       a.download = zipName
       a.click()
       // 히스토리에 남긴다(첫 섹션 이미지를 썸네일로, 입력은 그림까지 올려 두어 나중에 그대로 불러온다). 실패해도 내려받기는 끝났으니 조용히 넘긴다
-      const thumb = shots.find((x) => x.data)?.data
+      const thumb = thumbJpg ? bytesToB64(thumbJpg) : shots.find((x) => x.data)?.data
       if (thumb) {
         void (async () => {
           const { sections: saved, fileIds } = await serializeSections(sections)
@@ -465,7 +514,7 @@ export function DetailPageTool() {
 
         {sections.length === 0 ? (
           <p className="rounded-xl border border-dashed p-8 text-center text-sm break-keep text-muted-foreground">
-            오른쪽 도구 막대의 버튼으로 섹션을 추가해 주세요. 보통 썸네일 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
+            오른쪽 도구 막대의 버튼으로 섹션을 추가해 주세요. 보통 썸네일(대표 이미지, 따로 받음) → 인트로 → 타이틀(POINT) + 이미지·움짤 → Q&A → 이렇게 보내드려요 → 상품정보고시 순서입니다.
           </p>
         ) : (
           <>
@@ -502,7 +551,7 @@ export function DetailPageTool() {
                       <span className="shrink-0 text-sm font-medium">
                         {i + 1}. {KIND_LABEL[s.kind]}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{p.file ?? "공통 · 번호 없음"}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{p.file ?? (s.kind === "thumb" ? "따로 1200×1200 · 상세에 안 들어감" : "공통 · 번호 없음")}</span>
                       {/* 접었을 때는 무엇이 들어 있는지 한 줄로 */}
                       {folded.has(s.id) && <span className="truncate text-xs text-muted-foreground">{altOf(p, product)}</span>}
                     </button>
@@ -562,9 +611,7 @@ export function DetailPageTool() {
               <SmoothScrollArea className="max-h-40 overflow-y-auto" contentClassName="flex flex-col gap-0.5 text-xs tabular-nums">
                 {result.files.map((f) => (
                   <div key={f.file} className="flex justify-between gap-2">
-                    <span>
-                      {folder}/{f.file}
-                    </span>
+                    <span>{f.file}</span>
                     <span className="text-muted-foreground">{formatBytes(f.size)}</span>
                   </div>
                 ))}
@@ -734,6 +781,25 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
   )
 
   switch (s.kind) {
+    case "thumb":
+      return (
+        <FieldGroup>
+          <Field>
+            <FieldLabel>썸네일 사진 (정사각형 1200×1200)</FieldLabel>
+            <PicturePicker value={s.image} onChange={(image) => onChange({ image })} />
+            <FieldDescription>
+              상품 대표 이미지로 쓰는 사진입니다. 상세 이미지에는 들어가지 않고 zip 에 1200×1200 JPG 로 따로 들어갑니다. 정사각형이 아니면 가운데를 정사각으로 잘라 만듭니다.
+            </FieldDescription>
+            {s.image && (s.image.width !== s.image.height || s.image.width < THUMB_SIZE) && (
+              <FieldDescription className="text-amber-600 dark:text-amber-400">
+                지금 사진 {s.image.width}×{s.image.height}
+                {s.image.width !== s.image.height ? " · 정사각형이 아니라 가운데를 잘라 냅니다" : ""}
+                {Math.min(s.image.width, s.image.height) < THUMB_SIZE ? " · 1200 보다 작아 늘려서 흐릿할 수 있습니다" : ""}
+              </FieldDescription>
+            )}
+          </Field>
+        </FieldGroup>
+      )
     case "hero":
       return (
         <FieldGroup>

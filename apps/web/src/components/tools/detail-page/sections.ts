@@ -46,6 +46,8 @@ export function gradRgba(stop: GradStop | undefined, fallback: GradStop) {
 type Base = { id: number; layer: string; alt: string } // layer·alt 가 비면 자동
 export type Section = Base &
   (
+    // 썸네일(상품 대표 이미지): 사진만. 상세 이미지·content.html 에는 안 들어가고 1200×1200 JPG 로 따로 받는다
+    | { kind: "thumb"; image: Picture | null }
     // subColor·nameColor·descColor: 윗줄·상품명·설명 글자색(#rrggbb). 비면 흰색(detail.css 기본)
     // gradFrom·gradTo: 글자 뒤 그라데이션 위(시작)·아래(끝) 색. 없으면(예전 저장본) 기본 검정 60% → 투명
     | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string; gradFrom?: GradStop; gradTo?: GradStop; subColor?: string; nameColor?: string; descColor?: string }
@@ -90,7 +92,8 @@ export const CATEGORIES = [
 ]
 
 export const KIND_LABEL: Record<Kind, string> = {
-  hero: "썸네일",
+  thumb: "썸네일",
+  hero: "인트로",
   point: "타이틀",
   photo: "이미지",
   gif: "움짤",
@@ -108,6 +111,8 @@ export const nextId = () => seq++
 export function newSection(kind: Kind): Section {
   const base = { id: nextId(), layer: "", alt: "" }
   switch (kind) {
+    case "thumb":
+      return { ...base, kind, image: null }
     case "hero":
       return { ...base, kind, image: null, sub: "셰프의 반찬, 셰프애찬", name: "", desc: "", grad: true, tag: "" }
     case "point":
@@ -189,7 +194,7 @@ export function plan(sections: Section[]): Planned[] {
         auto = ++notices === 1 ? "r" : `r${notices}`
         break
     }
-    if (s.kind === "common") {
+    if (s.kind === "common" || s.kind === "thumb") {
       out.push({ section: s, file: null, layer: "", ext: null })
       continue
     }
@@ -218,6 +223,11 @@ function sectionHtml(p: Planned, urls: Map<Picture, string> | null, asset: (u: s
   const out = p.file ? ` data-out="${p.file}"` : ""
   const idx = ` data-idx="${index}"`
   switch (s.kind) {
+    case "thumb": {
+      // 미리보기 전용(제작할 때는 찍지 않고 1200×1200 으로 따로 만든다)
+      const img = pictureUrl(s.image, urls)
+      return `<section${idx} class="thumb-pv" style="${img ? `background-image:url('${img}');` : ""}"><div class="common-badge">썸네일 1200×1200 · 상세에는 안 들어감</div></section>`
+    }
     case "hero": {
       const img = pictureUrl(s.image, urls)
       const h = s.image ? Math.round((s.image.height * 860) / s.image.width) : 1000
@@ -354,6 +364,7 @@ export function buildDocument(
 .common img { display: block; width: 860px; height: auto; }
 .common-badge { position: absolute; left: 12px; top: 12px; background: rgba(17,17,17,.75); color: #fff; font-size: 18px; line-height: 28px; padding: 2px 10px; }
 .hero { background-color: #c9c9cf; }
+.thumb-pv { position: relative; width: 860px; height: 860px; background: #c9c9cf center / cover no-repeat; border-bottom: 8px solid #3f3f46; }
 .ph-empty { display: flex; align-items: center; justify-content: center; background: #f2f2f4; border: 2px dashed #d4d4da; color: #a1a1aa; }
 .ph-empty svg { width: 30%; height: 30%; }
 ${opts.preview ? `section, .common { cursor: pointer; } [data-idx="${opts.selected ?? -1}"] { outline: 6px solid #3b82f6; outline-offset: -6px; }` : ".common { display: none; }"}`
@@ -402,6 +413,8 @@ export function autoAlt(p: Planned, productName: string): string {
     }
     case "notice":
       return `${name} 상품정보고시`
+    case "thumb":
+      return ""
     case "common":
       return s.which === "url" ? "" : COMMON[s.which].alt
   }
@@ -412,7 +425,8 @@ export const altOf = (p: Planned, productName: string) => p.section.alt.trim() |
 export function buildContentHtml(planned: Planned[], productName: string, folder: string) {
   buildDocument(planned) // 번호 세기
   const base = `https://yorihaeyou.cafe24.com/detail_page/${folder}/`
-  const lines = planned.map((p) => {
+  // 썸네일(대표 이미지)은 상세설명에 넣지 않는다
+  const lines = planned.filter((p) => p.section.kind !== "thumb").map((p) => {
     const url = p.file ? base + p.file : p.section.kind === "common" ? (p.section.which === "url" ? p.section.url.trim() : COMMON[p.section.which].url) : ""
     return `<img src="${esc(url)}" alt="${esc(altOf(p, productName))}">`
   })

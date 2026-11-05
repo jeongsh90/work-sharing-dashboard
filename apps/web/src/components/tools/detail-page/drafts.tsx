@@ -31,7 +31,7 @@ async function mapPictures<A, B>(sections: Section[], fn: (p: A) => Promise<B>):
   const out: Section[] = []
   for (const s of sections) {
     const x = s as Record<string, unknown> & Section
-    if (s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") out.push({ ...x, image: await one(x.image) } as Section)
+    if (s.kind === "thumb" || s.kind === "hero" || s.kind === "photo" || s.kind === "gif" || s.kind === "notice") out.push({ ...x, image: await one(x.image) } as Section)
     else if (s.kind === "qa") {
       const items = []
       for (const it of s.items) items.push({ ...it, image: await one(it.image ?? null) })
