@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react"
-import { Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Plus, Search, Trash2 } from "lucide-react"
+import { Ban, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Palette, Plus, Search, Trash2 } from "lucide-react"
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { confirmDialog } from "@/components/confirm-dialog"
@@ -30,6 +31,7 @@ type Account = {
   host: string
   link: string
   memo: string
+  color: string
   hasPassword: boolean
   hasPassword2: boolean
   updatedAt: number
@@ -38,6 +40,73 @@ type Account = {
   password2?: string
 }
 type Secret = { password: string; password2: string }
+
+// 줄 배경색(서버도 같은 이름만 받는다). row: 표 줄, dot: 고르기 견본
+const ROW_COLORS: { key: string; label: string; row: string; dot: string }[] = [
+  { key: "", label: "없음", row: "", dot: "" },
+  { key: "red", label: "빨강", row: "bg-red-500/10 hover:bg-red-500/15", dot: "bg-red-500" },
+  { key: "orange", label: "주황", row: "bg-orange-500/10 hover:bg-orange-500/15", dot: "bg-orange-500" },
+  { key: "yellow", label: "노랑", row: "bg-yellow-400/12 hover:bg-yellow-400/18", dot: "bg-yellow-400" },
+  { key: "green", label: "초록", row: "bg-emerald-500/10 hover:bg-emerald-500/15", dot: "bg-emerald-500" },
+  { key: "blue", label: "파랑", row: "bg-sky-500/10 hover:bg-sky-500/15", dot: "bg-sky-500" },
+  { key: "purple", label: "보라", row: "bg-violet-500/10 hover:bg-violet-500/15", dot: "bg-violet-500" },
+  { key: "gray", label: "회색", row: "bg-zinc-500/15 hover:bg-zinc-500/20", dot: "bg-zinc-500" },
+]
+const rowColor = (key: string) => ROW_COLORS.find((c) => c.key === key)?.row ?? ""
+
+function ColorChoices({ value, onPick }: { value: string; onPick: (key: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="줄 배경색">
+      {ROW_COLORS.map((c) => (
+        <Tip key={c.key || "none"} content={c.label}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={value === c.key}
+            aria-label={`배경색 ${c.label}`}
+            onClick={() => onPick(c.key)}
+            className={`flex size-7 cursor-pointer items-center justify-center rounded-full border ${c.dot || "bg-background"} ${value === c.key ? "ring-2 ring-ring ring-offset-2 ring-offset-popover" : "opacity-80 hover:opacity-100"}`}
+          >
+            {!c.key && <Ban className="size-4 text-muted-foreground" />}
+          </button>
+        </Tip>
+      ))}
+    </div>
+  )
+}
+
+// 줄 왼쪽 색 버튼: 누르면 견본, 고르면 바로 저장
+function RowColorButton({ account }: { account: Account }) {
+  const [open, setOpen] = useState(false)
+  const pick = async (color: string) => {
+    setOpen(false)
+    if (color === account.color) return
+    await api(`/accounts/${account.id}`, {
+      method: "PATCH",
+      body: { service: account.service, loginId: account.loginId, host: account.host, link: account.link, memo: account.memo, color },
+    })
+    invalidate()
+  }
+  const dot = ROW_COLORS.find((c) => c.key === account.color)?.dot
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tip content="줄 배경색">
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={`${account.service} 줄 배경색`}
+            className="flex h-7 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground"
+          >
+            {dot ? <span className={`size-3 rounded-full ${dot}`} /> : <Palette className="size-4" />}
+          </button>
+        </PopoverTrigger>
+      </Tip>
+      <PopoverContent align="start" className="w-auto p-2">
+        <ColorChoices value={account.color} onPick={(c) => void pick(c)} />
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 const secretOf = (id: string) => api<Secret>(`/accounts/${id}/secret`)
 
@@ -110,7 +179,7 @@ function SecretCell({ account, which, label }: { account: Account; which: "passw
 }
 
 // 끌어서 순서 바꾸는 표 줄. 왼쪽 손잡이를 잡고 끈다(키보드: 손잡이에서 스페이스 → 방향키 → 스페이스). 검색 중에는 끄기
-function SortableRow({ id, disabled, children }: { id: string; disabled: boolean; children: (handle: ReactNode) => ReactNode }) {
+function SortableRow({ id, disabled, color, children }: { id: string; disabled: boolean; color: string; children: (handle: ReactNode) => ReactNode }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
   const handle = (
     <Tip content={disabled ? "검색 중에는 순서를 바꿀 수 없습니다" : "끌어서 순서 바꾸기"}>
@@ -130,7 +199,7 @@ function SortableRow({ id, disabled, children }: { id: string; disabled: boolean
     <TableRow
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`align-top ${isDragging ? "relative z-10 bg-muted shadow-lg" : ""}`}
+      className={`align-top ${rowColor(color)} ${isDragging ? "relative z-10 bg-muted shadow-lg" : ""}`}
     >
       {children(handle)}
     </TableRow>
@@ -202,7 +271,7 @@ export function AccountsPage() {
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-9" />
+                <TableHead className="w-16" />
                 <TableHead className="w-[15%]">서비스</TableHead>
                 <TableHead className="w-[20%]">아이디</TableHead>
                 <TableHead className="w-[16%]">비밀번호</TableHead>
@@ -213,10 +282,15 @@ export function AccountsPage() {
             </TableHeader>
             <TableBody>
               {list.map((a) => (
-                <SortableRow key={a.id} id={a.id} disabled={searching}>
+                <SortableRow key={a.id} id={a.id} disabled={searching} color={a.color}>
                   {(handle) => (
                   <>
-                  <TableCell className="px-1">{handle}</TableCell>
+                  <TableCell className="px-1">
+                    <div className="flex items-center">
+                      {handle}
+                      <RowColorButton account={a} />
+                    </div>
+                  </TableCell>
                   <TableCell className="whitespace-normal">
                     <Tip content="누르면 수정·삭제">
                       <button type="button" className="text-left font-medium break-keep hover:underline" onClick={() => setEditing(a)}>
@@ -272,7 +346,7 @@ export function AccountsPage() {
         </div>
         {orderError && <p className="text-sm text-destructive">{orderError}</p>}
         <p className="text-xs text-muted-foreground break-keep">
-          슈퍼관리자만 봅니다. 비밀번호는 서버에 암호화해 두고 이 화면에만 보입니다(눈 아이콘으로 가리기). 서비스 이름을 누르면 고치거나 지울 수 있습니다. 왼쪽 손잡이(⋮⋮)를 끌어 순서를 바꿉니다(검색 중에는 안 됨).
+          슈퍼관리자만 봅니다. 비밀번호는 서버에 암호화해 두고 이 화면에만 보입니다(눈 아이콘으로 가리기). 서비스 이름을 누르면 고치거나 지울 수 있습니다. 왼쪽 손잡이(⋮⋮)를 끌어 순서를 바꾸고, 그 옆 색 버튼으로 줄 배경색을 정합니다(검색 중에는 순서 바꾸기 안 됨).
         </p>
       </Section>
       {editing && <AccountDialog account={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
@@ -286,6 +360,7 @@ function AccountDialog({ account, onClose }: { account: Account | null; onClose:
   const [host, setHost] = useState(account?.host ?? "")
   const [link, setLink] = useState(account?.link ?? "")
   const [memo, setMemo] = useState(account?.memo ?? "")
+  const [color, setColor] = useState(account?.color ?? "")
   // 비밀번호는 창을 열 때 서버에서 꺼낸다(null = 아직 안 불러옴 → 저장 때 보내지 않아 그대로 둠)
   const [password, setPassword] = useState<string | null>(account ? null : "")
   const [password2, setPassword2] = useState<string | null>(account ? null : "")
@@ -310,6 +385,7 @@ function AccountDialog({ account, onClose }: { account: Account | null; onClose:
         host,
         link: link.trim() && !/^https?:\/\//i.test(link.trim()) ? `https://${link.trim()}` : link,
         memo,
+        color,
         ...(password !== null ? { password } : {}),
         ...(password2 !== null ? { password2 } : {}),
       }
@@ -407,6 +483,10 @@ function AccountDialog({ account, onClose }: { account: Account | null; onClose:
             <Field>
               <FieldLabel htmlFor="acc-memo">메모</FieldLabel>
               <Textarea id="acc-memo" value={memo} onChange={(e) => setMemo(e.target.value)} className="min-h-16 break-keep" />
+            </Field>
+            <Field>
+              <FieldLabel>줄 배경색</FieldLabel>
+              <ColorChoices value={color} onPick={setColor} />
             </Field>
             {error && <FieldError>{error}</FieldError>}
           </FieldGroup>

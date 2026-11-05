@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 `)
 
+// color: 줄 배경색(정해진 이름만). 빈 글자면 없음
+if (!all<{ name: string }>('PRAGMA table_info(accounts)').some((c) => c.name === 'color')) {
+  db.exec("ALTER TABLE accounts ADD COLUMN color TEXT NOT NULL DEFAULT ''")
+}
+const COLORS = new Set(['', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'])
+
 type Row = {
   id: string
   service: string
@@ -35,6 +41,7 @@ type Row = {
   password2: string
   link: string
   memo: string
+  color: string
   sort: number
   updated_by: string | null
   updated_at: number
@@ -52,6 +59,7 @@ const toDto = (r: Row) => ({
   host: r.host,
   link: r.link,
   memo: r.memo,
+  color: r.color,
   hasPassword: r.password !== '',
   hasPassword2: r.password2 !== '',
   updatedAt: r.updated_at,
@@ -95,6 +103,7 @@ function fields(body: Record<string, unknown>, editing: Row | null) {
     host: str(body.host, 300),
     link: str(body.link, 500),
     memo: str(body.memo, 2000),
+    color: typeof body.color === 'string' && COLORS.has(body.color) ? body.color : (editing?.color ?? ''),
     password: secretField(body.password, editing?.password ?? ''),
     password2: secretField(body.password2, editing?.password2 ?? ''),
   }
@@ -107,8 +116,8 @@ export function addAccount(user: PublicUser, body: Record<string, unknown>) {
   const now = Date.now()
   const sort = get<{ n: number }>('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM accounts')?.n ?? 1
   run(
-    `INSERT INTO accounts (id, service, login_id, password, host, password2, link, memo, sort, updated_by, updated_at, created_at)
-     VALUES (:id, :service, :login_id, :password, :host, :password2, :link, :memo, :sort, :me, :now, :now)`,
+    `INSERT INTO accounts (id, service, login_id, password, host, password2, link, memo, color, sort, updated_by, updated_at, created_at)
+     VALUES (:id, :service, :login_id, :password, :host, :password2, :link, :memo, :color, :sort, :me, :now, :now)`,
     { id, ...f, sort, me: user.id, now },
   )
   return toDto(find(id))
@@ -119,7 +128,7 @@ export function updateAccount(user: PublicUser, id: string, body: Record<string,
   const f = fields(body, find(id))
   run(
     `UPDATE accounts SET service = :service, login_id = :login_id, password = :password, host = :host, password2 = :password2,
-     link = :link, memo = :memo, updated_by = :me, updated_at = :now WHERE id = :id`,
+     link = :link, memo = :memo, color = :color, updated_by = :me, updated_at = :now WHERE id = :id`,
     { id, ...f, me: user.id, now: Date.now() },
   )
   return toDto(find(id))
