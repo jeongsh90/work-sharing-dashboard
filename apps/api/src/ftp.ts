@@ -77,13 +77,13 @@ function secretKey() {
   key = Buffer.from(readFileSync(KEY_FILE, 'utf8').trim(), 'hex')
   return key
 }
-function encrypt(text: string) {
+export function encrypt(text: string) {
   const iv = randomBytes(12)
   const c = createCipheriv('aes-256-gcm', secretKey(), iv)
   const data = Buffer.concat([c.update(text, 'utf8'), c.final()])
   return [iv, c.getAuthTag(), data].map((b) => b.toString('base64')).join('.')
 }
-function decrypt(value: string) {
+export function decrypt(value: string) {
   const [iv, tag, data] = value.split('.').map((s) => Buffer.from(s, 'base64'))
   const d = createDecipheriv('aes-256-gcm', secretKey(), iv)
   d.setAuthTag(tag)

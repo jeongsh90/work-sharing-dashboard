@@ -16,6 +16,7 @@ import {
   NotebookPen,
   Network,
   Server,
+  KeyRound,
   UserRound,
   Users,
   Zap,
@@ -66,6 +67,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       // 사내망 직통(슈퍼관리자): 같은 사무실 PC 의 IP 를 등록해 파일을 서버로 바로 주고받게 한다
       { id: "lan", title: "사내망 직통", icon: Zap, roles: ["superadmin"] },
       { id: "ftp-servers", title: "FTP 서버", icon: Server, roles: ["superadmin"] },
+      // 계정 정보(슈퍼관리자): 외부 서비스 계정 모음. 비밀번호는 서버에 암호화
+      { id: "accounts", title: "계정 정보", icon: KeyRound, roles: ["superadmin"] },
     ],
   },
   {

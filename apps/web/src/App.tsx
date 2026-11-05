@@ -31,6 +31,7 @@ const SharePage = lazyPage(() => import('@/components/share-page'), (m) => m.Sha
 const LanPage = lazyPage(() => import('@/components/lan-page'), (m) => m.LanPage)
 const FtpPage = lazyPage(() => import('@/components/ftp-page'), (m) => m.FtpPage)
 const FtpAdminPage = lazyPage(() => import('@/components/ftp-admin-page'), (m) => m.FtpAdminPage)
+const AccountsPage = lazyPage(() => import('@/components/accounts-page'), (m) => m.AccountsPage)
 const NoticeListPage = lazyPage(() => import('@/components/notices/notice-list-page'), (m) => m.NoticeListPage)
 const NoticeDetailPage = lazyPage(() => import('@/components/notices/notice-detail-page'), (m) => m.NoticeDetailPage)
 const NoticeEditPage = lazyPage(() => import('@/components/notices/notice-edit-page'), (m) => m.NoticeEditPage)
@@ -231,6 +232,8 @@ export default function App() {
         return <FtpPage session={session} />
       case 'ftp-servers':
         return <FtpAdminPage />
+      case 'accounts':
+        return <AccountsPage />
       case 'team':
         return <TeamPage session={session} />
       case 'feedback':
