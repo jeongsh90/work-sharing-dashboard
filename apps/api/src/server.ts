@@ -53,6 +53,7 @@ import { addLibraryItems, canUseLibrary, deleteLibraryItem, listLibrary, updateL
 import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { renderDetail } from './detail-render.ts'
 import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, updateDetailDraft } from './detail-drafts.ts'
+import { deleteRequestDraft, getRequestDraft, saveRequestDraft } from './request-drafts.ts'
 import { deleteDeptApprover, listDeptApprovers, setDeptApprover } from './dept-approvers.ts'
 import { accountSecret, addAccount, deleteAccount, listAccounts, reorderAccounts, updateAccount } from './accounts.ts'
 import { addLanIp, deleteLanIp, lanAddress, listLanIps, listLanMisses, reportLan, startLan, updateLanIp } from './lan.ts'
@@ -560,7 +561,19 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   // ── 요청 ──
   if (path === '/api/requests') {
     if (method === 'GET') return sendJson(res, 200, listRequests())
-    if (method === 'POST') return sendJson(res, 201, { id: createRequest(user, await readJson(req)) })
+    if (method === 'POST') {
+      const body = await readJson(req)
+      const id = createRequest(user, body)
+      // 임시저장한 요청서로 보냈으면 임시저장은 지운다(파일은 요청에 붙었다)
+      if (body.clearDraft === true) deleteRequestDraft(user)
+      return sendJson(res, 201, { id })
+    }
+  }
+  // 요청서 임시저장(request-drafts.ts): 한 사람당 하나
+  if (path === '/api/request-draft') {
+    if (method === 'GET') return sendJson(res, 200, getRequestDraft(user))
+    if (method === 'PUT') return sendJson(res, 200, saveRequestDraft(user, await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteRequestDraft(user, url.searchParams.get('files') === '1'))
   }
   if ((m = path.match(/^\/api\/requests\/(\d+)$/))) {
     const id = Number(m[1])

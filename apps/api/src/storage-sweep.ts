@@ -29,6 +29,7 @@ export async function sweepStorage() {
   }
   keepFrom('SELECT file_id, asset_ids, form FROM tool_history')
   keepFrom('SELECT data FROM detail_drafts')
+  keepFrom('SELECT file_ids FROM request_drafts')
   keepFrom('SELECT file_id FROM detail_draft_files')
   const now = Date.now()
   let count = 0

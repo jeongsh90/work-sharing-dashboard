@@ -1,5 +1,5 @@
-import { useId, useState } from "react"
-import { Plus, Trash2, X } from "lucide-react"
+import { useEffect, useId, useState } from "react"
+import { Plus, Save, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { BottomBar } from "@/components/bottom-bar"
+import { confirmDialog } from "@/components/confirm-dialog"
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker"
 import { FilePicker } from "@/components/requests/file-picker"
 import { FileChip } from "@/components/requests/file-list"
@@ -156,23 +157,51 @@ function ItemFields({
   )
 }
 
+// 임시저장한 요청서(새 요청만, 한 사람당 하나). data 는 화면 입력 그대로, files 는 먼저 올려 둔 참고 자료
+type DraftData = {
+  title?: string
+  workType?: string
+  department?: string
+  ongoing?: boolean
+  from?: number | null
+  to?: number | null
+  dueTime?: string
+  urgent?: boolean
+  items?: ItemRow[]
+  coIds?: string[]
+  proxyOn?: boolean
+  requesterId?: string
+  requesterName?: string
+  source?: string
+  takeSelf?: boolean
+}
+export type RequestDraft = { data: DraftData; files: FileInfo[]; updatedAt: number }
+
+const draftTime = (t: number) =>
+  new Date(t).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+
 // 디자인 요청서. 새 요청과 요청 수정(보완)에 같이 쓴다.
 export function RequestForm({
   session,
   initial,
+  draft,
+  onDiscardDraft,
   onDone,
   onCancel,
 }: {
   session: Session
   initial?: RequestDetailDto
+  draft?: RequestDraft | null // 새 요청에서 불러온 임시저장
+  onDiscardDraft?: () => void // 임시저장을 지우고 새로 쓰기
   onDone: (id: number) => void
   onCancel?: () => void
 }) {
-  const [title, setTitle] = useState(initial?.title ?? "")
-  const [workType, setWorkType] = useState(initial?.workType ?? "")
-  const [department, setDepartment] = useState(initial?.department ?? session.department)
+  const d: DraftData = (!initial && draft?.data) || {}
+  const [title, setTitle] = useState(initial?.title ?? d.title ?? "")
+  const [workType, setWorkType] = useState(initial?.workType ?? d.workType ?? "")
+  const [department, setDepartment] = useState(initial?.department ?? d.department ?? session.department)
   // 계속 업무(마감 없음): 체크하면 시작일만 고르고 마감 시각은 쓰지 않는다.
-  const [ongoing, setOngoing] = useState(initial?.ongoing ?? false)
+  const [ongoing, setOngoing] = useState(initial?.ongoing ?? d.ongoing ?? false)
   // 보류(요청 수정에서만): 일정은 그대로 두고 잠시 멈춘다. 마감 지남·이번 주 마감에서 빠진다.
   const [onHold, setOnHold] = useState(initial?.onHold ?? false)
   const [range, setRange] = useState<DateRange | undefined>(() =>
@@ -183,17 +212,20 @@ export function RequestForm({
             from: startOfDay(new Date(initial.requestedStartAt ?? initial.dueAt)),
             to: startOfDay(new Date(initial.dueAt)),
           }
-      : defaultRange(),
+      : d.from
+        ? { from: new Date(d.from), to: d.to ? new Date(d.to) : undefined }
+        : defaultRange(),
   )
   const [dueTime, setDueTime] = useState(() => {
-    if (!initial || initial.ongoing) return "17:00"
-    const d = new Date(initial.dueAt)
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    if (!initial) return d.dueTime && /^\d\d:\d\d$/.test(d.dueTime) ? d.dueTime : "17:00"
+    if (initial.ongoing) return "17:00"
+    const due = new Date(initial.dueAt)
+    return `${pad(due.getHours())}:${pad(due.getMinutes())}`
   })
   // 예전에 고른 시각이 목록에 없으면 목록에 더해 보여 준다.
   const dueTimes = DUE_TIMES.includes(dueTime) ? DUE_TIMES : [...DUE_TIMES, dueTime].sort()
   // 긴급 처리 요청 체크. 체크하면 긴급도 '급함'. 예전에 '매우 급함'으로 들어온 요청은 체크를 유지하면 그대로 둔다.
-  const [urgent, setUrgent] = useState(!!initial && initial.urgency !== "normal")
+  const [urgent, setUrgent] = useState(initial ? initial.urgency !== "normal" : !!d.urgent)
   const urgency: Urgency = !urgent ? "normal" : initial?.urgency === "critical" ? "critical" : "urgent"
   // 묶음이 없던 예전 요청은 요청 내용을 첫 묶음에 넣어 보여 준다.
   const [items, setItems] = useState<ItemRow[]>(() =>
@@ -201,9 +233,12 @@ export function RequestForm({
       ? initial.items.map(toRow)
       : initial?.description
         ? [{ ...EMPTY_ITEM, body: initial.description }]
-        : [EMPTY_ITEM],
+        : d.items?.length
+          ? d.items.map((r) => ({ ...EMPTY_ITEM, ...r }))
+          : [EMPTY_ITEM],
   )
-  const [kept, setKept] = useState<FileInfo[]>(initial?.references ?? [])
+  // 남겨 둘 참고 자료: 요청 수정이면 이미 붙은 파일, 새 요청이면 임시저장할 때 올려 둔 파일
+  const [kept, setKept] = useState<FileInfo[]>(initial?.references ?? draft?.files ?? [])
   const [files, setFiles] = useState<File[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pending, setPending] = useState(false)
@@ -216,17 +251,78 @@ export function RequestForm({
   // 대신 작성(새 요청만): 말·전화 등으로 받은 요청을 작업자·관리자가 옮겨 적는다. 작업자는 늘 대신 작성이다.
   const designer = session.role === "designer"
   const canProxy = !initial && (designer || isManager(session))
-  const [proxyOn, setProxyOn] = useState(designer)
+  const [proxyOn, setProxyOn] = useState(designer || !!d.proxyOn)
   const proxy = canProxy && proxyOn
-  const [requesterId, setRequesterId] = useState("")
-  const [requesterName, setRequesterName] = useState("")
-  const [source, setSource] = useState<string>("구두")
+  const [requesterId, setRequesterId] = useState(d.requesterId ?? "")
+  const [requesterName, setRequesterName] = useState(d.requesterName ?? "")
+  const [source, setSource] = useState<string>(d.source && (REQUEST_SOURCES as readonly string[]).includes(d.source) ? d.source : "구두")
   // 디자인팀(작업자·디자인팀 관리자)은 등록하면서 바로 담당을 맡을 수 있다(기본 켬)
   const canTake = designer || isDesignWorker(session)
-  const [takeSelf, setTakeSelf] = useState(true)
+  const [takeSelf, setTakeSelf] = useState(d.takeSelf ?? true)
   // 공동 요청자: 같은 팀(요청 부서)에서 함께 요청하는 사람(여러 명). 원래 요청자처럼 알림·내 요청·컨펌을 한다
-  const [coIds, setCoIds] = useState<string[]>(initial?.coRequesters ?? [])
+  const [coIds, setCoIds] = useState<string[]>(initial?.coRequesters ?? d.coIds ?? [])
   const mainRequester = initial ? initial.requesterId : proxy ? (requesterId && requesterId !== NO_ACCOUNT ? requesterId : session.id) : session.id
+
+  // 임시저장(새 요청만): 검사 없이 지금 입력을 저장한다. 새로 고른 파일은 먼저 올려 두고 남겨 둘 참고 자료로 옮긴다.
+  const [savedAt, setSavedAt] = useState<number | null>(draft?.updatedAt ?? null)
+  const [saving, setSaving] = useState(false)
+  const busy = pending || saving
+  async function saveDraft() {
+    setSaving(true)
+    clear("form")
+    try {
+      const uploaded = await uploadAll(files)
+      const now = Date.now()
+      const nextKept: FileInfo[] = [
+        ...kept,
+        ...uploaded.map((f) => ({ ...f, kind: null, uploaderId: session.id, createdAt: now })),
+      ]
+      setKept(nextKept)
+      setFiles([])
+      const data: DraftData = {
+        title,
+        workType,
+        department,
+        ongoing,
+        from: range?.from?.getTime() ?? null,
+        to: range?.to?.getTime() ?? null,
+        dueTime,
+        urgent,
+        items,
+        coIds,
+        proxyOn,
+        requesterId,
+        requesterName,
+        source,
+        takeSelf,
+      }
+      const r = await api<{ updatedAt: number }>("/request-draft", {
+        method: "PUT",
+        body: { data, fileIds: nextKept.map((f) => f.id) },
+      })
+      setSavedAt(r.updatedAt)
+    } catch (error) {
+      setErrors((prev) => ({ ...prev, form: error instanceof ApiError ? error.message : "임시저장하지 못했습니다." }))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function discardDraft() {
+    const ok = await confirmDialog({
+      title: "임시저장을 지우고 새로 쓸까요?",
+      description: "임시저장한 내용과 함께 올려 둔 참고 자료도 지워집니다.",
+      confirmText: "지우고 새로 쓰기",
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await api("/request-draft?files=1", { method: "DELETE" })
+      onDiscardDraft?.()
+    } catch (error) {
+      setErrors((prev) => ({ ...prev, form: error instanceof ApiError ? error.message : "임시저장을 지우지 못했습니다." }))
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -272,8 +368,10 @@ export function RequestForm({
         ongoing,
         onHold,
         dueAt: ongoing ? undefined : dueAt!.getTime(),
-        fileIds: uploaded.map((f) => f.id),
+        // 새 요청: 임시저장 때 올려 둔 파일(kept)도 함께 붙인다. 요청 수정: kept 는 남겨 둘 기존 파일
+        fileIds: [...uploaded.map((f) => f.id), ...(initial ? [] : kept.map((f) => f.id))],
         keepFileIds: kept.map((f) => f.id),
+        ...(!initial && { clearDraft: true }),
         coRequesterIds: coIds.filter((uid) => uid !== mainRequester),
         ...(proxy && {
           proxy:
@@ -302,6 +400,14 @@ export function RequestForm({
   return (
     <form id={formId} onSubmit={submit} noValidate>
       <FieldGroup>
+        {!initial && draft && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+            <span className="break-keep">임시저장한 요청서를 불러왔습니다 ({draftTime(draft.updatedAt)} 저장)</span>
+            <Button type="button" variant="outline" size="sm" onClick={discardDraft} disabled={busy}>
+              지우고 새로 쓰기
+            </Button>
+          </div>
+        )}
         {canProxy && (
           <div className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
             {designer ? (
@@ -534,14 +640,23 @@ export function RequestForm({
             긴급처리요청
           </label>
           {onCancel && (
-            <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={onCancel} disabled={pending}>
+            <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={onCancel} disabled={busy}>
               취소
             </Button>
           )}
-          <Button type="submit" form={formId} className="h-14 px-10 text-base" disabled={pending}>
+          {!initial && (
+            <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={saveDraft} disabled={busy}>
+              <Save data-icon="inline-start" />
+              {saving ? "저장 중…" : "임시저장"}
+            </Button>
+          )}
+          <Button type="submit" form={formId} className="h-14 px-10 text-base" disabled={busy}>
             {pending ? "보내는 중…" : initial ? "수정 내용 저장" : proxy ? "요청서 등록" : "요청 보내기"}
           </Button>
         </div>
+        {savedAt && !initial && !errors.form && (
+          <p className="text-center text-xs text-muted-foreground">임시저장됨 · {draftTime(savedAt)}</p>
+        )}
         {errors.form && <FieldError>{errors.form}</FieldError>}
       </BottomBar>
     </form>
@@ -550,6 +665,18 @@ export function RequestForm({
 
 export function RequestFormPage({ session }: { session: Session }) {
   const designer = session.role === "designer"
+  // 임시저장한 요청서가 있으면 불러와 이어서 쓴다(불러오기 전에는 폼을 그리지 않는다)
+  const [draft, setDraft] = useState<RequestDraft | null | undefined>(undefined)
+  const [formKey, setFormKey] = useState(0)
+  useEffect(() => {
+    let alive = true
+    api<RequestDraft | null>("/request-draft")
+      .then((r) => alive && setDraft(r))
+      .catch(() => alive && setDraft(null))
+    return () => {
+      alive = false
+    }
+  }, [])
   return (
     <div className={PAGE_GRID}>
       <div className="col-span-12 flex flex-col gap-1 lg:col-span-8 lg:col-start-3 xl:col-span-6 xl:col-start-4">
@@ -559,7 +686,18 @@ export function RequestFormPage({ session }: { session: Session }) {
             ? "시스템 밖(말·전화·메신저 등)으로 받은 요청을 요청서로 남깁니다. 요청한 사람이 계정이 있으면 그 사람의 요청으로 들어가 진행 상황과 시안 컨펌을 그 사람이 봅니다."
             : "요청을 보내면 디자인팀에 알림이 가고, 담당 작업자가 정해지면 알림으로 알려 드립니다."}
         </p>
-        <RequestForm session={session} onDone={(id) => openRequest(id)} />
+        {draft !== undefined && (
+          <RequestForm
+            key={formKey}
+            session={session}
+            draft={draft}
+            onDiscardDraft={() => {
+              setDraft(null)
+              setFormKey((k) => k + 1)
+            }}
+            onDone={(id) => openRequest(id)}
+          />
+        )}
       </div>
     </div>
   )
