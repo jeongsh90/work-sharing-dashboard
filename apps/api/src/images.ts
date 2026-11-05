@@ -31,7 +31,7 @@ export type ImageSize = keyof typeof SIZES
 
 export const isImageSize = (v: string): v is ImageSize => Object.hasOwn(SIZES, v)
 
-// 움직이는 GIF·SVG 는 원본 그대로 보낸다.
+// 움직이는 GIF·SVG 는 원본 그대로 보낸다. 움직이는 WebP 도 원본(isAnimated)
 export const RESIZABLE = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 const RESIZED_DIR = join(UPLOAD_DIR, 'resized')
@@ -77,11 +77,26 @@ async function save(name: string, data: Buffer) {
   await rename(tmp, target)
 }
 
+// 움직이는 WebP(여러 장면)는 줄이면 첫 장면만 남아 멈춘다 → 원본을 그대로 보낸다. 파일마다 한 번만 확인
+const animated = new Map<string, Promise<boolean>>()
+function isAnimated(fileId: string) {
+  let v = animated.get(fileId)
+  if (!v) {
+    v = sharp(join(UPLOAD_DIR, fileId), { limitInputPixels: false })
+      .metadata()
+      .then((m) => (m.pages ?? 1) > 1)
+      .catch(() => false)
+    animated.set(fileId, v)
+  }
+  return v
+}
+
 export function resizedImage(fileId: string, size: ImageSize) {
   const key = `${fileId}-${size}`
   let job = pending.get(key)
   if (!job) {
     job = (async (): Promise<Resized> => {
+      if (await isAnimated(fileId)) return null
       const hit = await cached(key)
       if (hit !== undefined) return hit
       // 줄인 뒤 크기를 먼저 셈해서 형식을 고른다(사진 방향 정보로 가로·세로가 바뀌는 경우 포함)

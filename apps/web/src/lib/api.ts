@@ -295,7 +295,8 @@ export function fileUrl(id: string, size?: ImageSize) {
   const key = size ? `${id}:${size}` : id
   let pending = blobCache.get(key)
   if (!pending) {
-    pending = apiFetch(size ? `/files/${id}?size=${size}` : `/files/${id}`).then(async (res) => {
+    // r: 줄인 이미지 규칙이 바뀌면 올린다(브라우저가 1년 캐시함). 2 = 움직이는 WebP 는 원본
+    pending = apiFetch(size ? `/files/${id}?size=${size}&r=2` : `/files/${id}`).then(async (res) => {
       if (!res.ok) throw new ApiError(res.status, '파일을 불러오지 못했습니다.')
       return URL.createObjectURL(await res.blob())
     })
