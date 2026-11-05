@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Check, ChevronLeft, ChevronRight, Code, Download, FolderPlus, Folder, CornerLeftUp, LoaderCircle, RefreshCw, Search, Trash2, Upload, X } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Code, Download, FolderPlus, Folder, CornerLeftUp, ExternalLink, LoaderCircle, RefreshCw, Search, Trash2, Upload, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -23,13 +23,27 @@ import { Tip } from "@/components/tip"
 // 폴더를 눌러 들어가고, 파일을 끌어다 놓거나 "파일 업로드"로 올리고, 줄의 받기 버튼으로 내려받는다. 지우기는 관리자만.
 // 이미지는 누르면 미리보기, 줄의 <> 버튼은 <img src="웹 주소"> 를 복사한다(웹 주소는 관리 → FTP 서버에서 넣음).
 
-type Server = { id: string; name: string; root: string; serviceStart?: string; serviceEnd?: string }
+type Server = { id: string; name: string; root: string; serviceStart?: string; serviceEnd?: string; serviceUrl?: string }
 
 // 제목 옆 서비스 이용기간. 만료 30일 안이면 주황, 지나면 빨강
-function ServicePeriod({ start, end, admin }: { start?: string; end?: string; admin: boolean }) {
+function ServicePeriod({ start, end, url, admin }: { start?: string; end?: string; url?: string; admin: boolean }) {
+  const check = url ? (
+    <Button asChild variant="outline" size="xs">
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        <ExternalLink data-icon="inline-start" />
+        확인
+      </a>
+    </Button>
+  ) : null
   // 아직 안 넣었으면: 슈퍼관리자에게만 넣는 곳 안내
   if (!start && !end)
-    return admin ? (
+    // 기간 없이 확인 페이지만 있으면 만료 없는 서비스(예: 카페24 쇼핑몰 호스팅)
+    return check ? (
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        서비스 이용기간 만료 없음
+        {check}
+      </span>
+    ) : admin ? (
       <a href="#/ftp-servers" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
         서비스 이용기간 미입력 · 관리 → FTP 서버에서 넣기
       </a>
@@ -47,6 +61,7 @@ function ServicePeriod({ start, end, admin }: { start?: string; end?: string; ad
     <span className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground tabular-nums">
       <span>서비스 이용기간 {start ? fmt(start) : ""} ~ {end ? fmt(end) : ""}</span>
       {left !== null && <span className={`font-medium ${tone}`}>{left < 0 ? `만료 ${-left}일 지남` : left === 0 ? "오늘 만료" : `D-${left}`}</span>}
+      {check}
     </span>
   )
 }
@@ -221,7 +236,7 @@ export function FtpPage({ session }: { session: Session }) {
     <div className={PAGE_GRID}>
       <Section
         title={server ? `FTP - ${server.name}` : "FTP"}
-        aside={server && <ServicePeriod start={server.serviceStart} end={server.serviceEnd} admin={session.role === "superadmin"} />}
+        aside={server && <ServicePeriod start={server.serviceStart} end={server.serviceEnd} url={server.serviceUrl} admin={session.role === "superadmin"} />}
         className="col-span-12"
         action={
           <div className="flex gap-2">
