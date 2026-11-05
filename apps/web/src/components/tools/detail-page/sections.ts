@@ -49,8 +49,9 @@ export type Section = Base &
     // 썸네일(상품 대표 이미지): 사진만. 상세 이미지·content.html 에는 안 들어가고 1200×1200 JPG 로 따로 받는다
     | { kind: "thumb"; image: Picture | null }
     // subColor·nameColor·descColor: 윗줄·상품명·설명 글자색(#rrggbb). 비면 흰색(detail.css 기본)
+    // emColor: 설명 안 **강조** 글자색. 비면 브랜드 주황(#ff4d00)
     // gradFrom·gradTo: 글자 뒤 그라데이션 위(시작)·아래(끝) 색. 없으면(예전 저장본) 기본 검정 60% → 투명
-    | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string; gradFrom?: GradStop; gradTo?: GradStop; subColor?: string; nameColor?: string; descColor?: string }
+    | { kind: "hero"; image: Picture | null; sub: string; name: string; desc: string; grad: boolean; tag: string; gradFrom?: GradStop; gradTo?: GradStop; subColor?: string; nameColor?: string; descColor?: string; emColor?: string }
     // em1·em2: 그 제목 줄을 주황 굵게(강조). 없으면(예전 저장본) 제목 2만 강조
     | { kind: "point"; title1: string; title2: string; body: string; kick: boolean; em1?: boolean; em2?: boolean }
     | { kind: "photo"; image: Picture | null; tag: string; desc: string }
@@ -242,7 +243,7 @@ function sectionHtml(p: Planned, urls: Map<Picture, string> | null, asset: (u: s
         <div class="hero-name"${colorStyle(s.nameColor)}>${esc(s.name) || "상품명"}</div>
       </div>
     </div>
-    <div class="hero-desc pre"${colorStyle(s.descColor)}>${rich(s.desc, "b")}</div>
+    <div class="hero-desc pre"${colorStyle(s.descColor)}>${rich(s.desc, "b").replace(/<span class="b">/g, `<span class="b"${colorStyle(s.emColor || "#ff4d00")}>`)}</div>
   </div>${s.tag ? `\n  <div class="tag">${esc(s.tag)}</div>` : ""}
 </section>`
     }

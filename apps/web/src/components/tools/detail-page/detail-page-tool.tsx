@@ -821,9 +821,12 @@ function SectionEditor({ p, product, onChange }: { p: Planned; product: string; 
           <Field>
             <div className="flex items-center justify-between gap-2">
               <FieldLabel htmlFor={`${id}-desc`}>설명</FieldLabel>
-              <TextColorField label="설명" value={s.descColor} onChange={(descColor) => onChange({ descColor })} />
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <TextColorField label="설명" value={s.descColor} onChange={(descColor) => onChange({ descColor })} />
+                <TextColorField label="설명 강조" caption="강조색" fallback="#ff4d00" value={s.emColor} onChange={(emColor) => onChange({ emColor })} />
+              </div>
             </div>
-            <Textarea id={`${id}-desc`} value={s.desc} onChange={(e) => onChange({ desc: e.target.value })} className="min-h-20 break-keep" placeholder="줄을 바꾸면 그대로 줄이 바뀝니다" />
+            <EmphasisTextarea id={`${id}-desc`} value={s.desc} onValueChange={(desc) => onChange({ desc })} className="min-h-20 break-keep" placeholder="줄을 바꾸면 그대로 줄이 바뀝니다 (골라서 강조하면 강조색 굵게)" />
           </Field>
           <div className="flex flex-wrap gap-4">
             <Label className="flex items-center gap-2 font-normal">
@@ -1151,19 +1154,19 @@ export function ShipGroup({
 
 // 사진 표기(오른쪽 아래): 없음 / 연출 이미지 / 이해를 돕기 위한 이미지
 // 글자색: 색 견본 + #색상값(비우면 흰색)
-function TextColorField({ label, value, onChange }: { label: string; value: string | undefined; onChange: (v: string | undefined) => void }) {
+function TextColorField({ label, value, onChange, caption = "글자색", fallback = "#ffffff" }: { label: string; value: string | undefined; onChange: (v: string | undefined) => void; caption?: string; fallback?: string }) {
   const text = value ?? ""
   const rgb = parseHex(text)
   const bad = text.trim() !== "" && !rgb
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">글자색</span>
-      <ColorSwatchPicker value={text || "#ffffff"} label={`${label} 글자색`} swatch={{ background: rgb ? `rgb(${rgb.join(",")})` : "#ffffff" }} onPick={onChange} />
+      <span className="text-xs text-muted-foreground">{caption}</span>
+      <ColorSwatchPicker value={text || fallback} label={`${label} ${caption}`} swatch={{ background: rgb ? `rgb(${rgb.join(",")})` : fallback }} onPick={onChange} />
       <Input
         value={text}
         onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
-        placeholder="#ffffff"
-        aria-label={`${label} 글자색`}
+        placeholder={fallback}
+        aria-label={`${label} ${caption}`}
         aria-invalid={bad}
         className="h-7 w-24 font-mono text-xs"
       />
