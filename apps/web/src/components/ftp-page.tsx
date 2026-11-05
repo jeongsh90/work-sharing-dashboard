@@ -26,8 +26,14 @@ import { Tip } from "@/components/tip"
 type Server = { id: string; name: string; root: string; serviceStart?: string; serviceEnd?: string }
 
 // 제목 옆 서비스 이용기간. 만료 30일 안이면 주황, 지나면 빨강
-function ServicePeriod({ start, end }: { start?: string; end?: string }) {
-  if (!start && !end) return null
+function ServicePeriod({ start, end, admin }: { start?: string; end?: string; admin: boolean }) {
+  // 아직 안 넣었으면: 슈퍼관리자에게만 넣는 곳 안내
+  if (!start && !end)
+    return admin ? (
+      <a href="#/ftp-servers" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+        서비스 이용기간 미입력 · 관리 → FTP 서버에서 넣기
+      </a>
+    ) : null
   const fmt = (s: string) => s.replace(/-/g, ". ")
   let left: number | null = null
   if (end) {
@@ -215,7 +221,7 @@ export function FtpPage({ session }: { session: Session }) {
     <div className={PAGE_GRID}>
       <Section
         title={server ? `FTP - ${server.name}` : "FTP"}
-        aside={server && <ServicePeriod start={server.serviceStart} end={server.serviceEnd} />}
+        aside={server && <ServicePeriod start={server.serviceStart} end={server.serviceEnd} admin={session.role === "superadmin"} />}
         className="col-span-12"
         action={
           <div className="flex gap-2">
