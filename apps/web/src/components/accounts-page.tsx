@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react"
-import { Check, Copy, ExternalLink, Eye, EyeOff, Plus, Search, Trash2 } from "lucide-react"
+import { useMemo, useState, type ReactNode } from "react"
+import { Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Plus, Search, Trash2 } from "lucide-react"
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -106,16 +109,72 @@ function SecretCell({ account, which, label }: { account: Account; which: "passw
   )
 }
 
+// 끌어서 순서 바꾸는 표 줄. 왼쪽 손잡이를 잡고 끈다(키보드: 손잡이에서 스페이스 → 방향키 → 스페이스). 검색 중에는 끄기
+function SortableRow({ id, disabled, children }: { id: string; disabled: boolean; children: (handle: ReactNode) => ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
+  const handle = (
+    <Tip content={disabled ? "검색 중에는 순서를 바꿀 수 없습니다" : "끌어서 순서 바꾸기"}>
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label="끌어서 순서 바꾸기"
+        className={`flex h-7 w-6 touch-none items-center justify-center rounded text-muted-foreground ${disabled ? "cursor-not-allowed opacity-30" : "cursor-grab hover:text-foreground active:cursor-grabbing"}`}
+      >
+        <GripVertical className="size-4" />
+      </button>
+    </Tip>
+  )
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={`align-top ${isDragging ? "relative z-10 bg-muted shadow-lg" : ""}`}
+    >
+      {children(handle)}
+    </TableRow>
+  )
+}
+
 export function AccountsPage() {
   const { data, error } = useApi<Account[]>("/accounts?secrets=1", 300_000)
   const [query, setQuery] = useState("")
   const [editing, setEditing] = useState<Account | "new" | null>(null)
+  // 끌어 놓은 순서(서버 저장이 끝나 새 목록이 올 때까지 이 순서로 보여 준다)
+  const [order, setOrder] = useState<string[] | null>(null)
+  const [orderError, setOrderError] = useState<string | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
+  const sorted = useMemo(() => {
+    if (!data || !order) return data ?? []
+    const pos = new Map(order.map((id, i) => [id, i]))
+    return [...data].sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9))
+  }, [data, order])
+  const searching = query.trim() !== ""
   const list = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!data || !q) return data ?? []
-    return data.filter((a) => [a.service, a.loginId, a.host, a.link, a.memo].some((v) => v.toLowerCase().includes(q)))
-  }, [data, query])
+    if (!q) return sorted
+    return sorted.filter((a) => [a.service, a.loginId, a.host, a.link, a.memo].some((v) => v.toLowerCase().includes(q)))
+  }, [sorted, query])
+
+  const onDragEnd = async ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return
+    const ids = sorted.map((a) => a.id)
+    const next = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)))
+    setOrder(next)
+    setOrderError(null)
+    try {
+      await api("/accounts/order", { body: { ids: next } })
+      invalidate()
+    } catch (e) {
+      setOrder(null)
+      setOrderError(e instanceof ApiError ? e.message : "순서를 저장하지 못했습니다.")
+    }
+  }
 
   if (!data) return <PageState error={error} />
 
@@ -138,9 +197,12 @@ export function AccountsPage() {
         }
       >
         <div className="overflow-hidden rounded-xl border bg-card">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onDragEnd(e)}>
+          <SortableContext items={list.map((a) => a.id)} strategy={verticalListSortingStrategy}>
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
+                <TableHead className="w-9" />
                 <TableHead className="w-[15%]">서비스</TableHead>
                 <TableHead className="w-[20%]">아이디</TableHead>
                 <TableHead className="w-[16%]">비밀번호</TableHead>
@@ -151,7 +213,10 @@ export function AccountsPage() {
             </TableHeader>
             <TableBody>
               {list.map((a) => (
-                <TableRow key={a.id} className="align-top">
+                <SortableRow key={a.id} id={a.id} disabled={searching}>
+                  {(handle) => (
+                  <>
+                  <TableCell className="px-1">{handle}</TableCell>
                   <TableCell className="whitespace-normal">
                     <Tip content="누르면 수정·삭제">
                       <button type="button" className="text-left font-medium break-keep hover:underline" onClick={() => setEditing(a)}>
@@ -189,20 +254,25 @@ export function AccountsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-sm whitespace-pre-line break-keep text-muted-foreground">{a.memo}</TableCell>
-                </TableRow>
+                  </>
+                  )}
+                </SortableRow>
               ))}
               {list.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                     {data.length ? "맞는 계정이 없습니다." : "아직 넣은 계정이 없습니다. 오른쪽 위 추가로 넣어 주세요."}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          </SortableContext>
+          </DndContext>
         </div>
+        {orderError && <p className="text-sm text-destructive">{orderError}</p>}
         <p className="text-xs text-muted-foreground break-keep">
-          슈퍼관리자만 봅니다. 비밀번호는 서버에 암호화해 두고 이 화면에만 보입니다(눈 아이콘으로 가리기). 서비스 이름을 누르면 고치거나 지울 수 있습니다.
+          슈퍼관리자만 봅니다. 비밀번호는 서버에 암호화해 두고 이 화면에만 보입니다(눈 아이콘으로 가리기). 서비스 이름을 누르면 고치거나 지울 수 있습니다. 왼쪽 손잡이(⋮⋮)를 끌어 순서를 바꿉니다(검색 중에는 안 됨).
         </p>
       </Section>
       {editing && <AccountDialog account={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}

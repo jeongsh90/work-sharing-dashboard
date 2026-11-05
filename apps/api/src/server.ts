@@ -54,7 +54,7 @@ import { finishChunked, putChunk, startChunked } from './chunked-upload.ts'
 import { renderDetail } from './detail-render.ts'
 import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, updateDetailDraft } from './detail-drafts.ts'
 import { deleteDeptApprover, listDeptApprovers, setDeptApprover } from './dept-approvers.ts'
-import { accountSecret, addAccount, deleteAccount, listAccounts, updateAccount } from './accounts.ts'
+import { accountSecret, addAccount, deleteAccount, listAccounts, reorderAccounts, updateAccount } from './accounts.ts'
 import { addLanIp, deleteLanIp, lanAddress, listLanIps, listLanMisses, reportLan, startLan, updateLanIp } from './lan.ts'
 import {
   addFtpServer,
@@ -398,6 +398,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
 
   // ── 계정 정보(accounts.ts, 슈퍼관리자): 목록에는 비밀번호 없음, /secret 으로 하나씩
+  if (path === '/api/accounts/order' && method === 'POST') return sendJson(res, 200, reorderAccounts(user, await readJson(req)))
   if (path === '/api/accounts') {
     if (method === 'GET') return sendJson(res, 200, listAccounts(user, url.searchParams.has('secrets')))
     if (method === 'POST') return sendJson(res, 201, addAccount(user, await readJson(req)))

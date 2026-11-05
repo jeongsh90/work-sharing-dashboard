@@ -131,3 +131,20 @@ export function deleteAccount(user: PublicUser, id: string) {
   run('DELETE FROM accounts WHERE id = :id', { id })
   return { ok: true }
 }
+
+// 순서 바꾸기: 화면에서 끌어 놓은 순서(id 목록) 그대로 sort 를 0,1,2… 로 다시 매긴다
+export function reorderAccounts(user: PublicUser, body: Record<string, unknown>) {
+  requireSuperadmin(user)
+  const ids = Array.isArray(body.ids) ? body.ids.filter((v): v is string => typeof v === 'string') : []
+  const known = new Set(all<{ id: string }>('SELECT id FROM accounts').map((r) => r.id))
+  if (ids.length !== known.size || ids.some((id) => !known.has(id))) throw new HttpError(400, '목록이 바뀌었습니다. 새로고침 후 다시 해 주세요.')
+  db.exec('BEGIN')
+  try {
+    ids.forEach((id, i) => run('UPDATE accounts SET sort = :i WHERE id = :id', { id, i }))
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
+  return { ok: true }
+}
