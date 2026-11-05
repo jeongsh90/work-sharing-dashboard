@@ -646,7 +646,7 @@ export function RequestForm({
           )}
           {!initial && (
             <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={saveDraft} disabled={busy}>
-              <Save data-icon="inline-start" />
+              <Save />
               {saving ? "저장 중…" : "임시저장"}
             </Button>
           )}
