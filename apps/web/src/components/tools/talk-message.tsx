@@ -58,9 +58,9 @@ type Saved = Form & { image: PicRef | null }
 
 const DEFAULTS: Form = {
   title: "",
-  line1: "",
+  line1: "내용을 입력해주세요",
   line1Color: "#ffe400",
-  line2: "",
+  line2: "내용을 입력해주세요",
   line2Color: "#ffffff",
   gradOn: true,
   gradFrom: { color: "#000000", opacity: 85 },
