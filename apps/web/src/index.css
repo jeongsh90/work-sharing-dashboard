@@ -5,10 +5,10 @@
 @import "lenis/dist/lenis.css";
 
 /* Gmarket Sans: 데스크 명찰(디자인 툴)에 쓴다. 쓰는 화면에서만 받는다 */
-@font-face { font-family: "GmarketSans"; font-weight: 300; font-display: swap; src: url("./assets/fonts/GmarketSansTTFLight.ttf") format("truetype"); }
-@font-face { font-family: "GmarketSans"; font-weight: 500; font-display: swap; src: url("./assets/fonts/GmarketSansTTFMedium.ttf") format("truetype"); }
-@font-face { font-family: "GmarketSans"; font-weight: 700; font-display: swap; src: url("./assets/fonts/GmarketSansTTFBold.ttf") format("truetype"); }
-@font-face { font-family: "SBAggro"; font-weight: 500; font-display: swap; src: url("./assets/fonts/SBAggroM.ttf") format("truetype"); }
+@font-face { font-family: "GmarketSans"; font-weight: 300; font-display: swap; src: url("./assets/fonts/GmarketSansTTFLight.woff2") format("woff2"); }
+@font-face { font-family: "GmarketSans"; font-weight: 500; font-display: swap; src: url("./assets/fonts/GmarketSansTTFMedium.woff2") format("woff2"); }
+@font-face { font-family: "GmarketSans"; font-weight: 700; font-display: swap; src: url("./assets/fonts/GmarketSansTTFBold.woff2") format("woff2"); }
+@font-face { font-family: "SBAggro"; font-weight: 500; font-display: swap; src: url("./assets/fonts/SBAggroM.woff2") format("woff2"); }
 
 @custom-variant dark (&:is(.dark *));
 

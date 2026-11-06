@@ -1,21 +1,23 @@
-import { useState } from "react"
-import { ClipboardList, Clapperboard, FileCheck2, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
+import { lazy, Suspense, useState } from "react"
+import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { DeskNameplateTool } from "@/components/tools/desk-nameplate"
-import { MailSignatureTool } from "@/components/tools/mail-signature"
-import { PurchaseCertTool } from "@/components/tools/purchase-cert"
-import { ProductNoticeTool } from "@/components/tools/product-notice"
-import { VideoConvertTool } from "@/components/tools/video-to-gif"
-import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
-import { ShipTool } from "@/components/tools/detail-page/ship-tool"
-import { TalkMessageTool } from "@/components/tools/talk-message"
-import { SectionApp } from "@/components/tools/detail-page/section-app"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Tip } from "@/components/tip"
+
+// 도구 화면은 열 때 받는다(목록만 볼 때는 아이콘만 — 도구마다 코드가 커서 한꺼번에 받지 않는다)
+const DeskNameplateTool = lazy(() => import("@/components/tools/desk-nameplate").then((m) => ({ default: m.DeskNameplateTool })))
+const MailSignatureTool = lazy(() => import("@/components/tools/mail-signature").then((m) => ({ default: m.MailSignatureTool })))
+const PurchaseCertTool = lazy(() => import("@/components/tools/purchase-cert").then((m) => ({ default: m.PurchaseCertTool })))
+const ProductNoticeTool = lazy(() => import("@/components/tools/product-notice").then((m) => ({ default: m.ProductNoticeTool })))
+const VideoConvertTool = lazy(() => import("@/components/tools/video-to-gif").then((m) => ({ default: m.VideoConvertTool })))
+const DetailPageTool = lazy(() => import("@/components/tools/detail-page/detail-page-tool").then((m) => ({ default: m.DetailPageTool })))
+const ShipTool = lazy(() => import("@/components/tools/detail-page/ship-tool").then((m) => ({ default: m.ShipTool })))
+const TalkMessageTool = lazy(() => import("@/components/tools/talk-message").then((m) => ({ default: m.TalkMessageTool })))
+const SectionApp = lazy(() => import("@/components/tools/detail-page/section-app").then((m) => ({ default: m.SectionApp })))
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
 // 누르면 전체 화면 창이 열린다. 도구를 만들면 TOOLS 에 하나씩 추가하고 body 에 화면을 넣는다.
@@ -157,14 +159,25 @@ function AppIcon({ tool, className = "size-16" }: { tool: Tool; className?: stri
 
 // 앱 본문(준비 중이면 안내)
 function ToolBody({ tool }: { tool: Tool }) {
-  return (
-    tool.body ?? (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
-        <AppIcon tool={tool} className="size-20 opacity-60" />
-        <p className="font-medium">준비 중인 도구입니다.</p>
-        <p className="text-sm text-muted-foreground">곧 이곳에서 {tool.name} 기능을 쓸 수 있습니다.</p>
-      </div>
+  if (tool.body)
+    return (
+      <Suspense
+        fallback={
+          <p className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+            <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+            도구를 여는 중…
+          </p>
+        }
+      >
+        {tool.body}
+      </Suspense>
     )
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
+      <AppIcon tool={tool} className="size-20 opacity-60" />
+      <p className="font-medium">준비 중인 도구입니다.</p>
+      <p className="text-sm text-muted-foreground">곧 이곳에서 {tool.name} 기능을 쓸 수 있습니다.</p>
+    </div>
   )
 }
 
