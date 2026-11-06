@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ClipboardList, Clapperboard, FileCheck2, IdCard, LayoutTemplate, Mail, Package, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, FileCheck2, IdCard, LayoutTemplate, Mail, MessageSquareText, Package, Search, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -11,6 +11,7 @@ import { ProductNoticeTool } from "@/components/tools/product-notice"
 import { VideoConvertTool } from "@/components/tools/video-to-gif"
 import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
 import { ShipTool } from "@/components/tools/detail-page/ship-tool"
+import { TalkMessageTool } from "@/components/tools/talk-message"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Tip } from "@/components/tip"
@@ -59,6 +60,14 @@ const TOOLS: Tool[] = [
     icon: LayoutTemplate,
     color: "from-sky-400 to-indigo-600",
     body: <DetailPageTool />,
+  },
+  {
+    id: "talk",
+    name: "톡메세지",
+    description: "타이틀·배경 사진·아래 띠 글을 넣어 카카오톡 메시지용 800×800 이미지를 만드는 도구",
+    icon: MessageSquareText,
+    color: "from-yellow-300 to-amber-500",
+    body: <TalkMessageTool />,
   },
   {
     id: "video",

@@ -705,7 +705,7 @@ export function Preview({ doc, empty }: { doc: string; empty: boolean }) {
 }
 
 // 그림 넣기 칸
-function PicturePicker({ value, onChange, accept = "image/*", label = "그림 넣기" }: { value: Picture | null; onChange: (p: Picture | null) => void; accept?: string; label?: string }) {
+export function PicturePicker({ value, onChange, accept = "image/*", label = "그림 넣기" }: { value: Picture | null; onChange: (p: Picture | null) => void; accept?: string; label?: string }) {
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const take = async (file?: File) => {
@@ -1154,7 +1154,7 @@ export function ShipGroup({
 
 // 사진 표기(오른쪽 아래): 없음 / 연출 이미지 / 이해를 돕기 위한 이미지
 // 글자색: 색 견본 + #색상값(비우면 흰색)
-function TextColorField({ label, value, onChange, caption = "글자색", fallback = "#ffffff" }: { label: string; value: string | undefined; onChange: (v: string | undefined) => void; caption?: string; fallback?: string }) {
+export function TextColorField({ label, value, onChange, caption = "글자색", fallback = "#ffffff" }: { label: string; value: string | undefined; onChange: (v: string | undefined) => void; caption?: string; fallback?: string }) {
   const text = value ?? ""
   const rgb = parseHex(text)
   const bad = text.trim() !== "" && !rgb

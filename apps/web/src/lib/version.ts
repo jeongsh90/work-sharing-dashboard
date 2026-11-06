@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.9',
+    date: '2026-11-06',
+    changes: [
+      '디자인 툴 > 톡메세지 추가: 카카오톡 메시지용 800×800 이미지(Figma 양식 그대로) — 타이틀 2줄(Gmarket Sans, 글자색), 배경 사진 + 위 그라데이션(색·불투명도·세로 크기), 사진 오른쪽 아래 글(색·불투명도 기본 50%), 아래 띠(배경색·글자색·강조). JPG 내려받기 + 히스토리',
+    ],
+  },
+  {
     version: '0.6.8',
     date: '2026-11-05',
     changes: [
