@@ -9,8 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { EmphasisTextarea } from "@/components/tools/emphasis-textarea"
 import { ToolHistory } from "@/components/tools/tool-history"
-import { PicturePicker, TextColorField } from "@/components/tools/detail-page/detail-page-tool"
-import { parseHex, type Picture } from "@/components/tools/detail-page/sections"
+import { GradStopField, PicturePicker, TextColorField } from "@/components/tools/detail-page/detail-page-tool"
+import { gradRgba, parseHex, type GradStop, type Picture } from "@/components/tools/detail-page/sections"
 import { api, apiFetch, ApiError, uploadFile } from "@/lib/api"
 import { invalidate } from "@/lib/store"
 
@@ -38,8 +38,8 @@ type Form = {
   line2: string
   line2Color: string | undefined
   gradOn: boolean
-  gradColor: string
-  gradOpacity: number // 0~100
+  gradFrom: GradStop // 위(시작) 색·불투명도
+  gradTo: GradStop // 아래(끝) 색·불투명도
   gradHeight: number // px(위에서부터)
   note: string
   noteColor: string | undefined
@@ -61,8 +61,8 @@ const DEFAULTS: Form = {
   line2: "오픈특가 + 무료배송",
   line2Color: "#ffffff",
   gradOn: true,
-  gradColor: "#000000",
-  gradOpacity: 85,
+  gradFrom: { color: "#000000", opacity: 85 },
+  gradTo: { color: "#000000", opacity: 0 },
   gradHeight: 330,
   note: "3캔 주문시 무료배송",
   noteColor: "#ffffff",
@@ -76,10 +76,6 @@ const DEFAULTS: Form = {
 const hex = (v: string | undefined, fallback: string) => {
   const rgb = parseHex(v ?? "")
   return rgb ? `rgb(${rgb.join(",")})` : fallback
-}
-const rgba = (v: string | undefined, fallback: string, alpha: number) => {
-  const rgb = parseHex(v ?? "") ?? parseHex(fallback)!
-  return `rgba(${rgb.join(",")},${alpha})`
 }
 
 // **…** 를 나눈다(강조 여부)
@@ -134,13 +130,11 @@ function draw(ctx: CanvasRenderingContext2D, f: Form, img: HTMLImageElement | nu
     ctx.drawImage(img, (W - dw) / 2, (AREA - dh) / 2, dw, dh)
     ctx.restore()
   }
-  // 그라데이션: 위에서 세로 크기의 절반까지는 고른 불투명도, 그 아래로 점점 투명
+  // 그라데이션: 맨 위(시작 색) → 세로 크기 끝(끝 색)
   if (f.gradOn && f.gradHeight > 0) {
-    const a = Math.min(100, Math.max(0, f.gradOpacity)) / 100
     const g = ctx.createLinearGradient(0, 0, 0, f.gradHeight)
-    g.addColorStop(0, rgba(f.gradColor, "#000000", a))
-    g.addColorStop(0.5, rgba(f.gradColor, "#000000", a))
-    g.addColorStop(1, rgba(f.gradColor, "#000000", 0))
+    g.addColorStop(0, gradRgba(f.gradFrom, DEFAULTS.gradFrom))
+    g.addColorStop(1, gradRgba(f.gradTo, DEFAULTS.gradTo))
     ctx.fillStyle = g
     ctx.fillRect(0, 0, W, Math.min(AREA, f.gradHeight))
   }
@@ -302,7 +296,10 @@ export function TalkMessageTool() {
         uploaded.set(file, ref.fileId)
         pic = { url: URL.createObjectURL(file), name: ref.name, width: ref.width, height: ref.height, file }
       }
-      setForm({ ...DEFAULTS, ...rest })
+      const old = rest as Partial<Form> & { gradColor?: string; gradOpacity?: number }
+      const gradFrom = old.gradFrom ?? (old.gradColor ? { color: old.gradColor, opacity: old.gradOpacity ?? 85 } : DEFAULTS.gradFrom)
+      const gradTo = old.gradTo ?? (old.gradColor ? { color: old.gradColor, opacity: 0 } : DEFAULTS.gradTo)
+      setForm({ ...DEFAULTS, ...rest, gradFrom, gradTo })
       setImage(pic)
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (e) {
@@ -365,16 +362,19 @@ export function TalkMessageTool() {
               </Label>
               {form.gradOn && (
                 <>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <TextColorField label="그라데이션" caption="색" value={form.gradColor} fallback="#000000" onChange={(v) => set({ gradColor: v ?? "#000000" })} />
-                    <PercentInput label="그라데이션 불투명도" value={form.gradOpacity} onChange={(gradOpacity) => set({ gradOpacity })} />
-                  </div>
+                  <GradStopField id="talk-gfrom" label="위(시작)" value={form.gradFrom} fallback={DEFAULTS.gradFrom} onChange={(gradFrom) => set({ gradFrom })} />
+                  <GradStopField id="talk-gto" label="아래(끝)" value={form.gradTo} fallback={DEFAULTS.gradTo} onChange={(gradTo) => set({ gradTo })} />
+                  <div
+                    className="h-6 rounded border"
+                    style={{ backgroundImage: `linear-gradient(to right, ${gradRgba(form.gradFrom, DEFAULTS.gradFrom)}, ${gradRgba(form.gradTo, DEFAULTS.gradTo)}), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%)`, backgroundSize: "auto, 12px 12px" }}
+                    aria-hidden
+                  />
                   <div className="flex items-center gap-3">
                     <span className="w-16 shrink-0 text-xs text-muted-foreground">세로 크기</span>
                     <Slider min={0} max={AREA} step={5} value={[form.gradHeight]} onValueChange={([v]) => set({ gradHeight: v })} aria-label="그라데이션 세로 크기" />
                     <span className="w-14 shrink-0 text-right text-xs tabular-nums">{form.gradHeight}px</span>
                   </div>
-                  <FieldDescription>위에서부터 세로 크기의 절반까지는 고른 불투명도, 그 아래로 점점 투명해집니다.</FieldDescription>
+                  <FieldDescription>사진 맨 위가 시작 색, 세로 크기만큼 내려간 곳이 끝 색입니다(그 아래는 그라데이션 없음).</FieldDescription>
                 </>
               )}
             </div>

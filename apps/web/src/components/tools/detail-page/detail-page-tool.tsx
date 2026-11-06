@@ -1175,7 +1175,7 @@ export function TextColorField({ label, value, onChange, caption = "글자색", 
 }
 
 // 그라데이션 한 끝: 색 견본 + #색상값 + 불투명도 %
-function GradStopField({ id, label, value, fallback, onChange }: { id: string; label: string; value: GradStop | undefined; fallback: GradStop; onChange: (v: GradStop) => void }) {
+export function GradStopField({ id, label, value, fallback, onChange }: { id: string; label: string; value: GradStop | undefined; fallback: GradStop; onChange: (v: GradStop) => void }) {
   const v = value ?? fallback
   return (
     <div className="flex items-center gap-2">
