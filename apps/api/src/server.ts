@@ -43,6 +43,7 @@ import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry, worklog } from './worklog.ts'
+import { addChecklistItem, clearDoneChecklist, createChecklist, deleteChecklist, deleteChecklistItem, listChecklists, reorderChecklistItems, reorderChecklists, resetChecklist, updateChecklist, updateChecklistItem } from './checklists.ts'
 import { startBackupSchedule } from './backup.ts'
 import { startStorageSweep } from './storage-sweep.ts'
 import { analyzePurchaseCert } from './purchase-cert.ts'
@@ -742,6 +743,28 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/schedule-plans\/lines\/(\d{4}-\d{2}-\d{2})\/(\d+)$/))) {
     if (method === 'PATCH') return sendJson(res, 200, await updatePlanLine(user, m[1], Number(m[2]), await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, await deletePlanLine(user, m[1], Number(m[2])))
+  }
+
+  // ── 체크리스트(checklists.ts): 계정마다 내 것만 ──
+  if (path === '/api/checklists') {
+    if (method === 'GET') return sendJson(res, 200, listChecklists(user))
+    if (method === 'POST') return sendJson(res, 201, createChecklist(user, await readJson(req)))
+  }
+  if (path === '/api/checklists/order' && method === 'POST') return sendJson(res, 200, reorderChecklists(user, await readJson(req)))
+  if ((m = path.match(/^\/api\/checklists\/(\d+)$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, updateChecklist(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteChecklist(user, Number(m[1])))
+  }
+  if ((m = path.match(/^\/api\/checklists\/(\d+)\/(items|order|reset|clear-done)$/)) && method === 'POST') {
+    const id = Number(m[1])
+    if (m[2] === 'items') return sendJson(res, 201, addChecklistItem(user, id, await readJson(req)))
+    if (m[2] === 'order') return sendJson(res, 200, reorderChecklistItems(user, id, await readJson(req)))
+    if (m[2] === 'reset') return sendJson(res, 200, resetChecklist(user, id))
+    return sendJson(res, 200, clearDoneChecklist(user, id))
+  }
+  if ((m = path.match(/^\/api\/checklist-items\/(\d+)$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, updateChecklistItem(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteChecklistItem(user, Number(m[1])))
   }
 
   // ── 업무일지(내 진행 기록 + 날마다 메모) ──

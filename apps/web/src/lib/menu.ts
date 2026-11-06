@@ -1,5 +1,6 @@
 import {
   Bell,
+  ClipboardCheck,
   CalendarDays,
   FilePlus2,
   FolderArchive,
@@ -75,6 +76,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
     label: "개인",
     items: [
       { id: "notifications", title: "알림함", icon: Bell },
+      // 체크리스트: 계정마다 자기 것만(모든 역할)
+      { id: "checklist", title: "체크리스트", icon: ClipboardCheck },
       // 업무일지: 디자인팀 작업자(작업자 + 정상훈 등 디자인팀 관리자)
       { id: "worklog", title: "업무일지", icon: NotebookPen, designTeam: true },
       { id: "me", title: "내 정보", icon: UserRound },
