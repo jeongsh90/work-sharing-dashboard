@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ClipboardList, Clapperboard, FileCheck2, IdCard, LayoutTemplate, Mail, MessageSquareText, Package, Search, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, FileCheck2, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -12,6 +12,7 @@ import { VideoConvertTool } from "@/components/tools/video-to-gif"
 import { DetailPageTool } from "@/components/tools/detail-page/detail-page-tool"
 import { ShipTool } from "@/components/tools/detail-page/ship-tool"
 import { TalkMessageTool } from "@/components/tools/talk-message"
+import { SectionApp } from "@/components/tools/detail-page/section-app"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Tip } from "@/components/tip"
@@ -60,6 +61,55 @@ const TOOLS: Tool[] = [
     icon: LayoutTemplate,
     color: "from-sky-400 to-indigo-600",
     body: <DetailPageTool />,
+  },
+  // 상세페이지 섹션 하나만 따로 만드는 앱(상세페이지 도구와 같은 입력·디자인, 각자 히스토리)
+  {
+    id: "dp-thumb",
+    name: "썸네일",
+    description: "상품 대표 사진을 가운데 기준 정사각 1200×1200 JPG 로 만드는 도구",
+    icon: Square,
+    color: "from-cyan-400 to-sky-600",
+    body: <SectionApp kind="thumb" />,
+  },
+  {
+    id: "dp-hero",
+    name: "인트로",
+    description: "배경 사진 + 윗줄·상품명·설명(강조)·그라데이션으로 상세페이지 인트로(860 폭) 이미지를 만드는 도구",
+    icon: PanelTop,
+    color: "from-blue-400 to-indigo-600",
+    body: <SectionApp kind="hero" />,
+  },
+  {
+    id: "dp-point",
+    name: "타이틀",
+    description: "POINT 번호·제목·설명으로 상세페이지 타이틀(860 폭) 이미지를 만드는 도구",
+    icon: Type,
+    color: "from-orange-400 to-red-600",
+    body: <SectionApp kind="point" />,
+  },
+  {
+    id: "dp-qa",
+    name: "Q&A",
+    description: "질문·답변(강조·사진)으로 상세페이지 Q&A(860 폭) 이미지를 만드는 도구",
+    icon: HelpCircle,
+    color: "from-teal-400 to-emerald-600",
+    body: <SectionApp kind="qa" />,
+  },
+  {
+    id: "dp-recipe",
+    name: "레시피",
+    description: "번호·레시피 이름·설명으로 상세페이지 레시피(860 폭) 이미지를 만드는 도구",
+    icon: UtensilsCrossed,
+    color: "from-pink-400 to-rose-600",
+    body: <SectionApp kind="recipe" />,
+  },
+  {
+    id: "dp-why",
+    name: "WHY",
+    description: "사진 카드(번호·제목·설명)로 상세페이지 WHY(860 폭) 이미지를 만드는 도구",
+    icon: ListChecks,
+    color: "from-violet-400 to-purple-600",
+    body: <SectionApp kind="why" />,
   },
   {
     id: "talk",

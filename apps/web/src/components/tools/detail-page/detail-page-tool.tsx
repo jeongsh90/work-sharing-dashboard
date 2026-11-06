@@ -757,7 +757,7 @@ export function PicturePicker({ value, onChange, accept = "image/*", label = "ê·
   )
 }
 
-function SectionEditor({ p, product, onChange }: { p: Planned; product: string; onChange: (patch: Partial<Section>) => void }) {
+export function SectionEditor({ p, product, onChange }: { p: Planned; product: string; onChange: (patch: Partial<Section>) => void }) {
   const s = p.section
   const id = `dp-${s.id}`
   const common = (
