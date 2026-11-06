@@ -362,8 +362,11 @@ export function TalkMessageTool() {
               </Label>
               {form.gradOn && (
                 <>
-                  <GradStopField id="talk-gfrom" label="위(시작)" value={form.gradFrom} fallback={DEFAULTS.gradFrom} onChange={(gradFrom) => set({ gradFrom })} />
-                  <GradStopField id="talk-gto" label="아래(끝)" value={form.gradTo} fallback={DEFAULTS.gradTo} onChange={(gradTo) => set({ gradTo })} />
+                  {/* 시작·끝을 가로로 나란히(좁으면 아래로 넘어간다) */}
+                  <div className="grid grid-cols-1 items-center gap-x-6 gap-y-2 sm:grid-cols-2 [&_label]:w-auto">
+                    <GradStopField id="talk-gfrom" label="위(시작)" value={form.gradFrom} fallback={DEFAULTS.gradFrom} onChange={(gradFrom) => set({ gradFrom })} />
+                    <GradStopField id="talk-gto" label="아래(끝)" value={form.gradTo} fallback={DEFAULTS.gradTo} onChange={(gradTo) => set({ gradTo })} />
+                  </div>
                   <div
                     className="h-6 rounded border"
                     style={{ backgroundImage: `linear-gradient(to right, ${gradRgba(form.gradFrom, DEFAULTS.gradFrom)}, ${gradRgba(form.gradTo, DEFAULTS.gradTo)}), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%)`, backgroundSize: "auto, 12px 12px" }}
