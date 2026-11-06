@@ -56,7 +56,7 @@ import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, up
 import { deleteRequestDraft, getRequestDraft, saveRequestDraft } from './request-drafts.ts'
 import { deleteDeptApprover, listDeptApprovers, setDeptApprover } from './dept-approvers.ts'
 import { accountSecret, addAccount, deleteAccount, listAccounts, reorderAccounts, updateAccount } from './accounts.ts'
-import { addLanIp, deleteLanIp, lanAddress, listLanIps, listLanMisses, reportLan, startLan, updateLanIp } from './lan.ts'
+import { addLanIp, deleteLanIp, ignoreLanMiss, lanAddress, listLanIgnored, listLanIps, listLanMisses, reportLan, startLan, unignoreLanMiss, updateLanIp } from './lan.ts'
 import {
   addFtpServer,
   deleteFtpServer,
@@ -389,6 +389,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/dept-approvers\/([^/]+)$/)) && method === 'DELETE') return sendJson(res, 200, deleteDeptApprover(user, decodeURIComponent(m[1])))
   if (path === '/api/lan/report' && method === 'POST') return sendJson(res, 200, await reportLan(user, await readJson(req), String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()))
   if (path === '/api/lan/misses' && method === 'GET') return sendJson(res, 200, listLanMisses(user))
+  if (path === '/api/lan/ignored' && method === 'GET') return sendJson(res, 200, listLanIgnored(user))
+  if ((m = path.match(/^\/api\/lan\/ignored\/([^/]+)$/))) {
+    if (method === 'POST') return sendJson(res, 200, ignoreLanMiss(user, decodeURIComponent(m[1])))
+    if (method === 'DELETE') return sendJson(res, 200, unignoreLanMiss(user, decodeURIComponent(m[1])))
+  }
   if (path === '/api/lan/ips') {
     if (method === 'GET') return sendJson(res, 200, listLanIps(user))
     if (method === 'POST') return sendJson(res, 201, addLanIp(user, await readJson(req)))

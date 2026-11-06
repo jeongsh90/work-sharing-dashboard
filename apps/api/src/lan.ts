@@ -89,6 +89,7 @@ export function addLanIp(user: PublicUser, body: Record<string, unknown>) {
   // 못 탄 PC 목록에서 "이 IP 로 등록"하면 그 사람(userId)을 같이 적어 둔다 → 다음부터 IP 가 바뀌어도 저절로 고침
   const owner = typeof body.userId === 'string' && body.userId ? body.userId : null
   run('INSERT INTO lan_ips (id, ip, name, created_by, created_at, user_id) VALUES (:id, :ip, :name, :me, :now, :owner)', { id, ...f, me: user.id, now: Date.now(), owner })
+  if (owner) misses.delete(owner) // 허용했으니 못 탄 PC 목록에서 뺀다
   return toDto(get<IpRow>('SELECT * FROM lan_ips WHERE id = :id', { id })!)
 }
 
@@ -97,7 +98,10 @@ export function updateLanIp(user: PublicUser, id: string, body: Record<string, u
   const f = fields(body)
   if (get('SELECT id FROM lan_ips WHERE ip = :ip AND id != :id', { ip: f.ip, id })) throw new HttpError(400, '이미 등록한 IP 입니다.')
   run('UPDATE lan_ips SET ip = :ip, name = :name WHERE id = :id', { id, ...f })
-  if (typeof body.userId === 'string' && body.userId) run('UPDATE lan_ips SET user_id = :u WHERE id = :id', { id, u: body.userId })
+  if (typeof body.userId === 'string' && body.userId) {
+    run('UPDATE lan_ips SET user_id = :u WHERE id = :id', { id, u: body.userId })
+    misses.delete(body.userId)
+  }
   const row = get<IpRow>('SELECT * FROM lan_ips WHERE id = :id', { id })
   if (!row) throw new HttpError(404, '등록한 PC 를 찾을 수 없습니다.')
   return toDto(row)
@@ -189,8 +193,39 @@ export function listLanMisses(user: PublicUser) {
   const now = Date.now()
   const registered = new Set(all<{ ip: string }>('SELECT ip FROM lan_ips').map((r) => r.ip))
   return [...misses.values()]
-    .filter((m) => now - m.at < MISS_MS && !(m.ip && registered.has(m.ip)))
+    .filter((m) => now - m.at < MISS_MS && !(m.ip && registered.has(m.ip)) && !isIgnored(m.userId))
     .sort((a, b) => b.at - a.at)
+}
+
+// ── 거절: 직통을 쓰지 않을 사람(재택·AI 계정 등). 못 탄 PC 목록에 다시 올리지 않는다(되돌릴 수 있다) ──
+db.exec(`
+CREATE TABLE IF NOT EXISTS lan_ignored (
+  user_id    TEXT PRIMARY KEY,
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+`)
+const isIgnored = (userId: string) => !!get('SELECT user_id FROM lan_ignored WHERE user_id = :u', { u: userId })
+
+export function listLanIgnored(user: PublicUser) {
+  requireSuperadmin(user)
+  return all<{ user_id: string; created_at: number }>('SELECT user_id, created_at FROM lan_ignored ORDER BY created_at DESC').map((r) => ({
+    userId: r.user_id,
+    at: r.created_at,
+  }))
+}
+
+export function ignoreLanMiss(user: PublicUser, userId: string) {
+  requireSuperadmin(user)
+  run('INSERT INTO lan_ignored (user_id, created_by, created_at) VALUES (:u, :me, :now) ON CONFLICT DO NOTHING', { u: userId, me: user.id, now: Date.now() })
+  misses.delete(userId)
+  return { ok: true }
+}
+
+export function unignoreLanMiss(user: PublicUser, userId: string) {
+  requireSuperadmin(user)
+  run('DELETE FROM lan_ignored WHERE user_id = :u', { u: userId })
+  return { ok: true }
 }
 
 // 사내망 주소의 문지기: 등록한 IP 만 지나간다(확인 요청 OPTIONS 는 그대로).

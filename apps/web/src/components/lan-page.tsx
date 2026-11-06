@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { Check, Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -135,10 +135,33 @@ type Miss = { userId: string; ip: string | null; kind: "unregistered" | "unreach
 
 function Misses({ registered }: { registered: LanIp[] }) {
   const { data } = useApi<Miss[]>("/lan/misses", 30_000)
+  const { data: ignored } = useApi<{ userId: string; at: number }[]>("/lan/ignored")
   const userName = useUserNames()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  if (!data || data.length === 0) return null
+  const [allowing, setAllowing] = useState<Miss | null>(null) // IP 를 모르는 사람 허용 → IP 직접 입력
+  if (!data || (data.length === 0 && !ignored?.length)) return null
+
+  // 거절: 이 사람은 직통을 쓰지 않는다(재택·AI 계정 등) → 목록에서 빼고 다시 올리지 않는다
+  const reject = async (m: Miss) => {
+    const name = userName(m.userId)
+    if (!(await confirmDialog({ title: `${name} 을 거절할까요?`, description: "목록에서 빠지고 다시 올라오지 않습니다. 아래 \"거절한 사람\"에서 되돌릴 수 있습니다.", confirmText: "거절", destructive: true })))
+      return
+    setBusy(m.userId)
+    setError(null)
+    try {
+      await api(`/lan/ignored/${encodeURIComponent(m.userId)}`, { method: "POST" })
+      invalidate()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "거절하지 못했습니다.")
+    } finally {
+      setBusy(null)
+    }
+  }
+  const undoReject = async (userId: string) => {
+    await api(`/lan/ignored/${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() => {})
+    invalidate()
+  }
 
   const apply = async (m: Miss, existing: LanIp | undefined) => {
     if (!m.ip) return
@@ -156,10 +179,14 @@ function Misses({ registered }: { registered: LanIp[] }) {
   }
 
   return (
+    <>
     <Section
       title="직통을 못 탄 PC"
       aside={<span className="text-sm text-muted-foreground tabular-nums">{data.length}명</span>}
     >
+      {data.length === 0 ? (
+        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">지금 직통을 못 탄 PC 가 없습니다.</p>
+      ) : (
       <div className="rounded-xl border border-amber-500/40 bg-amber-500/5">
         <Table>
           <TableHeader>
@@ -179,14 +206,26 @@ function Misses({ registered }: { registered: LanIp[] }) {
                   <TableCell className="font-medium">{name}</TableCell>
                   <TableCell className="tabular-nums">{m.ip ?? <span className="text-muted-foreground">닿지 않음</span>}</TableCell>
                   <TableCell className="text-muted-foreground tabular-nums">{formatDateTime(new Date(m.at))}</TableCell>
-                  <TableCell className="text-right">
-                    {m.ip ? (
-                      <Button size="sm" disabled={busy !== null} onClick={() => void apply(m, existing)}>
-                        {existing ? `IP 바꾸기 (${existing.ip} → ${m.ip})` : "이 IP 로 등록"}
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-2">
+                      {m.ip && existing && (
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {existing.ip} → {m.ip}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        disabled={busy !== null}
+                        onClick={() => (m.ip ? void apply(m, existing) : setAllowing(m))}
+                      >
+                        <Check data-icon="inline-start" />
+                        허용
                       </Button>
-                    ) : (
-                      <span className="text-xs break-keep text-muted-foreground">그 PC 브라우저에서 로컬 네트워크 접근 허용 확인</span>
-                    )}
+                      <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void reject(m)}>
+                        <X data-icon="inline-start" />
+                        거절
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -194,22 +233,64 @@ function Misses({ registered }: { registered: LanIp[] }) {
           </TableBody>
         </Table>
       </div>
+      )}
       {error && <FieldError>{error}</FieldError>}
       <p className="text-xs break-keep text-muted-foreground">
         사무실 PC 인데 바깥 중계로 주고받는 사람입니다(파일 받기·올리기가 느림). 등록한 PC 의 IP 가 바뀐 경우는 그 사람이 사이트에 들어오면 저절로 새 IP 로 고쳐집니다(여기에는 처음 등록할 사람만 남음). "닿지 않음"은 회사 밖이거나, 브라우저가 로컬 네트워크 접근을 막은 경우입니다
-        (주소창 왼쪽 자물쇠 → 사이트 설정에서 허용).
+        (주소창 왼쪽 자물쇠 → 사이트 설정에서 허용). 허용은 그 IP 로 등록(이미 등록한 사람이면 IP 바꾸기), IP 를 모르면 직접 입력합니다. 거절한 사람은 다시
+        올라오지 않습니다.
       </p>
+      {ignored && ignored.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>거절한 사람</span>
+          {ignored.map((g) => (
+            <span key={g.userId} className="inline-flex items-center gap-1 rounded-full border py-0.5 pr-1 pl-2.5">
+              {userName(g.userId)}
+              <Button variant="ghost" size="icon-xs" aria-label={`${userName(g.userId)} 거절 되돌리기`} onClick={() => void undoReject(g.userId)}>
+                <Undo2 />
+              </Button>
+            </span>
+          ))}
+        </div>
+      )}
     </Section>
+
+    <Dialog open={allowing !== null} onOpenChange={(o) => !o && setAllowing(null)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{allowing ? `${userName(allowing.userId)} 허용` : "허용"}</DialogTitle>
+          <DialogDescription className="break-keep">
+            사이트가 이 PC 의 IP 를 알아내지 못했습니다. 그 PC 에서 명령 프롬프트 → ipconfig 의 "IPv4 주소"를 넣어 주세요.
+          </DialogDescription>
+        </DialogHeader>
+        {allowing && (
+          <IpForm
+            key={allowing.userId}
+            formId="lan-allow"
+            initial={{ ip: "", name: userName(allowing.userId) }}
+            submitText="허용"
+            onSubmit={async (body) => {
+              await api("/lan/ips", { body: { ...body, userId: allowing.userId } })
+              setAllowing(null)
+            }}
+            footer
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
 function IpForm({
   initial,
+  formId,
   submitText,
   onSubmit,
   footer = false,
 }: {
   initial?: { ip: string; name: string }
+  formId?: string
   submitText: string
   onSubmit: (body: { ip: string; name: string }) => Promise<unknown>
   footer?: boolean
@@ -218,7 +299,7 @@ function IpForm({
   const [name, setName] = useState(initial?.name ?? "")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const id = initial ? "lan-edit" : "lan-add"
+  const id = formId ?? (initial ? "lan-edit" : "lan-add")
 
   const submit = async () => {
     setPending(true)
