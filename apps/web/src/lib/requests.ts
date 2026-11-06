@@ -238,7 +238,7 @@ export type FileInfo = {
   createdAt: number
 }
 
-export type CommentDto = { id: number; pinId: number | null; authorId: string; body: string; createdAt: number }
+export type CommentDto = { id: number; pinId: number | null; authorId: string; body: string; createdAt: number; editedAt?: number | null }
 
 export type PinDto = {
   id: number

@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react"
-import { Check, Download, MapPin, Maximize2, RotateCcw } from "lucide-react"
+import { Check, Download, MapPin, Maximize2, Pencil, RotateCcw, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { confirmDialog } from "@/components/confirm-dialog"
 import { AuthImage } from "@/components/requests/file-list"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
 import { api, ApiError, downloadFile, fileUrl, sizeForWidth, sizeRank, type ImageSize } from "@/lib/api"
 import type { Session } from "@/lib/auth"
-import { timeAgo, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
+import { timeAgo, type CommentDto, type PinDto, type RequestDetailDto, type SubmissionDto } from "@/lib/requests"
 import { scrollToElement } from "@/lib/smooth-scroll"
 import { useUserNames } from "@/lib/store"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
@@ -230,6 +231,7 @@ export function ReviewBoard({
                   onSelect={() => select(p.id, "image")}
                   canComment={canComment}
                   canResolve={canResolveAll || p.authorId === session.id}
+                  canManage={(authorId) => authorId === session.id || session.role === "superadmin"}
                   userName={userName}
                   onChanged={onChanged}
                 />
@@ -328,6 +330,7 @@ function PinThread({
   onSelect,
   canComment,
   canResolve,
+  canManage,
   userName,
   onChanged,
 }: {
@@ -337,6 +340,7 @@ function PinThread({
   onSelect: () => void
   canComment: boolean
   canResolve: boolean
+  canManage: (authorId: string) => boolean // 쓴 사람·슈퍼관리자: 고치기·지우기
   userName: (id: string) => string
   onChanged: () => void
 }) {
@@ -360,6 +364,59 @@ function PinThread({
   }
 
   const [first, ...replies] = pin.comments
+  const [editing, setEditing] = useState<{ id: number; body: string } | null>(null)
+
+  const saveEdit = async () => {
+    if (!editing || !editing.body.trim()) return
+    if (await run(() => api(`/comments/${editing.id}`, { method: "PATCH", body: { body: editing.body } }))) setEditing(null)
+  }
+  // 핀 내용(첫 글)을 지우면 핀과 답글까지 함께 지워진다
+  const remove = async (c: CommentDto) => {
+    const isPin = c.id === first?.id
+    const ok = await confirmDialog(
+      isPin
+        ? { title: `핀 ${number}을 지울까요?`, description: replies.length ? `답글 ${replies.length}개도 함께 지워지고 되돌릴 수 없습니다.` : "되돌릴 수 없습니다.", confirmText: "삭제", destructive: true }
+        : { title: "답글을 지울까요?", description: "되돌릴 수 없습니다.", confirmText: "삭제", destructive: true },
+    )
+    if (ok) await run(() => api(`/comments/${c.id}`, { method: "DELETE" }))
+  }
+  // 고치기·지우기 버튼(쓴 사람·슈퍼관리자에게만)
+  const tools = (c: CommentDto, label: string) =>
+    canManage(c.authorId) && editing?.id !== c.id ? (
+      <span className="ml-auto flex shrink-0">
+        <Button type="button" variant="ghost" size="icon-xs" aria-label={`${label} 고치기`} disabled={pending} onClick={() => setEditing({ id: c.id, body: c.body })}>
+          <Pencil />
+        </Button>
+        <Button type="button" variant="ghost" size="icon-xs" aria-label={`${label} 지우기`} disabled={pending} onClick={() => void remove(c)}>
+          <Trash2 />
+        </Button>
+      </span>
+    ) : null
+  const editor = (
+    <div className="flex flex-col gap-2">
+      <Textarea
+        autoFocus
+        value={editing?.body ?? ""}
+        onChange={(e) => setEditing((cur) => cur && { ...cur, body: e.target.value })}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void saveEdit()
+          if (e.key === "Escape") setEditing(null)
+        }}
+        aria-label="내용 고치기"
+        maxLength={2000}
+        className="min-h-16 text-sm"
+      />
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setEditing(null)}>
+          취소
+        </Button>
+        <Button type="button" size="sm" disabled={pending || !editing?.body.trim()} onClick={() => void saveEdit()}>
+          {pending ? "저장 중…" : "저장"}
+        </Button>
+      </div>
+    </div>
+  )
+  const edited = (c: CommentDto) => (c.editedAt ? <span>(수정됨)</span> : null)
 
   return (
     <li
@@ -368,35 +425,48 @@ function PinThread({
         selected ? "border-rose-400 ring-1 ring-rose-400" : ""
       } ${pin.resolvedAt ? "opacity-70" : ""}`}
     >
-      <button type="button" className="flex items-start gap-2 text-left" onClick={onSelect}>
-        <span
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          aria-label={`핀 ${number} 보기`}
+          onClick={onSelect}
           className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white tabular-nums ${
             pin.resolvedAt ? "bg-muted-foreground" : "bg-rose-600"
           }`}
         >
           {number}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{userName(pin.authorId)}</span>
             {timeAgo(new Date(pin.createdAt))}
+            {first && edited(first)}
             {pin.resolvedAt && <Badge variant="secondary">해결됨</Badge>}
-          </span>
-          <span className="mt-0.5 block whitespace-pre-wrap break-words">{first?.body}</span>
-        </span>
-      </button>
+            {first && tools(first, `핀 ${number}`)}
+          </div>
+          {first && editing?.id === first.id ? (
+            <div className="mt-1">{editor}</div>
+          ) : (
+            <button type="button" className="mt-0.5 block w-full text-left whitespace-pre-wrap break-words" onClick={onSelect}>
+              {first?.body}
+            </button>
+          )}
+        </div>
+      </div>
       {replies.length > 0 && (
         <ul className="ml-8 flex flex-col gap-2 border-l pl-3">
           {replies.map((c) => (
             <li key={c.id}>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{userName(c.authorId)}</span> {timeAgo(new Date(c.createdAt))}
-              </p>
-              <p className="whitespace-pre-wrap break-words">{c.body}</p>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{userName(c.authorId)}</span> {timeAgo(new Date(c.createdAt))} {edited(c)}
+                {tools(c, "답글")}
+              </div>
+              {editing?.id === c.id ? editor : <p className="whitespace-pre-wrap break-words">{c.body}</p>}
             </li>
           ))}
         </ul>
       )}
+      {error && !(canComment || canResolve) && <p className="ml-8 text-xs text-destructive">{error}</p>}
       {(canComment || canResolve) && (
         <div className="ml-8 flex flex-col gap-2">
           {canComment && (

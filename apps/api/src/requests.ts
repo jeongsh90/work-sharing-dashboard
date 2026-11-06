@@ -1,4 +1,4 @@
-import { all, get, run, transaction } from './db.ts'
+import { all, db, get, run, transaction } from './db.ts'
 import { findUser, isManager, listUsers, type PublicUser } from './users.ts'
 import { approverFor } from './dept-approvers.ts'
 
@@ -457,10 +457,10 @@ export function requestDetail(user: PublicUser, id: number) {
   const row = get<RequestRow & { requester_name: string }>(`${SUMMARY_SQL} WHERE r.id = :id`, { id })
   if (!row) throw new HttpError(404, '요청을 찾을 수 없습니다.')
   const files = all<FileRow>('SELECT * FROM files WHERE request_id = :id ORDER BY created_at', { id })
-  const comments = all<{ id: number; pin_id: number | null; author_id: string; body: string; created_at: number }>(
+  const comments = all<{ id: number; pin_id: number | null; author_id: string; body: string; created_at: number; edited_at: number | null }>(
     'SELECT * FROM comments WHERE request_id = :id ORDER BY created_at, id',
     { id },
-  ).map((c) => ({ id: c.id, pinId: c.pin_id, authorId: c.author_id, body: c.body, createdAt: c.created_at }))
+  ).map((c) => ({ id: c.id, pinId: c.pin_id, authorId: c.author_id, body: c.body, createdAt: c.created_at, editedAt: c.edited_at ?? null }))
   const pins = all<{
     id: number
     file_id: string
@@ -1044,6 +1044,40 @@ export function resolvePin(user: PublicUser, pinId: number, resolved: boolean) {
     at: resolved ? Date.now() : null,
     by: resolved ? user.id : null,
   })
+}
+
+// 핀 댓글 고치기·지우기: 쓴 사람과 슈퍼관리자만. 핀의 첫 글(핀 내용)을 지우면 핀과 답글까지 함께 지운다
+if (!all<{ name: string }>('PRAGMA table_info(comments)').some((c) => c.name === 'edited_at')) {
+  db.exec('ALTER TABLE comments ADD COLUMN edited_at INTEGER')
+}
+
+function ownComment(user: PublicUser, commentId: number) {
+  const c = get<{ id: number; request_id: number; pin_id: number | null; author_id: string }>('SELECT * FROM comments WHERE id = :id', { id: commentId })
+  if (!c) throw new HttpError(404, '댓글을 찾을 수 없습니다.')
+  if (c.author_id !== user.id && user.role !== 'superadmin') throw new HttpError(403, '쓴 사람과 슈퍼관리자만 고치거나 지울 수 있습니다.')
+  return c
+}
+
+export function updateComment(user: PublicUser, commentId: number, body: Record<string, unknown>) {
+  const c = ownComment(user, commentId)
+  const comment = text(body.body, '내용', { required: true, max: 2000 })
+  run('UPDATE comments SET body = :b, edited_at = :now WHERE id = :id', { id: c.id, b: comment, now: Date.now() })
+  return { ok: true }
+}
+
+export function deleteComment(user: PublicUser, commentId: number) {
+  const c = ownComment(user, commentId)
+  const first = c.pin_id === null ? null : get<{ id: number }>('SELECT id FROM comments WHERE pin_id = :p ORDER BY created_at, id LIMIT 1', { p: c.pin_id })
+  if (c.pin_id !== null && first?.id === c.id) {
+    // 핀 내용 → 핀째로
+    transaction(() => {
+      run('DELETE FROM comments WHERE pin_id = :p', { p: c.pin_id })
+      run('DELETE FROM pins WHERE id = :p', { p: c.pin_id })
+    })
+    return { ok: true, pinDeleted: true }
+  }
+  run('DELETE FROM comments WHERE id = :id', { id: c.id })
+  return { ok: true, pinDeleted: false }
 }
 
 // ── 파일 ──────────────────────────────────────────────

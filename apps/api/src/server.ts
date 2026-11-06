@@ -22,6 +22,8 @@ import {
   addComment,
   addPin,
   addPinComment,
+  deleteComment,
+  updateComment,
   archive,
   createRequest,
   deleteRequest,
@@ -628,6 +630,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/pins\/(\d+)\/comments$/)) && method === 'POST') {
     addPinComment(user, Number(m[1]), await readJson(req))
     return sendJson(res, 201, { ok: true })
+  }
+  // 핀 댓글 고치기·지우기(쓴 사람·슈퍼관리자). 핀의 첫 글을 지우면 핀째로 지운다
+  if ((m = path.match(/^\/api\/comments\/(\d+)$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, updateComment(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteComment(user, Number(m[1])))
   }
   if ((m = path.match(/^\/api\/pins\/(\d+)\/resolve$/)) && method === 'POST') {
     const body = await readJson(req)
