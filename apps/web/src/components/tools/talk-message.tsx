@@ -56,9 +56,9 @@ type Saved = Form & { image: PicRef | null }
 
 const DEFAULTS: Form = {
   title: "",
-  line1: "산뜻한 달래와 쫄깃한 꼬막",
+  line1: "",
   line1Color: "#ffe400",
-  line2: "오픈특가 + 무료배송",
+  line2: "",
   line2Color: "#ffffff",
   gradOn: true,
   gradFrom: { color: "#000000", opacity: 85 },
@@ -340,14 +340,14 @@ export function TalkMessageTool() {
                 <FieldLabel htmlFor="talk-line1">타이틀 윗줄</FieldLabel>
                 <TextColorField label="타이틀 윗줄" value={form.line1Color} fallback="#ffe400" onChange={(line1Color) => set({ line1Color })} />
               </div>
-              <Input id="talk-line1" value={form.line1} onChange={(e) => set({ line1: e.target.value })} maxLength={40} />
+              <Input id="talk-line1" value={form.line1} onChange={(e) => set({ line1: e.target.value })} maxLength={40} placeholder="내용을 입력해주세요" />
             </Field>
             <Field>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <FieldLabel htmlFor="talk-line2">타이틀 큰 줄</FieldLabel>
                 <TextColorField label="타이틀 큰 줄" value={form.line2Color} onChange={(line2Color) => set({ line2Color })} />
               </div>
-              <Input id="talk-line2" value={form.line2} onChange={(e) => set({ line2: e.target.value })} maxLength={30} />
+              <Input id="talk-line2" value={form.line2} onChange={(e) => set({ line2: e.target.value })} maxLength={30} placeholder="내용을 입력해주세요" />
               <FieldDescription>Gmarket Sans Bold 50px · 90px, 자간 -10%. 한 줄로만 나오고, 길면 글자가 작아집니다.</FieldDescription>
             </Field>
 
