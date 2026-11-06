@@ -7,6 +7,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import { EmphasisTextarea } from "@/components/tools/emphasis-textarea"
 import { ToolHistory } from "@/components/tools/tool-history"
 import { GradStopField, PicturePicker, TextColorField } from "@/components/tools/detail-page/detail-page-tool"
@@ -41,6 +42,7 @@ type Form = {
   gradFrom: GradStop // 위(시작) 색·불투명도
   gradTo: GradStop // 아래(끝) 색·불투명도
   gradHeight: number // px(위에서부터)
+  noteOn: boolean // 사진 오른쪽 아래 글 사용
   note: string
   noteColor: string | undefined
   noteOpacity: number // 0~100
@@ -64,6 +66,7 @@ const DEFAULTS: Form = {
   gradFrom: { color: "#000000", opacity: 85 },
   gradTo: { color: "#000000", opacity: 0 },
   gradHeight: 330,
+  noteOn: true,
   note: "3캔 주문시 무료배송",
   noteColor: "#ffffff",
   noteOpacity: 50,
@@ -142,7 +145,7 @@ function draw(ctx: CanvasRenderingContext2D, f: Form, img: HTMLImageElement | nu
   const h1 = centerLine(ctx, f.line1, 50, hex(f.line1Color, "#ffffff"), PAD)
   centerLine(ctx, f.line2, 90, hex(f.line2Color, "#ffffff"), PAD + h1 + 10)
   // 사진 오른쪽 아래 작은 글(오른쪽·아래 30 띄움)
-  if (f.note.trim()) {
+  if (f.noteOn && f.note.trim()) {
     ctx.save()
     ctx.globalAlpha = Math.min(100, Math.max(0, f.noteOpacity)) / 100
     ctx.font = `500 18px ${BODY_FONT}`
@@ -242,7 +245,7 @@ export function TalkMessageTool() {
     }
   }, [form, img])
 
-  const fallbackTitle = form.line2.trim() || form.line1.trim() || "톡메세지"
+  const fallbackTitle = form.line1.trim() || form.line2.trim() || "톡메세지"
 
   const download = async () => {
     setError(null)
@@ -326,7 +329,7 @@ export function TalkMessageTool() {
             <Field>
               <FieldLabel htmlFor="talk-title">제목</FieldLabel>
               <Input id="talk-title" value={form.title} onChange={(e) => set({ title: e.target.value })} maxLength={100} placeholder={fallbackTitle} />
-              <FieldDescription>히스토리·파일 이름으로 씁니다(이미지에는 들어가지 않음). 비우면 타이틀 둘째 줄.</FieldDescription>
+              <FieldDescription>히스토리·파일 이름으로 씁니다(이미지에는 들어가지 않음). 비우면 타이틀 윗줄.</FieldDescription>
             </Field>
             {loading && (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -384,13 +387,21 @@ export function TalkMessageTool() {
 
             <Field>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <FieldLabel htmlFor="talk-note">사진 오른쪽 아래 글</FieldLabel>
-                <div className="flex flex-wrap items-center justify-end gap-3">
-                  <TextColorField label="오른쪽 아래 글" value={form.noteColor} onChange={(noteColor) => set({ noteColor })} />
-                  <PercentInput label="오른쪽 아래 글 불투명도" value={form.noteOpacity} onChange={(noteOpacity) => set({ noteOpacity })} />
-                </div>
+                {/* 사용·미사용 토글: 끄면 이미지에서 빠지고 입력 칸이 숨는다(쓴 내용은 남는다) */}
+                <Label className="flex items-center gap-2 font-medium">
+                  <Switch checked={form.noteOn} onCheckedChange={(noteOn) => set({ noteOn })} aria-label="사진 오른쪽 아래 글 사용" />
+                  사진 오른쪽 아래 글
+                </Label>
+                {form.noteOn && (
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <TextColorField label="오른쪽 아래 글" value={form.noteColor} onChange={(noteColor) => set({ noteColor })} />
+                    <PercentInput label="오른쪽 아래 글 불투명도" value={form.noteOpacity} onChange={(noteOpacity) => set({ noteOpacity })} />
+                  </div>
+                )}
               </div>
-              <Input id="talk-note" value={form.note} onChange={(e) => set({ note: e.target.value })} maxLength={40} placeholder="비우면 넣지 않음" />
+              {form.noteOn && (
+                <Input id="talk-note" value={form.note} onChange={(e) => set({ note: e.target.value })} maxLength={40} placeholder="내용을 입력해주세요" aria-label="사진 오른쪽 아래 글" />
+              )}
             </Field>
 
             <Field>
