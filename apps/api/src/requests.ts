@@ -201,7 +201,7 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   // 부서별 최종 컨펌자(정해진 부서만): 컨펌·반려·핀 댓글을 할 수 있다
   const finalBy = approverFor(req.department)
   const approver = !!finalBy && finalBy === user.id
-  // 슈퍼관리자는 모든 권한(최종 컨펌자가 정해진 부서 컨펌, 개별 컨펌을 기다리지 않고 컨펌 요청, 내가 맡기 등)
+  // 슈퍼관리자는 모든 권한(최종 컨펌자가 정해진 부서 컨펌, 내가 맡기 등). 개별 컨펌을 기다리지 않고 컨펌 요청은 관리자(슈퍼관리자·관리자) 모두
   const su = user.role === 'superadmin'
   const active = ACTIVE.includes(req.status)
   const s = req.status
@@ -221,7 +221,7 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     submit:
       (s === 'in-progress' || s === 'revising') &&
       (isIndividual(req, assignees)
-        ? su ||
+        ? manager ||
           (assignee &&
             (() => {
               const open = openRound(req)
@@ -804,15 +804,20 @@ export function performAction(user: PublicUser, id: number, action: Action, body
             )
             submissionId = Number(result.lastInsertRowid)
           }
+          // 관리자(슈퍼관리자·관리자)가 담당이 아니거나 이미 올렸으면: 남은 작업자를 기다리지 않고 바로 컨펌 요청
+          const before = partsOf(submissionId)
+          const force = isManager(user) && (!assignees.includes(user.id) || before.some((p) => p.user_id === user.id))
           const count = claimFiles(user, body.fileIds, { requestId: id, submissionId, kind: 'deliverable' }, { imagesOnly: true })
-          if (count === 0) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
-          const force = user.role === 'superadmin' && (!assignees.includes(user.id) || partsOf(submissionId).some((p) => p.user_id === user.id))
-          run('INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:submissionId, :uid, :note, :now) ON CONFLICT DO NOTHING', {
-            submissionId,
-            uid: user.id,
-            note,
-            now: Date.now(),
-          })
+          // 바로 컨펌 요청은 작업자들이 이미 올린 시안이 있으면 새 이미지 없이도 된다
+          if (count === 0 && !(force && before.length > 0)) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
+          if (count > 0) {
+            run('INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:submissionId, :uid, :note, :now) ON CONFLICT DO NOTHING', {
+              submissionId,
+              uid: user.id,
+              note,
+              now: Date.now(),
+            })
+          }
           // 차수 메모: 작업자별 메모를 "이름: 메모" 로 모은다
           const parts = partsOf(submissionId)
           const memo = parts
@@ -825,7 +830,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           const progress = `${done.length}/${assignees.length}`
           if (left.length === 0 || force) {
             setStatus(req, 'review')
-            const how = left.length === 0 ? `작업자 ${assignees.length}명 모두 올림` : `슈퍼관리자가 바로 컨펌 요청(${progress} 올림)`
+            const how = left.length === 0 ? `작업자 ${assignees.length}명 모두 올림` : `${user.role === 'superadmin' ? '슈퍼관리자' : '관리자'}가 바로 컨펌 요청(${progress} 올림)`
             logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · ${how}${note ? ` · ${note}` : ''}`)
             notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
             notify(assignees, user.id, id, `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}`)

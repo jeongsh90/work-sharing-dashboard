@@ -245,9 +245,9 @@ export function ActionPanel({
   const latest = detail.submissions[detail.submissions.length - 1]
   const collecting = individual && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
   const waiting = detail.designers.filter((uid) => !collecting?.parts.some((p) => p.userId === uid))
-  // 슈퍼관리자가 담당이 아니거나 이미 올렸으면: 남은 작업자를 기다리지 않고 바로 컨펌 요청
+  // 관리자(슈퍼관리자·관리자)가 담당이 아니거나 이미 올렸으면: 남은 작업자를 기다리지 않고 바로 컨펌 요청
   const me = loadSession()
-  const force = individual && me?.role === "superadmin" && (!detail.designers.includes(me.id) || !waiting.includes(me.id))
+  const force = individual && (me?.role === "superadmin" || me?.role === "admin") && (!detail.designers.includes(me.id) || !waiting.includes(me.id))
   const submitLabel = force ? "바로 컨펌 요청" : "내 시안 올리기"
   const spec: ActionSpec | null | undefined =
     open === "undo"
@@ -265,9 +265,11 @@ export function ActionPanel({
             label: submitLabel,
             dialog: {
               ...ACTIONS.submit!.dialog!,
-              title: force ? "바로 컨펌 요청 (슈퍼관리자)" : "내 시안 올리기 (개별 컨펌)",
+              // 바로 컨펌 요청: 작업자들이 이미 올린 시안이 있으면 이미지 없이도 보낼 수 있다
+              files: { ...ACTIONS.submit!.dialog!.files!, required: !(force && (collecting?.parts.length ?? 0) > 0) },
+              title: force ? "바로 컨펌 요청 (관리자)" : "내 시안 올리기 (개별 컨펌)",
               description: force
-                ? `남은 작업자(${waiting.map(userName).join(", ") || "없음"})를 기다리지 않고, 지금까지 올라온 시안에 이 시안을 더해 바로 요청자에게 컨펌 요청을 보냅니다.`
+                ? `남은 작업자(${waiting.map(userName).join(", ") || "없음"})를 기다리지 않고, 지금까지 올라온 시안으로 바로 요청자에게 컨펌 요청을 보냅니다. 새 시안을 함께 올리면 더해집니다.`
                 : `이 요청은 작업자마다 시안을 올립니다. 모든 작업자(${detail.designers.length}명)가 올리면 요청자에게 컨펌 요청이 갑니다.${
                 waiting.length > 0 ? ` 아직 안 올린 사람: ${waiting.map(userName).join(", ")}` : ""
               }`,
