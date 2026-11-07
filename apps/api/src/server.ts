@@ -45,6 +45,7 @@ import { compressStatic, isCompressible, pickEncoding, sendCompressedJson } from
 import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions } from './suggestions.ts'
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry, worklog } from './worklog.ts'
+import { createMemo, deleteMemo, listMemos, updateMemo } from './memos.ts'
 import { addChecklistItem, clearDoneChecklist, createChecklist, deleteChecklist, deleteChecklistItem, listChecklists, reorderChecklistItems, reorderChecklists, resetChecklist, updateChecklist, updateChecklistItem } from './checklists.ts'
 import { startBackupSchedule } from './backup.ts'
 import { startStorageSweep } from './storage-sweep.ts'
@@ -750,6 +751,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/schedule-plans\/lines\/(\d{4}-\d{2}-\d{2})\/(\d+)$/))) {
     if (method === 'PATCH') return sendJson(res, 200, await updatePlanLine(user, m[1], Number(m[2]), await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, await deletePlanLine(user, m[1], Number(m[2])))
+  }
+
+  // ── 메모(memos.ts): 계정마다 내 것만 ──
+  if (path === '/api/memos') {
+    if (method === 'GET') return sendJson(res, 200, listMemos(user))
+    if (method === 'POST') return sendJson(res, 201, createMemo(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/memos\/(\d+)$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, updateMemo(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, deleteMemo(user, Number(m[1])))
   }
 
   // ── 체크리스트(checklists.ts): 계정마다 내 것만 ──
