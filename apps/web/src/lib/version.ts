@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.10',
+    date: '2026-11-07',
+    changes: [
+      '디자인 요청 > 참고 자료: 캡처·복사한 이미지를 Ctrl+V 로 붙여 넣으면 바로 첨부(이름은 "붙여넣은 이미지_날짜_시각"). 내용 칸에 글을 붙일 때는 글은 그대로 들어감',
+    ],
+  },
+  {
     version: '0.6.9',
     date: '2026-11-06',
     changes: [

@@ -12,22 +12,61 @@ export function FilePicker({
   accept,
   hint,
   invalid,
+  paste = false,
 }: {
   files: File[]
   onChange: (files: File[]) => void
   accept?: string // 예: "image/*"
   hint?: string
   invalid?: boolean
+  paste?: boolean // 켜면 이 화면 어디서든 Ctrl+V 로 클립보드의 이미지·파일을 붙인다
 }) {
   const id = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
+  const [pasted, setPasted] = useState(0) // 방금 붙여 넣은 개수(잠깐 알림)
 
-  const add = (list: FileList | null) => {
+  const add = (list: FileList | File[] | null) => {
     if (!list) return
     const picked = Array.from(list).filter((f) => !accept?.startsWith("image") || f.type.startsWith("image/"))
     onChange([...files, ...picked])
+    return picked.length
   }
+
+  // 클립보드 붙여넣기: 파일(캡처·복사한 이미지, 탐색기에서 복사한 파일)이 있으면 첨부로 넣는다.
+  // 글자도 함께 있으면(입력 칸에 글을 붙이는 경우) 글 붙여넣기는 그대로 두고 파일만 더한다.
+  const latest = useRef({ files, add })
+  latest.current = { files, add }
+  useEffect(() => {
+    if (!paste) return
+    const onPaste = (e: ClipboardEvent) => {
+      const data = e.clipboardData
+      if (!data) return
+      const list = Array.from(data.files)
+      if (list.length === 0) return
+      const stamp = new Date()
+      const pad = (n: number) => String(n).padStart(2, "0")
+      const base = `붙여넣은 이미지_${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}`
+      // 캡처 이미지는 이름이 "image.png" 로 와서 겹치므로 시각 + 번호로 이름을 붙인다(같은 초에 여러 번 붙여도 안 겹치게)
+      const taken = new Set(latest.current.files.map((f) => f.name))
+      const named = list.map((f) => {
+        if (!/^image\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name) && f.name) return f
+        const ext = (f.type.split("/")[1] || "png").replace("jpeg", "jpg")
+        let name = `${base}.${ext}`
+        for (let k = 2; taken.has(name); k++) name = `${base}_${k}.${ext}`
+        taken.add(name)
+        return new File([f], name, { type: f.type, lastModified: f.lastModified })
+      })
+      if (!data.types.includes("text/plain")) e.preventDefault()
+      const n = latest.current.add(named) ?? 0
+      if (n > 0) {
+        setPasted(n)
+        setTimeout(() => setPasted(0), 2500)
+      }
+    }
+    document.addEventListener("paste", onPaste)
+    return () => document.removeEventListener("paste", onPaste)
+  }, [paste])
 
   return (
     <div className="flex flex-col gap-2">
@@ -48,8 +87,13 @@ export function FilePicker({
         }`}
       >
         <Paperclip className="size-4 text-muted-foreground" aria-hidden />
-        <span>파일을 끌어 놓거나 눌러서 고르세요</span>
+        <span>{paste ? "파일을 끌어 놓거나 눌러서 고르세요 · 복사한 이미지는 Ctrl+V" : "파일을 끌어 놓거나 눌러서 고르세요"}</span>
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+        {pasted > 0 && (
+          <span className="text-xs font-medium text-primary" role="status">
+            붙여 넣은 파일 {pasted}개를 첨부했습니다
+          </span>
+        )}
         <input
           ref={inputRef}
           id={id}
