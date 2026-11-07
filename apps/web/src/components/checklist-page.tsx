@@ -390,7 +390,7 @@ function ListView({ list, patch, onDeleted }: { list: List; patch: (f: (l: List)
         )}
       </div>
       <p className="text-xs break-keep text-muted-foreground">
-        내 계정에서만 보이는 체크리스트입니다. 왼쪽 손잡이(⋮⋮)를 끌어 순서를 바꾸고, 같은 확인을 다시 할 때는 "모두 해제"를 누르세요.
+        내 계정에서만 보이는 체크리스트입니다(계정 전환으로 묶인 계정끼리는 함께 봅니다). 왼쪽 손잡이(⋮⋮)를 끌어 순서를 바꾸고, 같은 확인을 다시 할 때는 "모두 해제"를 누르세요.
       </p>
     </section>
   )

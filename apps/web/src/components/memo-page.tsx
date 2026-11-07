@@ -172,7 +172,7 @@ export function MemoPage() {
             </div>
           </div>
         </form>
-        <p className="text-xs text-muted-foreground">내 계정에서만 보이는 메모입니다.</p>
+        <p className="text-xs break-keep text-muted-foreground">내 계정에서만 보이는 메모입니다(계정 전환으로 묶인 계정끼리는 함께 봅니다).</p>
       </Section>
 
       {/* 오른쪽: 목록 */}

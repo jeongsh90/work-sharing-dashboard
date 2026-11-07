@@ -1,8 +1,9 @@
 import { all, db, get, run } from './db.ts'
 import { HttpError } from './requests.ts'
 import type { PublicUser } from './users.ts'
+import { personalGroup } from './config.ts'
 
-// 메모(개인 메뉴): 계정마다 자기 메모만 쓰고 본다. 제목(비우면 내용 첫 줄) + 내용, 고정하면 목록 맨 위.
+// 메모(개인 메뉴): 계정마다 자기 메모만 쓰고 본다(계정 전환 묶음은 함께 — config.personalGroup). 제목(비우면 내용 첫 줄) + 내용, 고정하면 목록 맨 위.
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS memos (
@@ -33,18 +34,18 @@ function fields(body: Record<string, unknown>) {
 }
 
 function own(user: PublicUser, id: number) {
-  const row = get<MemoRow>('SELECT * FROM memos WHERE id = :id AND user_id = :u', { id, u: user.id })
+  const row = get<MemoRow>('SELECT * FROM memos WHERE id = :id AND user_id IN (SELECT value FROM json_each(:g))', { id, g: personalGroup(user.id) })
   if (!row) throw new HttpError(404, '메모를 찾을 수 없습니다.')
   return row
 }
 
 export function listMemos(user: PublicUser) {
-  return all<MemoRow>('SELECT * FROM memos WHERE user_id = :u ORDER BY pinned DESC, updated_at DESC, id DESC', { u: user.id }).map(dto)
+  return all<MemoRow>('SELECT * FROM memos WHERE user_id IN (SELECT value FROM json_each(:g)) ORDER BY pinned DESC, updated_at DESC, id DESC', { g: personalGroup(user.id) }).map(dto)
 }
 
 export function createMemo(user: PublicUser, body: Record<string, unknown>) {
   const f = fields(body)
-  if ((get<{ n: number }>('SELECT COUNT(*) AS n FROM memos WHERE user_id = :u', { u: user.id })?.n ?? 0) >= 2000) {
+  if ((get<{ n: number }>('SELECT COUNT(*) AS n FROM memos WHERE user_id IN (SELECT value FROM json_each(:g))', { g: personalGroup(user.id) })?.n ?? 0) >= 2000) {
     throw new HttpError(400, '메모는 2,000개까지 남길 수 있습니다. 안 쓰는 메모를 지워 주세요.')
   }
   const now = Date.now()

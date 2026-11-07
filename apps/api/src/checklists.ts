@@ -1,9 +1,10 @@
 import { all, db, get, run } from './db.ts'
 import { HttpError } from './requests.ts'
 import type { PublicUser } from './users.ts'
+import { personalGroup } from './config.ts'
 
 // 체크리스트(개인 메뉴): 계정마다 자기 체크리스트를 여러 개 만들고(예: "상세페이지 올리기 전 확인"), 항목을 체크한다.
-// 다른 사람의 체크리스트는 보이지 않는다. 같은 체크를 반복할 때는 "모두 해제"로 처음 상태로 돌린다.
+// 다른 사람의 체크리스트는 보이지 않는다(계정 전환 묶음은 함께 — config.personalGroup). 같은 체크를 반복할 때는 "모두 해제"로 처음 상태로 돌린다.
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS checklists (
@@ -40,14 +41,14 @@ function text(v: unknown, label: string, max: number) {
 
 // 내 체크리스트만(남의 것은 없는 것처럼 404)
 function ownList(user: PublicUser, id: number) {
-  const row = get<ListRow>('SELECT * FROM checklists WHERE id = :id AND user_id = :u', { id, u: user.id })
+  const row = get<ListRow>('SELECT * FROM checklists WHERE id = :id AND user_id IN (SELECT value FROM json_each(:g))', { id, g: personalGroup(user.id) })
   if (!row) throw new HttpError(404, '체크리스트를 찾을 수 없습니다.')
   return row
 }
 function ownItem(user: PublicUser, id: number) {
   const row = get<ItemRow>(
-    'SELECT i.* FROM checklist_items i JOIN checklists c ON c.id = i.list_id WHERE i.id = :id AND c.user_id = :u',
-    { id, u: user.id },
+    'SELECT i.* FROM checklist_items i JOIN checklists c ON c.id = i.list_id WHERE i.id = :id AND c.user_id IN (SELECT value FROM json_each(:g))',
+    { id, g: personalGroup(user.id) },
   )
   if (!row) throw new HttpError(404, '항목을 찾을 수 없습니다.')
   return row
@@ -57,10 +58,10 @@ const touch = (listId: number) => run('UPDATE checklists SET updated_at = :now W
 const itemDto = (i: ItemRow) => ({ id: i.id, body: i.body, done: i.done_at !== null, doneAt: i.done_at })
 
 export function listChecklists(user: PublicUser) {
-  const lists = all<ListRow>('SELECT * FROM checklists WHERE user_id = :u ORDER BY sort, id', { u: user.id })
+  const lists = all<ListRow>('SELECT * FROM checklists WHERE user_id IN (SELECT value FROM json_each(:g)) ORDER BY sort, id', { g: personalGroup(user.id) })
   const items = all<ItemRow>(
-    'SELECT i.* FROM checklist_items i JOIN checklists c ON c.id = i.list_id WHERE c.user_id = :u ORDER BY i.sort, i.id',
-    { u: user.id },
+    'SELECT i.* FROM checklist_items i JOIN checklists c ON c.id = i.list_id WHERE c.user_id IN (SELECT value FROM json_each(:g)) ORDER BY i.sort, i.id',
+    { g: personalGroup(user.id) },
   )
   return lists.map((l) => ({
     id: l.id,
@@ -72,10 +73,10 @@ export function listChecklists(user: PublicUser) {
 
 export function createChecklist(user: PublicUser, body: Record<string, unknown>) {
   const title = text(body.title, '체크리스트 이름', TITLE_MAX)
-  if ((get<{ n: number }>('SELECT COUNT(*) AS n FROM checklists WHERE user_id = :u', { u: user.id })?.n ?? 0) >= 100) {
+  if ((get<{ n: number }>('SELECT COUNT(*) AS n FROM checklists WHERE user_id IN (SELECT value FROM json_each(:g))', { g: personalGroup(user.id) })?.n ?? 0) >= 100) {
     throw new HttpError(400, '체크리스트는 100개까지 만들 수 있습니다.')
   }
-  const sort = (get<{ s: number | null }>('SELECT MAX(sort) AS s FROM checklists WHERE user_id = :u', { u: user.id })?.s ?? -1) + 1
+  const sort = (get<{ s: number | null }>('SELECT MAX(sort) AS s FROM checklists WHERE user_id IN (SELECT value FROM json_each(:g))', { g: personalGroup(user.id) })?.s ?? -1) + 1
   const now = Date.now()
   const r = run('INSERT INTO checklists (user_id, title, sort, created_at, updated_at) VALUES (:u, :title, :sort, :now, :now)', {
     u: user.id,
@@ -116,7 +117,7 @@ function reorder(table: 'checklists' | 'checklist_items', ids: unknown, known: n
 }
 
 export function reorderChecklists(user: PublicUser, body: Record<string, unknown>) {
-  const known = all<{ id: number }>('SELECT id FROM checklists WHERE user_id = :u', { u: user.id }).map((r) => r.id)
+  const known = all<{ id: number }>('SELECT id FROM checklists WHERE user_id IN (SELECT value FROM json_each(:g))', { g: personalGroup(user.id) }).map((r) => r.id)
   return reorder('checklists', body.ids, known)
 }
 

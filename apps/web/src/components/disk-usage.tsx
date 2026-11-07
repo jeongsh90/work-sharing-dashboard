@@ -7,7 +7,7 @@ import { useApi } from "@/lib/store"
 type Disk = { drive: string; total: number; free: number } | null
 
 // 사이드메뉴 지원 아래: 서버 드라이브(D:) 전체 용량·남은 용량.
-// 서버가 정상훈·슈퍼관리자에게만 값을 주고, 다른 계정에는 null 이라 보이지 않는다.
+// 서버가 슈퍼관리자 계정에만 값을 주고, 다른 계정에는 null 이라 보이지 않는다.
 export function DiskUsage() {
   const { data } = useApi<Disk>("/disk", 300_000)
   if (!data) return null

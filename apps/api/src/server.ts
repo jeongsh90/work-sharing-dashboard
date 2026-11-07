@@ -444,9 +444,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     }
   }
 
-  // ── 서버 드라이브 남은 용량(정상훈·슈퍼관리자만). 다른 계정은 null ──
+  // ── 서버 드라이브 남은 용량(슈퍼관리자 계정만). 다른 계정은 null ──
   if (path === '/api/disk' && method === 'GET') {
-    if (!ONLINE_VIEWERS.includes(user.id)) return sendJson(res, 200, null)
+    if (user.role !== 'superadmin') return sendJson(res, 200, null)
     const s = await statfs(DISK_PATH)
     return sendJson(res, 200, { drive: DISK_PATH.slice(0, 2), total: s.blocks * s.bsize, free: s.bavail * s.bsize })
   }
