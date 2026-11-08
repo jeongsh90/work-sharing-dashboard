@@ -1,4 +1,5 @@
-import { CirclePause, LoaderCircle, MessageCircle } from "lucide-react"
+import { useState } from "react"
+import { CirclePause, ListTodo, LoaderCircle, MessageCircle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { UserAvatar } from "@/components/user-avatar"
+import { DesignerQueueSheet } from "@/components/home/designer-queue-sheet"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import {
   designerTitle,
@@ -88,6 +90,7 @@ export function DesignerCards({
   presence: Record<string, Presence>
   onChangePresence?: (id: string, p: Presence) => void // 관리자만: 상태 배지를 눌러 바꾼다
 }) {
+  const [queueOf, setQueueOf] = useState<string | null>(null) // 받은 요청 시트를 연 작업자
   return (
     <div className={INNER_GRID}>
       {designers.map((d) => {
@@ -163,6 +166,21 @@ export function DesignerCards({
               </TooltipTrigger>
               <TooltipContent>1:1 채팅 (준비 중)</TooltipContent>
             </Tooltip>
+            {/* 채팅 아래: 받은 요청(작업 중·작업 대기·검토 대기)을 오른쪽 시트로 본다 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-10 right-2 text-muted-foreground"
+                  aria-label={`${d.name} 받은 요청 보기`}
+                  onClick={() => setQueueOf(d.id)}
+                >
+                  <ListTodo />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>받은 요청 보기</TooltipContent>
+            </Tooltip>
             {/* 프로필(사진·이름) 묶음과 작업 태그를 위쪽부터 차례로 쌓는다 */}
             <div className="flex flex-1 flex-col items-center gap-3">
               <div className="flex flex-col items-center gap-3">
@@ -210,6 +228,7 @@ export function DesignerCards({
           </div>
         )
       })}
+      <DesignerQueueSheet designer={designers.find((d) => d.id === queueOf) ?? null} requests={requests} onClose={() => setQueueOf(null)} />
     </div>
   )
 }

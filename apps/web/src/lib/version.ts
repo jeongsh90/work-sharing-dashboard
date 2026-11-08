@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.11',
+    date: '2026-11-09',
+    changes: [
+      '홈 디자인팀 카드: 채팅 아이콘 아래 "받은 요청 보기" 아이콘 추가 — 누르면 오른쪽에 그 작업자의 작업 중·작업 대기·검토 대기 요청을 마감 가까운 순으로 보여 주고, 요청을 누르면 상세로 이동',
+    ],
+  },
+  {
     version: '0.6.10',
     date: '2026-11-07',
     changes: [
