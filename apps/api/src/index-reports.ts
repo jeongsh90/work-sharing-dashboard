@@ -69,6 +69,22 @@ function describe(html: string) {
   return { title, summary: summary.slice(0, 400) }
 }
 
+// 보고서 위쪽 숫자 칸(.tile 의 .k 이름 / .v 값)에서 색인 현황을 뽑는다(목록 차트용). 색인 요청 보고서가 아니면 null
+export function reportStats(html: string) {
+  const tiles = [...html.matchAll(/class="k"[^>]*>([\s\S]*?)<\/div>\s*<div class="v[^"]*"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => ({
+    k: plain(m[1]),
+    v: Number(plain(m[2]).replace(/,/g, '')),
+  }))
+  const pick = (re: RegExp) => {
+    const t = tiles.find((x) => re.test(x.k) && Number.isFinite(x.v))
+    return t ? t.v : null
+  }
+  const requested = pick(/요청/)
+  const indexed = pick(/색인.*됨/)
+  if (requested === null || indexed === null) return null
+  return { total: pick(/전체/), requested, indexed, pending: pick(/대기/) ?? Math.max(0, requested - indexed) }
+}
+
 const dto = (r: Omit<Row, 'html' | 'pdf'> & { has_pdf: number }) => ({
   id: r.id,
   date: r.report_date,
@@ -84,7 +100,10 @@ const LIST_COLS = 'id, report_date, title, summary, pdf_name, created_by, create
 
 export function listIndexReports(user: PublicUser) {
   onlySuper(user)
-  return all<Omit<Row, 'html' | 'pdf'> & { has_pdf: number }>(`SELECT ${LIST_COLS} FROM index_reports ORDER BY report_date DESC`).map(dto)
+  return all<Omit<Row, 'pdf'> & { has_pdf: number }>(`SELECT ${LIST_COLS}, html FROM index_reports ORDER BY report_date DESC`).map((r) => ({
+    ...dto(r),
+    stats: reportStats(r.html),
+  }))
 }
 
 export function getIndexReport(user: PublicUser, id: number) {

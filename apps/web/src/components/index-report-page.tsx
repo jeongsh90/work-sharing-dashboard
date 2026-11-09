@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { DateRangePicker } from "@/components/date-range-picker"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { api, apiFetch, ApiError } from "@/lib/api"
@@ -18,12 +19,25 @@ import { invalidate, useApi } from "@/lib/store"
 // 구글 색인 보고서(슈퍼관리자): 서치콘솔 색인 요청 보고서를 날짜별로 올려 두고 본다(서버 apps/api/src/index-reports.ts).
 // 처음엔 날짜별 목록만 보이고, 보고서를 누르면 그 보고서를 넓게 연다("목록"으로 돌아간다). 보고서 HTML 은 원본 스타일을 빼고 WSD 디자인(index.css 의 .index-report)으로 다시 입힌다.
 
-type ReportSummary = { id: number; date: string; title: string; summary: string; hasPdf: boolean; pdfName: string; createdAt: number; updatedAt: number }
+// stats: 보고서 위쪽 숫자 칸에서 뽑은 색인 현황(색인 요청 보고서만, 서버 reportStats)
+type ReportStats = { total: number | null; requested: number; indexed: number; pending: number }
+type ReportSummary = {
+  id: number
+  date: string
+  title: string
+  summary: string
+  hasPdf: boolean
+  pdfName: string
+  createdAt: number
+  updatedAt: number
+  stats?: ReportStats | null
+}
 type ReportDetail = ReportSummary & { html: string }
 
 const toDate = (s: string) => new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)))
 const dayLabel = (s: string) => format(toDate(s), "M월 d일 (EEE)", { locale: ko })
 const ymd = (d: Date) => format(d, "yyyy-MM-dd")
+const shortDay = (s: string) => format(toDate(s), "M.d", { locale: ko })
 
 // 화면에 넣기 전에 한 번 더 거른다: 허용한 태그·속성만 남기고, 표는 가로 스크롤 틀로 감싼다
 const TAGS = new Set(
@@ -113,6 +127,9 @@ export function IndexReportPage() {
 
   return (
     <div className={PAGE_GRID}>
+      {/* 날짜별 색인 현황 차트(보고서를 고르기 전) */}
+      {!selected && <IndexTrend reports={reports} onOpen={open} />}
+
       {/* 날짜별 목록(보고서를 고르기 전) */}
       {!selected && (
         <Section
@@ -308,5 +325,179 @@ function UploadDialog({ reports, onClose, onDone }: { reports: ReportSummary[]; 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ── 날짜별 색인 현황: 맨 위 숫자 칸(최근 보고서, 지난 보고서와 차이) + 날짜별 쌓은 막대(아래 색인됨, 위 대기 = 요청 누적) ──
+const SEG = {
+  indexed: { label: "색인됨", dot: "bg-emerald-500 dark:bg-emerald-400" },
+  pending: { label: "처리 대기", dot: "bg-amber-400 dark:bg-amber-300" },
+} as const
+
+function Delta({ value, goodUp = true }: { value: number | null; goodUp?: boolean }) {
+  if (value === null) return null
+  if (value === 0) return <span className="text-xs text-muted-foreground">지난번과 같음</span>
+  const good = goodUp ? value > 0 : value < 0
+  return (
+    <span className={`text-xs tabular-nums ${good ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+      지난번보다 {value > 0 ? "+" : ""}
+      {value}
+    </span>
+  )
+}
+
+function IndexTrend({ reports, onOpen }: { reports: ReportSummary[]; onOpen: (id: number) => void }) {
+  const points = reports
+    .filter((r): r is ReportSummary & { stats: ReportStats } => !!r.stats)
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (points.length === 0) return null
+  const last = points[points.length - 1]
+  const prev = points.length > 1 ? points[points.length - 2] : null
+  const s = last.stats
+  const pct = (a: number, b: number | null) => (b ? Math.round((a / b) * 100) : 0)
+  const max = Math.max(...points.map((p) => p.stats.requested), 1)
+  // 눈금: 위쪽을 보기 좋은 수로
+  const step = max <= 20 ? 5 : max <= 50 ? 10 : max <= 100 ? 20 : 50
+  const top = Math.ceil(max / step) * step
+  const ticks = Array.from({ length: top / step + 1 }, (_, i) => i * step)
+  const H = 180
+
+  const tiles = [
+    {
+      k: "색인 요청 상품",
+      v: String(s.requested),
+      sub: s.total ? `판매중 ${s.total}개 중 ${pct(s.requested, s.total)}%` : "",
+      d: prev ? s.requested - prev.stats.requested : null,
+      up: true,
+      tone: "",
+    },
+    {
+      k: "색인됨",
+      v: String(s.indexed),
+      sub: `요청 중 ${pct(s.indexed, s.requested)}%`,
+      d: prev ? s.indexed - prev.stats.indexed : null,
+      up: true,
+      tone: "text-emerald-700 dark:text-emerald-300",
+    },
+    {
+      k: "처리 대기",
+      v: String(s.pending),
+      sub: "구글 재수집 기다리는 중",
+      d: prev ? s.pending - prev.stats.pending : null,
+      up: false,
+      tone: "text-amber-700 dark:text-amber-300",
+    },
+    {
+      k: "색인률",
+      v: `${pct(s.indexed, s.requested)}%`,
+      sub: prev ? `지난번 ${pct(prev.stats.indexed, prev.stats.requested)}%` : "",
+      d: null,
+      up: true,
+      tone: "",
+    },
+  ]
+
+  return (
+    <Section
+      title="색인 현황"
+      aside={<span className="text-sm text-muted-foreground tabular-nums">{dayLabel(last.date)} 기준</span>}
+      className="col-span-12"
+    >
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.k} className="flex flex-col gap-1 rounded-xl border bg-card p-4">
+            <span className="text-sm text-muted-foreground">{t.k}</span>
+            <span className={`text-2xl font-semibold tabular-nums ${t.tone}`}>{t.v}</span>
+            <span className="flex flex-wrap items-center gap-x-2 text-xs break-keep text-muted-foreground">
+              {t.sub}
+              <Delta value={t.d} goodUp={t.up} />
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-xl border bg-card p-4">
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span className="font-medium">날짜별 색인 요청 누적</span>
+          <span className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
+            {Object.values(SEG).map((g) => (
+              <span key={g.label} className="flex items-center gap-1.5">
+                <span className={`size-2.5 rounded-sm ${g.dot}`} />
+                {g.label}
+              </span>
+            ))}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          {/* 세로 눈금 */}
+          <div className="relative w-7 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums" style={{ height: H }}>
+            {ticks.map((t) => (
+              <span key={t} className="absolute right-0 -translate-y-1/2" style={{ top: H - (t / top) * H }}>
+                {t}
+              </span>
+            ))}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="relative" style={{ height: H }}>
+              {ticks.map((t) => (
+                <div
+                  key={t}
+                  className={`absolute inset-x-0 border-t ${t === 0 ? "border-border" : "border-dashed border-border/60"}`}
+                  style={{ top: H - (t / top) * H }}
+                />
+              ))}
+              <div className="absolute inset-0 flex items-end justify-around gap-2">
+                {points.map((p) => {
+                  const hi = (p.stats.indexed / top) * H
+                  const hp = (p.stats.pending / top) * H
+                  return (
+                    <Tooltip key={p.id}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => onOpen(p.id)}
+                          aria-label={`${dayLabel(p.date)}: 요청 ${p.stats.requested}개, 색인됨 ${p.stats.indexed}개, 대기 ${p.stats.pending}개`}
+                          className="group relative flex h-full w-full max-w-16 flex-col items-center justify-end rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span className="mb-1 text-xs font-medium whitespace-nowrap tabular-nums">
+                            {p.stats.indexed}
+                            <span className="text-muted-foreground">/{p.stats.requested}</span>
+                          </span>
+                          <span className="flex w-full max-w-10 flex-col gap-0.5 transition-opacity group-hover:opacity-80">
+                            {hp > 0 && <span className={`w-full rounded-t-sm ${SEG.pending.dot}`} style={{ height: Math.max(hp - 2, 2) }} />}
+                            {hi > 0 && (
+                              <span className={`w-full ${hp > 0 ? "" : "rounded-t-sm"} ${SEG.indexed.dot}`} style={{ height: Math.max(hi, 2) }} />
+                            )}
+                          </span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <div className="flex flex-col gap-0.5 tabular-nums">
+                          <span className="font-medium">{dayLabel(p.date)}</span>
+                          <span>요청 누적 {p.stats.requested}개</span>
+                          <span>
+                            색인됨 {p.stats.indexed}개 ({pct(p.stats.indexed, p.stats.requested)}%)
+                          </span>
+                          <span>처리 대기 {p.stats.pending}개</span>
+                          <span className="opacity-70">누르면 보고서를 엽니다</span>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="mt-1.5 flex justify-around gap-2 text-xs text-muted-foreground tabular-nums">
+              {points.map((p) => (
+                <span key={p.id} className="w-full max-w-16 text-center">
+                  {shortDay(p.date)}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Section>
   )
 }
