@@ -120,7 +120,8 @@ export function deleteLanIp(user: PublicUser, id: string) {
 const NONCE_MS = 10 * 60 * 1000
 const MISS_MS = 3 * DAY
 const nonces = new Map<string, { ip: string; at: number }>()
-type Miss = { userId: string; ip: string | null; kind: 'unregistered' | 'unreachable'; at: number }
+// publicIp: 그 사람이 본 주소에 들어온 바깥(공인) IP. 사내 IP 를 알아내지 못했을 때 관리 화면에 대신 보인다
+type Miss = { userId: string; ip: string | null; publicIp: string | null; kind: 'unregistered' | 'unreachable'; at: number }
 const misses = new Map<string, Miss>()
 
 function issueNonce(ip: string) {
@@ -143,6 +144,15 @@ async function officePublicIp() {
     /* 모르면 거르지 않는다 */
   }
   return officeIp?.ip ?? null
+}
+
+// 처음 보는 사람의 PC 를 사내 IP 로 새로 등록한다(이름 = 그 사람 이름). 이미 등록한 PC 가 있거나, IP 를 다른 PC 가 쓰거나, 거절한 사람이면 하지 않는다
+function autoAdd(user: PublicUser, ip: string) {
+  if (!PRIVATE_IP.test(ip) || !user.name.trim() || isIgnored(user.id)) return false
+  if (get('SELECT id FROM lan_ips WHERE ip = :ip OR user_id = :u', { ip, u: user.id })) return false
+  run('INSERT INTO lan_ips (id, ip, name, created_by, created_at, user_id) VALUES (:id, :ip, :name, :me, :now, :me)', { id: randomUUID(), ip, name: user.name.trim(), me: user.id, now: Date.now() })
+  log(`${user.name}: 사내 IP 자동 등록 ${ip}`)
+  return true
 }
 
 // 등록된 이 사람의 PC 를 새 IP 로 옮긴다. 사람(user_id)으로 찾고, 없으면 PC 이름에 그 사람 이름이 든 것이 딱 하나일 때(처음 한 번) 그것.
@@ -176,14 +186,15 @@ export async function reportLan(user: PublicUser, body: Record<string, unknown>,
     const n = nonces.get(body.nonce)
     nonces.delete(body.nonce)
     if (n && now - n.at < NONCE_MS) {
-      // 이 사람의 PC 가 이미 등록돼 있으면(공유기가 IP 를 바꾼 경우) 새 IP 로 바로 고친다. 없을 때만 관리 화면에 남긴다
-      if (autoMove(user, n.ip)) misses.delete(user.id)
-      else misses.set(user.id, { userId: user.id, ip: n.ip, kind: 'unregistered', at: now })
+      // 사내 IP 가 잡히면 저절로 적용한다: 이 사람의 PC 가 등록돼 있으면 새 IP 로 고치고(공유기가 IP 를 바꾼 경우), 없으면 새로 등록한다.
+      // 그 IP 를 다른 PC 가 쓰고 있거나 거절한 사람이면 관리 화면에 남겨 사람이 고른다
+      if (autoMove(user, n.ip) || autoAdd(user, n.ip)) misses.delete(user.id)
+      else misses.set(user.id, { userId: user.id, ip: n.ip, publicIp: publicIp || null, kind: 'unregistered', at: now })
     }
   } else if (body.unreachable === true) {
     const prev = misses.get(user.id)
     // 방금 "등록 안 된 IP"로 알아낸 게 있으면 그쪽이 더 쓸모 있어 덮지 않는다
-    if (!prev || prev.kind !== 'unregistered' || now - prev.at > 60 * 60 * 1000) misses.set(user.id, { userId: user.id, ip: null, kind: 'unreachable', at: now })
+    if (!prev || prev.kind !== 'unregistered' || now - prev.at > 60 * 60 * 1000) misses.set(user.id, { userId: user.id, ip: null, publicIp: publicIp || null, kind: 'unreachable', at: now })
   }
   return { ok: true }
 }

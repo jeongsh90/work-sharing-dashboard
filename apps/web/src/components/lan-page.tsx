@@ -131,7 +131,7 @@ export function LanPage() {
 
 // ── 직통을 못 탄 PC: 사무실에 있는데 바깥 중계(느림)로 주고받는 사람(최근 3일) ──
 // 등록 안 된 IP 로 들어온 사람은 그 IP 를 바로 등록하거나, 이름이 같은 등록 PC 의 IP 를 바꾼다(공유기가 IP 를 바꾼 경우)
-type Miss = { userId: string; ip: string | null; kind: "unregistered" | "unreachable"; at: number }
+type Miss = { userId: string; ip: string | null; publicIp?: string | null; kind: "unregistered" | "unreachable"; at: number }
 
 function Misses({ registered }: { registered: LanIp[] }) {
   const { data } = useApi<Miss[]>("/lan/misses", 30_000)
@@ -204,7 +204,9 @@ function Misses({ registered }: { registered: LanIp[] }) {
               return (
                 <TableRow key={m.userId}>
                   <TableCell className="font-medium">{name}</TableCell>
-                  <TableCell className="tabular-nums">{m.ip ?? <span className="text-muted-foreground">닿지 않음</span>}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {m.ip ?? (m.publicIp ? <span className="text-amber-700 dark:text-amber-300">외부 IP {m.publicIp}</span> : <span className="text-muted-foreground">닿지 않음</span>)}
+                  </TableCell>
                   <TableCell className="text-muted-foreground tabular-nums">{formatDateTime(new Date(m.at))}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-2">
@@ -236,9 +238,8 @@ function Misses({ registered }: { registered: LanIp[] }) {
       )}
       {error && <FieldError>{error}</FieldError>}
       <p className="text-xs break-keep text-muted-foreground">
-        사무실 PC 인데 바깥 중계로 주고받는 사람입니다(파일 받기·올리기가 느림). 등록한 PC 의 IP 가 바뀐 경우는 그 사람이 사이트에 들어오면 저절로 새 IP 로 고쳐집니다(여기에는 처음 등록할 사람만 남음). "닿지 않음"은 회사 밖이거나, 브라우저가 로컬 네트워크 접근을 막은 경우입니다
-        (주소창 왼쪽 자물쇠 → 사이트 설정에서 허용). 허용은 그 IP 로 등록(이미 등록한 사람이면 IP 바꾸기), IP 를 모르면 직접 입력합니다. 거절한 사람은 다시
-        올라오지 않습니다.
+        사내 IP 가 잡히면 그 IP 로 저절로 등록됩니다(이미 등록한 사람은 새 IP 로 고침). 여기에는 사내 IP 를 알아내지 못해 외부 IP 로만 보인 PC 가 남습니다 — 브라우저가 로컬 네트워크 접근을 막은 경우가 많습니다
+        (주소창 왼쪽 자물쇠 → 사이트 설정에서 허용하면 다음 접속 때 저절로 등록). 허용은 사내 IP 를 직접 입력해 등록하고, 거절한 사람은 다시 올라오지 않습니다.
       </p>
       {ignored && ignored.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
