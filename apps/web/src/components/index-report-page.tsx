@@ -132,7 +132,7 @@ export function IndexReportPage() {
               아직 올린 보고서가 없습니다. "보고서 올리기"로 HTML(과 PDF)을 올려 주세요.
             </div>
           ) : (
-            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="flex flex-col gap-3">
               {reports.map((r) => {
                 return (
                   <li key={r.id}>
