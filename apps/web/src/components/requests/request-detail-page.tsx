@@ -321,7 +321,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
       </div>
 
       {editing ? (
-        <Section title="요청 수정" className="col-span-12 lg:col-span-8 xl:col-span-6">
+        <Section title="요청 수정" className="col-span-12 xl:col-span-9 2xl:col-span-8">
           <Card>
             <CardContent>
               <RequestForm

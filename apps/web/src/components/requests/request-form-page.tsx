@@ -528,17 +528,17 @@ export function RequestForm({
             <Input id="req-dept" value={department} maxLength={40} onChange={(e) => setDepartment(e.target.value)} />
           </Field>
           <Field data-invalid={invalid("period")}>
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <FieldLabel htmlFor="req-period">{ongoing ? "작업 시작일 (계속 업무)" : "작업 기간 (시작일 ~ 마감일)"}</FieldLabel>
               <div className="flex items-center gap-3">
                 {initial && (
-                  <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                  <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal whitespace-nowrap text-muted-foreground">
                     <Checkbox checked={onHold} onCheckedChange={(v) => setOnHold(v === true)} />
                     보류
                   </Label>
                 )}
                 {/* 당일: 오늘 시작해 오늘 마감. 기간이 오늘 하루면 저절로 체크된다. 끄면 기본 기간으로 */}
-                <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal whitespace-nowrap text-muted-foreground">
                   <Checkbox
                     checked={sameDay}
                     onCheckedChange={(v) => {
@@ -549,7 +549,7 @@ export function RequestForm({
                   />
                   당일
                 </Label>
-                <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                <Label className="flex cursor-pointer items-center gap-1.5 text-sm font-normal whitespace-nowrap text-muted-foreground">
                   <Checkbox
                     checked={ongoing}
                     onCheckedChange={(v) => {
