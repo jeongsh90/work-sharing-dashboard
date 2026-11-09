@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
-import { FileDown, FileSearch, FileText, Trash2, Upload } from "lucide-react"
+import { ArrowLeft, FileDown, FileSearch, FileText, Trash2, Upload } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,13 +11,12 @@ import { confirmDialog } from "@/components/confirm-dialog"
 import { DateRangePicker } from "@/components/date-range-picker"
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
-import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { api, apiFetch, ApiError } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
 import { invalidate, useApi } from "@/lib/store"
 
 // 구글 색인 보고서(슈퍼관리자): 서치콘솔 색인 요청 보고서를 날짜별로 올려 두고 본다(서버 apps/api/src/index-reports.ts).
-// 왼쪽 날짜 목록, 오른쪽 보고서. 보고서 HTML 은 원본 스타일을 빼고 WSD 디자인(index.css 의 .index-report)으로 다시 입힌다.
+// 처음엔 날짜별 목록만 보이고, 보고서를 누르면 그 보고서를 넓게 연다("목록"으로 돌아간다). 보고서 HTML 은 원본 스타일을 빼고 WSD 디자인(index.css 의 .index-report)으로 다시 입힌다.
 
 type ReportSummary = { id: number; date: string; title: string; summary: string; hasPdf: boolean; pdfName: string; createdAt: number; updatedAt: number }
 type ReportDetail = ReportSummary & { html: string }
@@ -27,8 +26,14 @@ const dayLabel = (s: string) => format(toDate(s), "M월 d일 (EEE)", { locale: k
 const ymd = (d: Date) => format(d, "yyyy-MM-dd")
 
 // 화면에 넣기 전에 한 번 더 거른다: 허용한 태그·속성만 남기고, 표는 가로 스크롤 틀로 감싼다
-const TAGS = new Set("div p span b strong i em u br h1 h2 h3 h4 ul ol li table thead tbody tr th td code small a svg g line rect text circle path polyline".split(" "))
-const ATTRS = new Set("class colspan rowspan href viewBox width height x y x1 y1 x2 y2 rx ry cx cy r d points fill stroke stroke-width font-size text-anchor role aria-label".split(" "))
+const TAGS = new Set(
+  "div p span b strong i em u br h1 h2 h3 h4 ul ol li table thead tbody tr th td code small a svg g line rect text circle path polyline".split(" "),
+)
+const ATTRS = new Set(
+  "class colspan rowspan href viewBox width height x y x1 y1 x2 y2 rx ry cx cy r d points fill stroke stroke-width font-size text-anchor role aria-label".split(
+    " ",
+  ),
+)
 function sanitize(html: string) {
   const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, "text/html")
   const root = doc.getElementById("root")!
@@ -76,17 +81,30 @@ export function IndexReportPage() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const selected = reports?.find((r) => r.id === picked) ?? reports?.[0] ?? null
+  const selected = reports?.find((r) => r.id === picked) ?? null
+  const open = (id: number | null) => {
+    setPicked(id)
+    setActionError(null)
+    window.scrollTo({ top: 0 })
+  }
   const { data: detail, error: detailError } = useApi<ReportDetail>(selected ? `/index-reports/${selected.id}` : null, 300_000)
   const body = useMemo(() => (detail && detail.id === selected?.id ? sanitize(detail.html) : null), [detail, selected?.id])
 
   if (!reports) return <PageState error={loadError} />
 
   const remove = async (r: ReportSummary) => {
-    if (!(await confirmDialog({ title: `${dayLabel(r.date)} 보고서를 지울까요?`, description: "지운 보고서는 되돌릴 수 없습니다. 원본 파일은 PC 폴더에 그대로 있습니다.", confirmText: "삭제", destructive: true }))) return
+    if (
+      !(await confirmDialog({
+        title: `${dayLabel(r.date)} 보고서를 지울까요?`,
+        description: "지운 보고서는 되돌릴 수 없습니다. 원본 파일은 PC 폴더에 그대로 있습니다.",
+        confirmText: "삭제",
+        destructive: true,
+      }))
+    )
+      return
     try {
       await api(`/index-reports/${r.id}`, { method: "DELETE" })
-      setPicked(null)
+      open(null)
       invalidate()
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : "지우지 못했습니다.")
@@ -95,35 +113,33 @@ export function IndexReportPage() {
 
   return (
     <div className={PAGE_GRID}>
-      {/* 왼쪽: 날짜별 목록 */}
-      <Section
-        title="날짜별 보고서"
-        aside={<span className="text-sm text-muted-foreground tabular-nums">{reports.length}건</span>}
-        action={
-          <Button size="sm" onClick={() => setUploadOpen(true)}>
-            <Upload data-icon="inline-start" />
-            보고서 올리기
-          </Button>
-        }
-        className="col-span-12 lg:col-span-4"
-      >
-        {reports.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
-            <FileSearch className="size-8" />
-            아직 올린 보고서가 없습니다. "보고서 올리기"로 HTML(과 PDF)을 올려 주세요.
-          </div>
-        ) : (
-          <SmoothScrollArea className="max-h-[calc(100svh-12rem)] overflow-y-auto pr-1">
-            <ul className="flex flex-col gap-2">
+      {/* 날짜별 목록(보고서를 고르기 전) */}
+      {!selected && (
+        <Section
+          title="날짜별 보고서"
+          aside={<span className="text-sm text-muted-foreground tabular-nums">{reports.length}건</span>}
+          action={
+            <Button size="sm" onClick={() => setUploadOpen(true)}>
+              <Upload data-icon="inline-start" />
+              보고서 올리기
+            </Button>
+          }
+          className="col-span-12"
+        >
+          {reports.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
+              <FileSearch className="size-8" />
+              아직 올린 보고서가 없습니다. "보고서 올리기"로 HTML(과 PDF)을 올려 주세요.
+            </div>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {reports.map((r) => {
-                const active = r.id === selected?.id
                 return (
                   <li key={r.id}>
                     <button
                       type="button"
-                      onClick={() => setPicked(r.id)}
-                      aria-current={active ? "true" : undefined}
-                      className={`flex w-full flex-col gap-1 rounded-xl border p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary bg-accent" : "bg-card hover:bg-muted/50"}`}
+                      onClick={() => open(r.id)}
+                      className="flex h-full w-full flex-col gap-1 rounded-xl border bg-card p-4 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span className="flex items-center gap-2">
                         <span className="font-semibold tabular-nums">{dayLabel(r.date)}</span>
@@ -140,17 +156,21 @@ export function IndexReportPage() {
                 )
               })}
             </ul>
-          </SmoothScrollArea>
-        )}
-      </Section>
+          )}
+        </Section>
+      )}
 
-      {/* 오른쪽: 보고서 */}
-      <Section
-        title={selected ? selected.title : "보고서"}
-        aside={selected ? <span className="text-sm text-muted-foreground tabular-nums">{dayLabel(selected.date)}</span> : null}
-        action={
-          selected ? (
+      {/* 고른 보고서 */}
+      {selected && (
+        <Section
+          title={selected.title}
+          aside={<span className="text-sm text-muted-foreground tabular-nums">{dayLabel(selected.date)}</span>}
+          action={
             <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => open(null)}>
+                <ArrowLeft data-icon="inline-start" />
+                목록
+              </Button>
               {selected.hasPdf && (
                 <Button variant="outline" size="sm" onClick={() => openPdf(selected).catch((e) => setActionError(e.message))}>
                   <FileDown data-icon="inline-start" />
@@ -162,22 +182,17 @@ export function IndexReportPage() {
                 삭제
               </Button>
             </div>
-          ) : undefined
-        }
-        className="col-span-12 lg:col-span-8"
-      >
-        {actionError && <FieldError>{actionError}</FieldError>}
-        {!selected ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
-            <FileText className="size-8" />
-            왼쪽에서 보고서를 고르면 여기에 보입니다.
-          </div>
-        ) : body === null ? (
-          <PageState error={detailError} />
-        ) : (
-          <article className="index-report rounded-xl border bg-card p-4 md:p-6" dangerouslySetInnerHTML={{ __html: body }} />
-        )}
-      </Section>
+          }
+          className="col-span-12"
+        >
+          {actionError && <FieldError>{actionError}</FieldError>}
+          {body === null ? (
+            <PageState error={detailError} />
+          ) : (
+            <article className="index-report rounded-xl border bg-card p-4 md:p-6" dangerouslySetInnerHTML={{ __html: body }} />
+          )}
+        </Section>
+      )}
 
       {uploadOpen && (
         <UploadDialog
@@ -221,7 +236,15 @@ function UploadDialog({ reports, onClose, onDone }: { reports: ReportSummary[]; 
   const submit = async () => {
     if (!date) return setError("보고서 날짜를 골라 주세요.")
     if (!html) return setError("보고서 HTML 파일을 골라 주세요.")
-    if (same && !(await confirmDialog({ title: `${dayLabel(same.date)} 보고서를 바꿀까요?`, description: "같은 날짜의 보고서가 이미 있습니다. 새 파일로 바꿉니다.", confirmText: "바꾸기" }))) return
+    if (
+      same &&
+      !(await confirmDialog({
+        title: `${dayLabel(same.date)} 보고서를 바꿀까요?`,
+        description: "같은 날짜의 보고서가 이미 있습니다. 새 파일로 바꿉니다.",
+        confirmText: "바꾸기",
+      }))
+    )
+      return
     setPending(true)
     setError(null)
     try {
@@ -287,4 +310,3 @@ function UploadDialog({ reports, onClose, onDone }: { reports: ReportSummary[]; 
     </Dialog>
   )
 }
-
