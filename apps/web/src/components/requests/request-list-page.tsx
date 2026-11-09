@@ -110,7 +110,7 @@ function WorkerSection({ requests }: { requests: DesignRequest[] }) {
           )
         })}
       </div>
-      <RequestTable key={current.id} requests={rows} emptyMessage={`${current.name} 님이 맡은 요청이 없습니다.`} />
+      <RequestTable key={current.id} requests={rows} asDesigner={current.id} emptyMessage={`${current.name} 님이 맡은 요청이 없습니다.`} />
       <p className="text-xs text-muted-foreground">이름 옆 숫자는 진행 중인 요청 수입니다(완료·취소 제외). 공동 담당도 포함합니다.</p>
     </Section>
   )

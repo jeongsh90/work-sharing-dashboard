@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react"
+import { useLayoutEffect, useMemo, useRef, useState } from "react"
 import { MoreHorizontal, Search, Trash2 } from "lucide-react"
 
 import {
@@ -38,6 +38,7 @@ import {
   formatDateTime,
   isActive,
   isUnassigned,
+  statusFor,
   type DesignRequest,
   type RequestStatus,
 } from "@/lib/requests"
@@ -77,15 +78,24 @@ function EmptyRow({ message }: { message: string }) {
 }
 
 // statusTabs: 상태별 탭(전체·작업 대기…). 상태가 하나뿐인 목록(미배정 등)에서는 끈다.
+// asDesigner: 이 작업자 기준 상태로 보인다(개별 컨펌). 없으면 보는 사람이 담당인 요청만 내 상태로
 export function RequestTable({
-  requests,
+  requests: allRequests,
   emptyMessage,
   statusTabs = true,
+  asDesigner,
 }: {
   requests: DesignRequest[]
   emptyMessage?: string
   statusTabs?: boolean
+  asDesigner?: string
 }) {
+  // 개별 컨펌 요청은 작업자마다 상태가 다르다: 담당 작업자 화면에서는 그 사람 상태(안 올렸으면 작업 중, 올렸으면 검토 대기)
+  const viewer = asDesigner ?? loadSession()?.id
+  const requests = useMemo(
+    () => allRequests.map((r) => (viewer && r.individualConfirm && r.designers.includes(viewer) ? { ...r, status: statusFor(r, viewer) } : r)),
+    [allRequests, viewer],
+  )
   const [filter, setFilter] = useState("all")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
