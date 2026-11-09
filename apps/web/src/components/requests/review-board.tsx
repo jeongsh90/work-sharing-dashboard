@@ -34,14 +34,17 @@ export function ReviewBoard({
   submission,
   session,
   onChanged,
+  pinnable,
 }: {
   detail: RequestDetailDto
   submission: SubmissionDto
   session: Session
   onChanged: () => void
+  pinnable?: boolean
 }) {
   const latest = detail.submissions[detail.submissions.length - 1]
-  const canPin = detail.actions.includes("pin") && latest?.id === submission.id
+  // pinnable: 개별 컨펌은 상세 화면이 정한다(그 작업자가 컨펌 대기이고 그 사람 최신 시안일 때)
+  const canPin = detail.actions.includes("pin") && (pinnable ?? latest?.id === submission.id)
   const canComment = detail.actions.includes("comment")
   const canResolveAll = detail.actions.includes("resolve")
   const userName = useUserNames()

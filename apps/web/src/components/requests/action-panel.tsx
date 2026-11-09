@@ -1,8 +1,9 @@
 import { useState } from "react"
-import { FileX, LayoutGrid, Link2, PenTool, Undo2, Upload, type LucideIcon } from "lucide-react"
+import { ChevronDown, FileX, LayoutGrid, Link2, PenTool, Undo2, Upload, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -21,8 +22,7 @@ import { confirmDialog } from "@/components/confirm-dialog"
 import { FilePicker } from "@/components/requests/file-picker"
 import { Progress } from "@/components/ui/progress"
 import { api, ApiError, formatBytes, uploadFileWithProgress } from "@/lib/api"
-import { loadSession } from "@/lib/auth"
-import { ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
+import { LANE_LABEL, ORIGINAL_LABEL, ORIGINAL_TOOLS, STATUS_LABEL, type OriginalKind, type RequestAction, type RequestDetailDto } from "@/lib/requests"
 import { invalidate, isDesignWorker, useUserNames, useUsers } from "@/lib/store"
 
 // 진행 동작 버튼. 어떤 버튼이 보일지는 서버가 준 actions 로 정한다(apps/api/src/requests.ts).
@@ -188,12 +188,15 @@ const ACTION_COLOR: Partial<Record<RequestAction, string>> = {
 // 버튼 순서: 주요 동작 먼저, 취소는 맨 끝
 const ORDER: RequestAction[] = ["take", "start", "submit", "approve", "reject", "upload-source", "complete", "resubmit", "assign", "reassign", "request-info", "ask-requester", "cancel"]
 
+// focusLane: 개별 컨펌에서 시안 칸에 보고 있는 작업자. 컨펌·반려는 그 사람 시안에 한다
 export function ActionPanel({
   detail,
+  focusLane = null,
   onEdit,
   onChanged,
 }: {
   detail: RequestDetailDto
+  focusLane?: string | null
   onEdit: () => void
   onChanged: (next: RequestDetailDto) => void
 }) {
@@ -201,6 +204,8 @@ export function ActionPanel({
   const userName = useUserNames()
   const [pending, setPending] = useState<RequestAction | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 작업 취소에서 고른 단계(개별 컨펌은 작업자마다)
+  const [undoPick, setUndoPick] = useState<{ key: string; label: string; to: string; designerId?: string } | null>(null)
 
   const perform = async (action: RequestAction, body: Record<string, unknown> = {}) => {
     const next = await api<RequestDetailDto>(`/requests/${detail.id}/actions/${action}`, { body })
@@ -239,47 +244,72 @@ export function ActionPanel({
     }
   }
 
-  const available = ORDER.filter((a) => detail.actions.includes(a) && ACTIONS[a])
-  // 개별 컨펌: 이번 차수에 아직 시안을 안 올린 작업자
-  const individual = detail.individualConfirm && detail.designers.length > 1
-  const latest = detail.submissions[detail.submissions.length - 1]
-  const collecting = individual && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
-  const waiting = detail.designers.filter((uid) => !collecting?.parts.some((p) => p.userId === uid))
-  // 바로 컨펌 요청(남은 작업자를 기다리지 않음): 담당이 아닌 관리자만. 담당인 관리자는 모두 올릴 때까지 기다린다(남은 사람 없이 멈춘 요청은 넘길 수 있다)
-  const me = loadSession()
-  const force = individual && (me?.role === "superadmin" || me?.role === "admin") && (!detail.designers.includes(me.id) || waiting.length === 0)
-  const submitLabel = force ? "바로 컨펌 요청" : "내 시안 올리기"
+  // 개별 컨펌: 작업자마다 따로 진행한다. 작업 시작·컨펌 요청·원본 업로드는 내 것, 컨펌·반려는 시안 칸에서 고른 작업자 것
+  const lanes = detail.lanes ?? []
+  const individual = detail.individualConfirm && detail.designers.length > 1 && lanes.length > 0
+  const focus = individual && focusLane ? lanes.find((l) => l.userId === focusLane) : undefined
+  const focusName = focus ? (userName(focus.userId) ?? "") : ""
+  const reviewing = lanes.filter((l) => l.status === "review")
+  const available = ORDER.filter(
+    (a) => detail.actions.includes(a) && ACTIONS[a] && !(individual && (a === "approve" || a === "reject") && focus?.status !== "review"),
+  )
+  const LANE_BUTTON: Partial<Record<RequestAction, string>> = {
+    start: "내 작업 시작",
+    submit: "내 시안 컨펌 요청",
+    "upload-source": "내 원본 업로드",
+    approve: `${focusName} 시안 컨펌`,
+    reject: `${focusName} 시안 반려`,
+  }
+  const labelOf = (a: RequestAction) => (individual && LANE_BUTTON[a]) || ACTIONS[a]!.label
+  // 개별 컨펌 동작에 붙여 보낼 작업자
+  const laneBody = (a: RequestAction): Record<string, unknown> =>
+    individual && (a === "approve" || a === "reject") && focus ? { designerId: focus.userId } : a === "undo" && undoPick?.designerId ? { designerId: undoPick.designerId } : {}
+
+  // 작업 취소: 개별 컨펌은 작업자마다 자기 마지막 단계(관리자는 모든 작업자), 그 밖에는 요청의 마지막 단계
+  type UndoEntry = { key: string; label: string; to: string; designerId?: string }
+  const undoEntries: UndoEntry[] = [
+    ...(detail.laneUndo ?? []).map((u) => ({ key: u.designerId, label: u.label, to: LANE_LABEL[u.to], designerId: u.designerId })),
+    ...(detail.undo ? [{ key: "request", label: detail.undo.label, to: STATUS_LABEL[detail.undo.to] }] : []),
+  ]
+  const undoName = (e: UndoEntry) => (e.designerId ? `${userName(e.designerId)} · ${e.label}` : `요청 · ${e.label}`)
+  const openUndo = (e: UndoEntry) => {
+    setUndoPick(e)
+    setOpen("undo")
+  }
+
   const spec: ActionSpec | null | undefined =
     open === "undo"
       ? {
           label: "작업 취소",
           dialog: {
             ...UNDO_SPEC,
-            description: detail.undo
-              ? `마지막 단계(${detail.undo.label})를 취소하고 이전 상태(${STATUS_LABEL[detail.undo.to]})로 되돌립니다. 관계자에게 알림이 갑니다.`
+            description: undoPick
+              ? undoPick.designerId
+                ? `${userName(undoPick.designerId)}님의 마지막 단계(${undoPick.label})를 취소하고 ${undoPick.to}(으)로 되돌립니다. 다른 작업자 진행은 그대로입니다.`
+                : `마지막 단계(${undoPick.label})를 취소하고 이전 상태(${undoPick.to})로 되돌립니다. 관계자에게 알림이 갑니다.`
               : "",
           },
         }
-      : open === "submit" && individual
+      : individual && open && ["submit", "approve", "reject", "upload-source"].includes(open)
         ? {
-            label: submitLabel,
+            label: labelOf(open),
             dialog: {
-              ...ACTIONS.submit!.dialog!,
-              // 바로 컨펌 요청: 작업자들이 이미 올린 시안이 있으면 이미지 없이도 보낼 수 있다
-              files: { ...ACTIONS.submit!.dialog!.files!, required: !(force && (collecting?.parts.length ?? 0) > 0) },
-              title: force ? "바로 컨펌 요청 (관리자)" : "내 시안 올리기 (개별 컨펌)",
-              description: force
-                ? `남은 작업자(${waiting.map(userName).join(", ") || "없음"})를 기다리지 않고, 지금까지 올라온 시안으로 바로 요청자에게 컨펌 요청을 보냅니다. 새 시안을 함께 올리면 더해집니다.`
-                : `이 요청은 작업자마다 시안을 올립니다. 모든 작업자(${detail.designers.length}명)가 올리면 요청자에게 컨펌 요청이 갑니다.${
-                waiting.length > 0 ? ` 아직 안 올린 사람: ${waiting.map(userName).join(", ")}` : ""
-              }`,
-              confirm: submitLabel,
+              ...ACTIONS[open]!.dialog!,
+              title: labelOf(open),
+              description:
+                open === "submit"
+                  ? "내 시안을 요청자에게 바로 컨펌 요청합니다. 다른 작업자를 기다리지 않습니다."
+                  : open === "approve"
+                    ? `${focusName}님 시안을 확정합니다. ${focusName}님에게 원본 업로드 요청 알림이 갑니다. 모든 작업자가 컨펌되면 작업이 완료됩니다.`
+                    : open === "reject"
+                      ? `${focusName}님에게 수정 요청이 갑니다. 이미지에 꽂은 핀 댓글도 함께 전달됩니다. 다른 작업자 진행은 그대로입니다.`
+                      : "내 작업 원본을 남기면 내 작업이 완료됩니다. 모든 작업자가 올리면 요청이 최종 완료됩니다.",
             },
           }
         : open
           ? ACTIONS[open]
           : null
-  const canUndo = detail.actions.includes("undo") && detail.undo !== null
+  const canUndo = detail.actions.includes("undo") && undoEntries.length > 0
 
   const finalNote = detail.status === "review" && !!detail.finalApprover && !detail.actions.includes("approve")
   if (available.length === 0 && !detail.actions.includes("edit") && !canUndo && !finalNote) return null
@@ -299,7 +329,7 @@ export function ActionPanel({
                 disabled={pending !== null}
                 onClick={() => (s.dialog ? setOpen(a) : direct(a))}
               >
-                {pending === a ? "처리 중…" : a === "submit" && individual ? submitLabel : s.label}
+                {pending === a ? "처리 중…" : labelOf(a)}
               </Button>
             )
           })}
@@ -314,18 +344,41 @@ export function ActionPanel({
               요청 수정
             </Button>
           )}
-          {canUndo && (
-            <Button
-              variant="outline"
-              className={`${BAR_BUTTON} text-muted-foreground`}
-              disabled={pending !== null}
-              onClick={() => setOpen("undo")}
-            >
-              <Undo2 data-icon="inline-start" />
-              작업 취소
-            </Button>
-          )}
+          {canUndo &&
+            (undoEntries.length === 1 ? (
+              <Button
+                variant="outline"
+                className={`${BAR_BUTTON} text-muted-foreground`}
+                disabled={pending !== null}
+                onClick={() => openUndo(undoEntries[0])}
+              >
+                <Undo2 data-icon="inline-start" />
+                작업 취소
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className={`${BAR_BUTTON} text-muted-foreground`} disabled={pending !== null}>
+                    <Undo2 data-icon="inline-start" />
+                    작업 취소
+                    <ChevronDown data-icon="inline-end" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" side="top">
+                  {undoEntries.map((e) => (
+                    <DropdownMenuItem key={e.key} onSelect={() => openUndo(e)}>
+                      {undoName(e)}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ))}
         </div>
+        {individual && reviewing.length > 0 && focus?.status !== "review" && (detail.actions.includes("approve") || detail.actions.includes("reject")) && (
+          <p className="text-center text-sm text-muted-foreground">
+            컨펌 대기: {reviewing.map((l) => userName(l.userId)).join(", ")} — 시안 칸에서 작업자를 고르면 컨펌·반려할 수 있습니다.
+          </p>
+        )}
         {/* 최종 컨펌자가 정해진 부서: 다른 사람에게는 누가 컨펌하는지 알려 준다 */}
         {detail.status === "review" && detail.finalApprover && !detail.actions.includes("approve") && (
           <p className="text-center text-sm text-muted-foreground">최종 컨펌은 {userName(detail.finalApprover)}님이 합니다.</p>
@@ -339,8 +392,9 @@ export function ActionPanel({
           detail={detail}
           onClose={() => setOpen(null)}
           onConfirm={async (body) => {
-            await perform(open, body)
+            await perform(open, { ...body, ...laneBody(open) })
             setOpen(null)
+            setUndoPick(null)
           }}
         />
       )}

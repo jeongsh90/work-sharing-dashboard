@@ -16,7 +16,8 @@ import { ReviewBoard } from "@/components/requests/review-board"
 import { Timeline } from "@/components/requests/timeline"
 import { EDIT_ON_OPEN_KEY, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
-import { formatDateTime, type RequestDetailDto, type RequestStatus } from "@/lib/requests"
+import { formatDateTime, laneText, type RequestDetailDto, type RequestStatus } from "@/lib/requests"
+import { STATUS_TEXT } from "@/lib/status-colors"
 import { PartStatus } from "@/components/requests/part-status"
 import { STATUS_BEAM } from "@/lib/status-colors"
 import { downloadFile } from "@/lib/api"
@@ -94,19 +95,31 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
       return false
     }
   })
-  const [round, setRound] = useState<number | null>(null)
+  // 보고 있는 시안(차수) id. 개별 컨펌이면 보고 있는 작업자(lane)도
+  const [subId, setSubId] = useState<number | null>(null)
+  const [laneSel, setLaneSel] = useState<string | null>(null)
   // 마감 지남 판단 기준 시각. 화면을 열 때 한 번 잡는다.
   const [now] = useState(() => Date.now())
 
   if (!detail) return <PageState error={error} />
 
-  const rounds = detail.submissions
-  const shown = rounds.find((s) => s.round === round) ?? rounds[rounds.length - 1]
-  // 개별 컨펌: 작업자마다 이번 차수 시안을 올렸는지(모으는 중인 차수 = 작업 중·수정 중인데 결정 안 된 마지막 시안)
-  const latest = rounds[rounds.length - 1]
-  const collecting =
-    detail.individualConfirm && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
-  const uploaded = (uid: string) => collecting?.parts.some((p) => p.userId === uid) ?? false
+  // 개별 컨펌: 작업자마다 시안·컨펌이 따로다. 시안 칸에서 작업자를 골라 그 사람 시안을 본다(요청자는 그 시안을 컨펌·반려)
+  const lanes = detail.lanes ?? []
+  const individual = detail.individualConfirm && detail.designers.length > 1 && lanes.length > 0
+  const laneOf = (uid: string) => lanes.find((l) => l.userId === uid)
+  // 처음 보이는 작업자: 나(담당) → 컨펌 대기인 사람 → 첫 작업자
+  const focusLane = individual
+    ? (laneSel && laneOf(laneSel) ? laneSel : (laneOf(session.id)?.userId ?? lanes.find((l) => l.status === "review")?.userId ?? lanes[0].userId))
+    : null
+  // 이 작업자의 시안: 자기가 올린 차수 + 예전 방식으로 여럿이 함께 올린 차수(그 사람 파일만)
+  const rounds = focusLane
+    ? detail.submissions
+        .filter((s) => s.designerId === focusLane || (!s.designerId && (s.parts.length === 0 || s.parts.some((p) => p.userId === focusLane))))
+        .map((s) => (!s.designerId && s.parts.length > 0 ? { ...s, files: s.files.filter((f) => f.uploaderId === focusLane) } : s))
+    : detail.submissions
+  const shown = rounds.find((s) => s.id === subId) ?? rounds[rounds.length - 1]
+  // 핀: 개별 컨펌은 그 작업자가 컨펌 대기이고 그 사람 최신 시안일 때만
+  const pinnable = focusLane ? laneOf(focusLane)?.status === "review" && shown?.id === rounds[rounds.length - 1]?.id : undefined
   const overdue = !detail.onHold && detail.status !== "done" && detail.status !== "canceled" && detail.dueAt < now
 
   const content = (
@@ -150,20 +163,41 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
   const review = (
     <Section
       title="시안"
-      aside={rounds.length > 0 && <span className="text-sm text-muted-foreground">{rounds.length}차까지</span>}
+      aside={!individual && rounds.length > 0 && <span className="text-sm text-muted-foreground">{rounds.length}차까지</span>}
     >
+      {/* 개별 컨펌: 작업자 고르기(이름 옆은 그 사람 상태) */}
+      {individual && focusLane && (
+        <Tabs
+          value={focusLane}
+          onValueChange={(v) => {
+            setLaneSel(v)
+            setSubId(null)
+          }}
+        >
+          <TabsList className="h-auto flex-wrap">
+            {lanes.map((l) => (
+              <TabsTrigger key={l.userId} value={l.userId}>
+                {userName(l.userId) ?? l.userId}
+                <span className={`text-xs ${STATUS_TEXT[l.status]}`}>{laneText(l)}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
       {!shown ? (
         <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          아직 올라온 시안이 없습니다. 작업자가 컨펌 요청을 하면 여기에 보입니다.
+          {focusLane
+            ? `아직 ${userName(focusLane) ?? ""}님이 올린 시안이 없습니다. 컨펌 요청을 하면 여기에 보입니다.`
+            : "아직 올라온 시안이 없습니다. 작업자가 컨펌 요청을 하면 여기에 보입니다."}
         </p>
       ) : (
         <div className="flex flex-col gap-4">
           {/* 반려된 차수도 탭으로 남겨 이전 시안을 다시 본다(한 차수뿐이어도 보임) */}
           {rounds.length > 0 && (
-            <Tabs value={String(shown.round)} onValueChange={(v) => setRound(Number(v))}>
+            <Tabs value={String(shown.id)} onValueChange={(v) => setSubId(Number(v))}>
               <TabsList>
                 {rounds.map((s) => (
-                  <TabsTrigger key={s.id} value={String(s.round)}>
+                  <TabsTrigger key={s.id} value={String(s.id)}>
                     {s.round}차
                     {s.decision === "rejected" && <span className="text-xs text-destructive">반려</span>}
                     {s.decision === "approved" && <span className="text-xs text-emerald-600">컨펌</span>}
@@ -176,17 +210,10 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{shown.round}차 시안</span>
               <span className="text-xs text-muted-foreground">
-                {shown.parts.length > 0 ? shown.parts.map((p) => userName(p.userId)).join(" · ") : userName(shown.authorId)} ·{" "}
+                {focusLane ? userName(focusLane) : shown.parts.length > 0 ? shown.parts.map((p) => userName(p.userId)).join(" · ") : userName(shown.authorId)} ·{" "}
                 {formatDateTime(new Date(shown.createdAt))}
               </span>
-              {shown.decision === null &&
-                (collecting?.id === shown.id ? (
-                  <Badge variant="secondary" className="bg-violet-500/15 text-violet-800 dark:text-violet-300">
-                    모으는 중 {shown.parts.length}/{detail.designers.length}
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary">확인 중</Badge>
-                ))}
+              {shown.decision === null && <Badge variant="secondary">확인 중</Badge>}
               {shown.decision === "rejected" && (
                 <Badge variant="secondary" className="bg-orange-500/15 text-orange-800 dark:text-orange-300">
                   반려
@@ -212,7 +239,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
             </div>
             {shown.note && <p className="whitespace-pre-wrap text-muted-foreground">{shown.note}</p>}
             {/* 개별 컨펌: 작업자마다 올린 시안 수 */}
-            {shown.parts.length > 0 && (
+            {!focusLane && shown.parts.length > 0 && (
               <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {shown.parts.map((p) => (
                   <li key={p.userId}>
@@ -230,7 +257,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
               </p>
             )}
           </div>
-          <ReviewBoard key={shown.id} detail={detail} submission={shown} session={session} onChanged={invalidate} />
+          <ReviewBoard key={shown.id} detail={detail} submission={shown} session={session} onChanged={invalidate} pinnable={pinnable} />
         </div>
       )}
     </Section>
@@ -277,23 +304,25 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
             ) : detail.individualConfirm && detail.designers.length > 1 ? (
               <span className="flex flex-col gap-1">
                 <span className="w-fit rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
-                  개별 컨펌{collecting ? ` · ${collecting.round}차 ${detail.designers.filter(uploaded).length}/${detail.designers.length} 올림` : ""}
+                  개별 컨펌 · 작업자마다 따로 진행
                 </span>
-                {detail.designers.map((uid) => (
-                  <span key={uid} className="flex items-center gap-1.5">
-                    {userName(uid)}
-                    {/* 작업자별 상태(작업 중 / 컨펌 대기). 관리자는 눌러서 바꾼다 */}
-                    {(detail.status === "in-progress" || detail.status === "revising" || detail.status === "review") && (
-                      <PartStatus
-                        requestId={detail.id}
-                        userId={uid}
-                        name={userName(uid) ?? uid}
-                        done={(detail.partsDone ?? []).includes(uid)}
-                        canChange={session.role === "superadmin" || session.role === "admin"}
-                      />
-                    )}
-                  </span>
-                ))}
+                {detail.designers.map((uid) => {
+                  const lane = laneOf(uid)
+                  return (
+                    <span key={uid} className="flex items-center gap-1.5">
+                      {userName(uid)}
+                      {/* 작업자별 상태. 관리자는 눌러서 바로 바꾼다 */}
+                      {lane && (
+                        <PartStatus
+                          requestId={detail.id}
+                          lane={lane}
+                          name={userName(uid) ?? uid}
+                          canChange={(session.role === "superadmin" || session.role === "admin") && detail.status !== "canceled"}
+                        />
+                      )}
+                    </span>
+                  )
+                })}
               </span>
             ) : (
               detail.designers.map(userName).join(", ")
@@ -322,7 +351,7 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
           <Meta label="시작">{detail.startedAt ? formatDateTime(new Date(detail.startedAt)) : "-"}</Meta>
         </dl>
         <Steps status={detail.status} />
-        {!editing && <ActionPanel detail={detail} onEdit={() => setEditing(true)} onChanged={() => invalidate()} />}
+        {!editing && <ActionPanel detail={detail} focusLane={focusLane} onEdit={() => setEditing(true)} onChanged={() => invalidate()} />}
       </div>
 
       {editing ? (

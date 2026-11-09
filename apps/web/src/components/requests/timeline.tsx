@@ -3,7 +3,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError } from "@/lib/api"
-import { EVENT_LABEL, STATUS_LABEL, timeAgo, type RequestDetailDto } from "@/lib/requests"
+import { EVENT_LABEL, LANE_LABEL, STATUS_LABEL, timeAgo, type LaneStatus, type RequestDetailDto } from "@/lib/requests"
 import { STATUS_TEXT } from "@/lib/status-colors"
 import { invalidate, useUserNames } from "@/lib/store"
 
@@ -50,7 +50,10 @@ export function Timeline({ detail }: { detail: RequestDetailDto }) {
                 <span className="font-medium text-foreground">{userName(event?.actorId ?? comment?.authorId)}</span>
                 {event && <span>{EVENT_LABEL[event.type] ?? event.type}</span>}
                 {event?.toStatus && event.toStatus !== event.fromStatus && (
-                  <span className={STATUS_TEXT[event.toStatus]}>→ {STATUS_LABEL[event.toStatus]}</span>
+                  // 개별 컨펌의 작업자별 기록은 그 사람 상태 이름으로(작업 대기·작업 중·컨펌 대기·수정 중·원본 대기·완료)
+                  <span className={STATUS_TEXT[event.toStatus]}>
+                    → {event.designerId ? `${userName(event.designerId)} ${LANE_LABEL[event.toStatus as LaneStatus] ?? STATUS_LABEL[event.toStatus]}` : STATUS_LABEL[event.toStatus]}
+                  </span>
                 )}
                 <span>{timeAgo(new Date(at))}</span>
               </p>

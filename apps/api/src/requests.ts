@@ -114,24 +114,157 @@ function saveCoRequesters(id: number, mainId: string, value: unknown) {
 }
 
 // ── 개별 컨펌 ─────────────────────────────────────────
-// 작업자가 둘 이상이고 개별 컨펌을 켠 요청: 작업자마다 이번 차수 시안을 올리고(submission_parts),
-// 마지막 작업자가 올리면 그때 시안 확인으로 넘어간다. 컨펌·반려는 그 차수 전체에 한 번에 한다.
+// 작업자가 둘 이상이고 개별 컨펌을 켠 요청: 작업자마다 따로 진행한다(아래 작업자별 진행 lane).
+// submission_parts 는 예전 방식(여럿이 한 차수에 함께 올림)의 기록이다.
 const isIndividual = (req: RequestRow, assignees: string[]) => req.individual_confirm === 1 && assignees.length > 1
 
-// 모으는 중인 차수: 작업 중·수정 중인데 아직 결정 안 된 마지막 시안(누군가 먼저 올려 둔 것)
-function openRound(req: RequestRow) {
-  if (req.status !== 'in-progress' && req.status !== 'revising') return null
-  const s = get<{ id: number; round: number; decision: string | null }>(
-    'SELECT id, round, decision FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1',
-    { id: req.id },
-  )
-  return s && s.decision === null ? s : null
-}
 const partsOf = (submissionId: number) =>
   all<{ user_id: string; note: string; created_at: number }>(
     'SELECT user_id, note, created_at FROM submission_parts WHERE submission_id = :submissionId ORDER BY created_at',
     { submissionId },
   )
+
+// ── 개별 컨펌: 작업자별 진행(lane) ─────────────────────
+// 개별 컨펌 요청은 작업자마다 진행 상태를 따로 둔다(assignees.work_status):
+//   작업 대기 → (작업 시작) 작업 중 → (컨펌 요청) 컨펌 대기 → [반려] n차 수정 중 → … → [컨펌] 원본 대기 → (원본 업로드) 완료
+// 요청자는 작업자가 올리는 대로 그 사람 시안을 바로 컨펌·반려한다. 작업 취소도 작업자마다 자기 마지막 단계만.
+// 요청 전체 상태(requests.status)는 작업자 상태들에서 계산해 저장한다(가장 늦은 사람 기준. 목록·통계·보관함은 그대로 쓴다)
+export const LANE_STATUSES = ['waiting', 'in-progress', 'review', 'revising', 'source-pending', 'done'] as const
+type LaneStatus = (typeof LANE_STATUSES)[number]
+type Lane = { user_id: string; work_status: LaneStatus | ''; work_revision: number; ord: number }
+const LANE_RANK: Record<LaneStatus, number> = { waiting: 0, 'in-progress': 1, revising: 1, review: 2, 'source-pending': 3, done: 4 }
+// 작업자별 진행을 할 수 있는 요청 상태(요청됨·보완 필요·취소·예전 흐름의 컨펌 완료는 빼고)
+const LANE_OPEN: Status[] = ['waiting', 'in-progress', 'review', 'revising', 'source-pending']
+
+const lanesOf = (requestId: number) =>
+  all<Lane>('SELECT user_id, work_status, work_revision, ord FROM assignees WHERE request_id = :requestId ORDER BY ord', { requestId })
+const laneOf = (requestId: number, userId: string) =>
+  get<Lane>('SELECT user_id, work_status, work_revision, ord FROM assignees WHERE request_id = :requestId AND user_id = :userId', { requestId, userId })
+function setLane(requestId: number, userId: string, status: LaneStatus, revision?: number) {
+  run(
+    `UPDATE assignees SET work_status = :status${revision === undefined ? '' : ', work_revision = :revision'} WHERE request_id = :requestId AND user_id = :userId`,
+    revision === undefined ? { requestId, userId, status } : { requestId, userId, status, revision },
+  )
+}
+// 이 작업자의 가장 최근 시안(작업자별 시안이 없으면 예전 방식으로 여럿이 함께 올린 차수)
+function laneLatest(requestId: number, userId: string) {
+  return (
+    get<{ id: number; round: number; decision: string | null }>(
+      'SELECT id, round, decision FROM submissions WHERE request_id = :requestId AND designer_id = :userId ORDER BY round DESC, id DESC LIMIT 1',
+      { requestId, userId },
+    ) ??
+    get<{ id: number; round: number; decision: string | null }>(
+      'SELECT id, round, decision FROM submissions WHERE request_id = :requestId AND designer_id IS NULL ORDER BY round DESC, id DESC LIMIT 1',
+      { requestId },
+    )
+  )
+}
+
+// 작업자 상태들 → 요청 전체 상태(가장 늦은 사람 기준)
+function deriveStatus(lanes: Lane[]): { status: Status; revision: number } {
+  const states = lanes.map((l) => (l.work_status || 'waiting') as LaneStatus)
+  const revision = Math.max(0, ...lanes.map((l) => l.work_revision))
+  const min = Math.min(...states.map((s) => LANE_RANK[s]))
+  if (min >= 4) return { status: 'done', revision }
+  if (min >= 3) return { status: 'source-pending', revision }
+  if (min >= 2) return { status: 'review', revision }
+  if (states.every((s) => s === 'waiting')) return { status: 'waiting', revision }
+  return { status: states.includes('revising') ? 'revising' : 'in-progress', revision }
+}
+
+// 작업자 상태가 바뀐 뒤 요청 전체 상태를 다시 계산해 저장한다. 바뀐 요청 상태를 돌려준다
+function syncRequest(req: RequestRow): Status {
+  const { status, revision } = deriveStatus(lanesOf(req.id))
+  const now = Date.now()
+  const extra: Record<string, unknown> = {}
+  const wasFinished = ['approved', 'source-pending', 'done'].includes(req.status)
+  const finished = status === 'source-pending' || status === 'done'
+  // 시작·완료 시각은 상태가 그쪽으로 넘어갈 때만 바꾼다(예전 기록을 덮지 않게)
+  if (req.status === 'waiting' && status !== 'waiting' && req.started_at === null) extra.started_at = now
+  if (status === 'waiting' && req.status !== 'waiting') extra.started_at = null
+  if (finished && !wasFinished) Object.assign(extra, { approved_at: now, completed_at: now })
+  if (!finished && wasFinished) Object.assign(extra, { approved_at: null, completed_at: null })
+  if (revision !== req.revision) extra.revision = revision
+  if (status !== req.status || Object.keys(extra).length > 0) setStatus(req, status, extra)
+  else run('UPDATE requests SET updated_at = :now WHERE id = :id', { id: req.id, now })
+  return status
+}
+
+// 개별 컨펌 요청의 작업자 상태를 처음 채운다(예전 요청·개별 컨펌을 중간에 켠 요청).
+// 예전 방식(여럿이 한 차수에 함께 올림)으로 모으던 차수는 작업자마다 시안으로 나눈다.
+function initLanes(req: RequestRow) {
+  const lanes = lanesOf(req.id)
+  if (req.individual_confirm !== 1 || lanes.length < 2 || lanes.every((l) => l.work_status)) return
+  const BASE: Record<Status, LaneStatus> = {
+    requested: 'waiting',
+    'needs-info': 'waiting',
+    waiting: 'waiting',
+    'in-progress': 'in-progress',
+    revising: 'revising',
+    review: 'review',
+    approved: 'source-pending',
+    'source-pending': 'source-pending',
+    done: 'done',
+    canceled: 'waiting',
+  }
+  let statusOf = (_uid: string): LaneStatus => BASE[req.status]
+  const latest = get<{ id: number; round: number; decision: string | null }>(
+    'SELECT id, round, decision FROM submissions WHERE request_id = :id AND designer_id IS NULL ORDER BY round DESC, id DESC LIMIT 1',
+    { id: req.id },
+  )
+  if (latest && latest.decision === null && ['in-progress', 'revising', 'review'].includes(req.status)) {
+    const parts = partsOf(latest.id)
+    if (parts.length > 0) {
+      for (const p of parts) {
+        const sid = Number(
+          run(
+            'INSERT INTO submissions (request_id, round, author_id, note, created_at, designer_id) VALUES (:id, :round, :uid, :note, :at, :uid)',
+            { id: req.id, round: latest.round, uid: p.user_id, note: p.note, at: p.created_at },
+          ).lastInsertRowid,
+        )
+        run('UPDATE files SET submission_id = :sid WHERE submission_id = :old AND uploader_id = :uid', { sid, old: latest.id, uid: p.user_id })
+      }
+      if (!get('SELECT 1 FROM files WHERE submission_id = :sid', { sid: latest.id })) run('DELETE FROM submissions WHERE id = :sid', { sid: latest.id })
+      const done = new Set(parts.map((p) => p.user_id))
+      const working: LaneStatus = req.revision > 0 ? 'revising' : 'in-progress'
+      statusOf = (uid) => (done.has(uid) ? 'review' : working)
+    }
+  }
+  for (const l of lanes) {
+    if (!l.work_status) {
+      run('UPDATE assignees SET work_status = :s, work_revision = :rev WHERE request_id = :id AND user_id = :uid', {
+        s: statusOf(l.user_id),
+        rev: req.revision,
+        id: req.id,
+        uid: l.user_id,
+      })
+    }
+  }
+  if (req.status !== 'canceled' && req.status !== 'requested' && req.status !== 'needs-info') syncRequest(req)
+}
+
+// 작업자별 작업 취소 대상: 그 작업자의 되돌리지 않은 마지막 단계(지금 그 사람 상태로 바꾼 기록)
+const LANE_UNDO_TYPES = ['start', 'submit', 'approve', 'reject', 'upload-source', 'part-status']
+function laneUndoTarget(requestId: number, userId: string) {
+  const lane = laneOf(requestId, userId)
+  if (!lane?.work_status) return null
+  const ev = get<UndoTarget>(
+    `SELECT id, type, actor_id, from_status, to_status FROM events
+     WHERE request_id = :requestId AND designer_id = :userId AND undone = 0 AND type IN (${LANE_UNDO_TYPES.map((t) => `'${t}'`).join(', ')})
+     ORDER BY id DESC LIMIT 1`,
+    { requestId, userId },
+  )
+  return ev && ev.to_status === lane.work_status && ev.from_status ? ev : null
+}
+// 이 사람이 되돌릴 수 있는 작업자별 단계(작업자는 자기 것, 관리자는 모든 작업자)
+function laneUndos(user: PublicUser, req: RequestRow, assignees: string[]) {
+  if (!isIndividual(req, assignees) || !LANE_OPEN.includes(req.status) && req.status !== 'done') return []
+  const manager = isManager(user)
+  return assignees
+    .filter((uid) => manager || uid === user.id)
+    .map((uid) => ({ uid, t: laneUndoTarget(req.id, uid) }))
+    .filter((x): x is { uid: string; t: UndoTarget } => !!x.t && (manager || x.t.actor_id === user.id))
+}
 
 // ── 권한 ──────────────────────────────────────────────
 
@@ -171,12 +304,14 @@ const UNDO_LABEL: Record<string, string> = {
   complete: '작업 완료',
   'upload-source': '원본 업로드',
   cancel: '요청 취소',
+  'part-status': '상태 변경(관리자)',
 }
 function undoTarget(req: RequestRow) {
   const ev = get<UndoTarget>(
     `SELECT id, type, actor_id, from_status, to_status FROM events
-     WHERE request_id = :id AND undone = 0 AND type != 'undo' AND type != 'create'
+     WHERE request_id = :id AND undone = 0 AND type != 'undo' AND type != 'create' AND designer_id IS NULL
        AND from_status IS NOT NULL AND to_status IS NOT NULL AND (from_status != to_status OR type = 'submit-part')
+       ${req.individual_confirm === 1 ? "AND type NOT IN ('start', 'submit', 'submit-part', 'approve', 'reject', 'complete', 'upload-source', 'part-status')" : ''}
      ORDER BY id DESC LIMIT 1`,
     { id: req.id },
   )
@@ -206,6 +341,12 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
   const su = user.role === 'superadmin'
   const active = ACTIVE.includes(req.status)
   const s = req.status
+  // 개별 컨펌: 작업 시작·컨펌 요청·원본 업로드는 내 상태로, 컨펌·반려·핀은 컨펌 대기인 작업자가 있을 때
+  const indiv = isIndividual(req, assignees)
+  const lanes = indiv ? lanesOf(req.id) : []
+  const laneOpen = indiv && LANE_OPEN.includes(s)
+  const my = lanes.find((l) => l.user_id === user.id)?.work_status
+  const anyReview = laneOpen && lanes.some((l) => l.work_status === 'review')
   const can: Record<Action, boolean> = {
     edit:
       (active && ((owner && (s === 'requested' || s === 'needs-info')) || manager || (!!req.created_by && req.created_by === user.id))) ||
@@ -217,26 +358,17 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     take: (designer || su) && !assignee && (s === 'requested' || s === 'needs-info' || s === 'waiting'),
     'request-info': (manager || designer) && (s === 'requested' || s === 'waiting'),
     resubmit: (owner || manager) && s === 'needs-info',
-    start: (assignee || manager) && s === 'waiting' && assignees.length > 0,
-    // 개별 컨펌이면 담당 작업자가 이번 차수에 아직 안 올렸을 때만(각자 한 번씩)
-    submit:
-      (s === 'in-progress' || s === 'revising') &&
-      (isIndividual(req, assignees)
-        ? manager ||
-          (assignee &&
-            (() => {
-              const open = openRound(req)
-              return !open || !partsOf(open.id).some((p) => p.user_id === user.id)
-            })())
-        : assignee || manager),
-    reject: (owner || manager || approver || su) && s === 'review',
+    start: indiv ? laneOpen && my === 'waiting' : (assignee || manager) && s === 'waiting' && assignees.length > 0,
+    // 개별 컨펌이면 담당 작업자가 자기 시안을 바로 컨펌 요청(다른 작업자를 기다리지 않는다)
+    submit: indiv ? laneOpen && (my === 'in-progress' || my === 'revising') : (s === 'in-progress' || s === 'revising') && (assignee || manager),
+    reject: (owner || manager || approver || su) && (indiv ? anyReview : s === 'review'),
     // 부서별 최종 컨펌자가 정해진 부서(예: 마케팅 1팀)는 그 사람만 컨펌(완료 처리)할 수 있다
-    approve: s === 'review' && (su || (finalBy ? approver : owner || manager)),
-    complete: (assignee || manager) && s === 'approved',
-    'upload-source': (assignee || manager) && s === 'source-pending',
+    approve: (indiv ? anyReview : s === 'review') && (su || (finalBy ? approver : owner || manager)),
+    complete: !indiv && (assignee || manager) && s === 'approved',
+    'upload-source': indiv ? laneOpen && my === 'source-pending' : (assignee || manager) && s === 'source-pending',
     cancel: active && (owner || manager),
     // 핀은 시안 확인 중일 때 최신 시안에만 꽂는다. 핀 댓글·일반 댓글은 관계자 누구나
-    pin: s === 'review' && (owner || manager || assignee || designer || approver),
+    pin: (indiv ? anyReview : s === 'review') && (owner || manager || assignee || designer || approver),
     comment: s !== 'canceled' && (owner || manager || assignee || designer || approver),
     resolve: assignee || manager,
     // 요청자 확인 필요: 상태는 그대로 두고 요청자에게 확인해 달라는 알림만 보낸다(담당 작업자·관리자)
@@ -244,7 +376,7 @@ function availableActions(user: PublicUser, req: RequestRow, assignees: string[]
     // 작업 취소: 마지막 단계를 되돌린다. 관리자 또는 그 단계를 한 사람만
     undo: (() => {
       const t = undoTarget(req)
-      return !!t && (manager || t.actor_id === user.id)
+      return (!!t && (manager || t.actor_id === user.id)) || laneUndos(user, req, assignees).length > 0
     })(),
   }
   return (Object.keys(can) as Action[]).filter((a) => can[a])
@@ -258,11 +390,12 @@ function requireAction(user: PublicUser, req: RequestRow, action: Action) {
 
 // ── 기록·알림 ─────────────────────────────────────────
 
-function logEvent(requestId: number, actor: string, type: string, from: Status | null, to: Status | null, note = '') {
+// designer: 개별 컨펌에서 작업자 한 사람의 진행 기록이면 그 작업자(from/to 는 그 사람 상태)
+function logEvent(requestId: number, actor: string, type: string, from: string | null, to: string | null, note = '', designer: string | null = null) {
   run(
-    `INSERT INTO events (request_id, actor_id, type, from_status, to_status, note, created_at)
-     VALUES (:requestId, :actor, :type, :from, :to, :note, :now)`,
-    { requestId, actor, type, from, to, note, now: Date.now() },
+    `INSERT INTO events (request_id, actor_id, type, from_status, to_status, note, created_at, designer_id)
+     VALUES (:requestId, :actor, :type, :from, :to, :note, :now, :designer)`,
+    { requestId, actor, type, from, to, note, now: Date.now(), designer },
   )
 }
 
@@ -403,13 +536,6 @@ const isHttpUrl = (v: string) => {
   }
 }
 
-// 개별 컨펌: 이번 차수(아직 컨펌·반려 전)에 시안을 올린 작업자. 작업자별 상태(올린 사람 컨펌 대기 / 안 올린 사람 작업 중)에 쓴다
-function partsDoneOf(row: RequestRow) {
-  if (row.individual_confirm !== 1 || !['in-progress', 'revising', 'review'].includes(row.status)) return []
-  const s = get<{ id: number; decision: string | null }>('SELECT id, decision FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1', { id: row.id })
-  return s && s.decision === null ? partsOf(s.id).map((p) => p.user_id) : []
-}
-
 function summary(row: RequestRow & { requester_name: string }) {
   return {
     id: row.id,
@@ -429,7 +555,13 @@ function summary(row: RequestRow & { requester_name: string }) {
     designers: assigneesOf(row.id),
     coRequesters: coRequestersOf(row.id), // 공동 요청자(같은 팀, 여러 명)
     individualConfirm: row.individual_confirm === 1,
-    partsDone: partsDoneOf(row),
+    // 개별 컨펌: 작업자마다 진행 상태(일반 요청은 빈 목록)
+    lanes:
+      row.individual_confirm === 1
+        ? lanesOf(row.id)
+            .filter((l) => l.work_status)
+            .map((l) => ({ userId: l.user_id, status: l.work_status, revision: l.work_revision }))
+        : [],
     urgency: row.urgency,
     status: row.status,
     revision: row.revision,
@@ -501,7 +633,8 @@ export function requestDetail(user: PublicUser, id: number) {
     decided_by: string | null
     decided_at: number | null
     decision_note: string
-  }>('SELECT * FROM submissions WHERE request_id = :id ORDER BY round', { id }).map((s) => ({
+    designer_id: string | null
+  }>('SELECT * FROM submissions WHERE request_id = :id ORDER BY round, id', { id }).map((s) => ({
     id: s.id,
     round: s.round,
     authorId: s.author_id,
@@ -511,6 +644,7 @@ export function requestDetail(user: PublicUser, id: number) {
     decidedBy: s.decided_by,
     decidedAt: s.decided_at,
     decisionNote: s.decision_note,
+    designerId: s.designer_id, // 개별 컨펌: 이 시안을 올린 작업자
     files: files.filter((f) => f.submission_id === s.id).map(fileInfo),
     // 개별 컨펌: 이 차수에 시안을 올린 작업자(올린 순서). 일반 요청은 빈 목록
     parts: partsOf(s.id).map((p) => ({ userId: p.user_id, note: p.note, createdAt: p.created_at })),
@@ -523,6 +657,7 @@ export function requestDetail(user: PublicUser, id: number) {
     to_status: string | null
     note: string
     created_at: number
+    designer_id: string | null
   }>('SELECT * FROM events WHERE request_id = :id ORDER BY created_at, id', { id }).map((e) => ({
     id: e.id,
     actorId: e.actor_id,
@@ -531,6 +666,7 @@ export function requestDetail(user: PublicUser, id: number) {
     toStatus: e.to_status,
     note: e.note,
     createdAt: e.created_at,
+    designerId: e.designer_id, // 개별 컨펌: 작업자 한 사람의 기록이면 그 작업자
   }))
   return {
     ...summary(row),
@@ -549,6 +685,8 @@ export function requestDetail(user: PublicUser, id: number) {
     // 부서별 최종 컨펌자(정해진 부서만). 이 사람이 컨펌해야 완료된다
     finalApprover: approverFor(row.department),
     undo: undoInfo(row),
+    // 개별 컨펌: 내가 되돌릴 수 있는 작업자별 단계(작업자는 자기 것, 관리자는 모두)
+    laneUndo: laneUndos(user, row, assigneesOf(id)).map(({ uid, t }) => ({ designerId: uid, label: UNDO_LABEL[t.type], to: t.from_status })),
   }
 }
 
@@ -722,50 +860,164 @@ function designerIdsFrom(body: Record<string, unknown>) {
 }
 
 // ── 개별 컨펌: 작업자별 상태 바꾸기(관리자) ─────────────
-// 슈퍼관리자·관리자가 작업자 한 사람의 이번 차수 상태를 "컨펌 대기(올림)" / "작업 중(올리기 전)"으로 바꾼다.
-// 올린 시안 파일은 지우지 않는다(작업 중으로 돌려도 그 사람이 다시 올리면 더해진다).
-// 모두 컨펌 대기가 되면 요청이 컨펌 대기로 넘어가고, 컨펌 대기인 요청에서 한 사람을 작업 중으로 돌리면 요청도 작업 중(수정 중)으로 돌아간다.
+// 슈퍼관리자·관리자가 작업자 한 사람의 상태를 바로 바꾼다(작업 대기·작업 중·컨펌 대기·수정 중·원본 대기·완료).
+// 올린 시안·원본 파일은 지우지 않는다. 요청 전체 상태는 작업자 상태들로 다시 계산한다.
+const LANE_LABEL: Record<LaneStatus, string> = {
+  waiting: '작업 대기',
+  'in-progress': '작업 중',
+  review: '컨펌 대기',
+  revising: '수정 중',
+  'source-pending': '원본 대기',
+  done: '완료',
+}
 export function setPartStatus(user: PublicUser, id: number, body: Record<string, unknown>) {
   if (!isManager(user)) throw new HttpError(403, '작업자별 상태는 관리자만 바꿀 수 있습니다.')
   const req = loadRequest(id)
   const assignees = assigneesOf(id)
   if (!isIndividual(req, assignees)) throw new HttpError(400, '개별 컨펌 요청이 아닙니다.')
-  if (!['in-progress', 'revising', 'review'].includes(req.status)) throw new HttpError(400, '작업 중·수정 중·컨펌 대기일 때만 바꿀 수 있습니다.')
+  if (!LANE_OPEN.includes(req.status) && req.status !== 'done') throw new HttpError(400, '작업자가 정해진 진행 중인 요청에서만 바꿀 수 있습니다.')
   const uid = typeof body.userId === 'string' ? body.userId : ''
   if (!assignees.includes(uid)) throw new HttpError(400, '이 요청의 담당 작업자가 아닙니다.')
-  const done = body.done === true
+  const to = body.status as LaneStatus
+  if (!LANE_STATUSES.includes(to)) throw new HttpError(400, '바꿀 상태를 골라 주세요.')
+  const lane = laneOf(id, uid)!
   const name = findUser(uid)?.name ?? uid
-  const label = done ? '컨펌 대기' : '작업 중'
+  if (lane.work_status === to) throw new HttpError(400, `${name}님은 이미 ${LANE_LABEL[to]}입니다.`)
   transaction(() => {
-    let sub = get<{ id: number; round: number; decision: string | null }>(
-      'SELECT id, round, decision FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1',
-      { id },
-    )
-    if (!sub || sub.decision !== null) {
-      if (!done) throw new HttpError(400, `${name}님은 이미 작업 중입니다.`)
-      const round = (sub?.round ?? 0) + 1
-      const result = run(`INSERT INTO submissions (request_id, round, author_id, note, created_at) VALUES (:id, :round, :author, '', :now)`, { id, round, author: user.id, now: Date.now() })
-      sub = { id: Number(result.lastInsertRowid), round, decision: null }
-    }
-    const sid = sub.id
-    const has = partsOf(sid).some((p) => p.user_id === uid)
-    if (done === has) throw new HttpError(400, `${name}님은 이미 ${label}입니다.`)
-    if (done) run("INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:sid, :uid, '', :now) ON CONFLICT DO NOTHING", { sid, uid, now: Date.now() })
-    else run('DELETE FROM submission_parts WHERE submission_id = :sid AND user_id = :uid', { sid, uid })
-    const parts = partsOf(sid)
-    const left = assignees.filter((a) => !parts.some((p) => p.user_id === a))
-    const progress = `${assignees.length - left.length}/${assignees.length}`
-    let to: Status = req.status
-    if (done && left.length === 0 && req.status !== 'review') to = 'review'
-    if (!done && req.status === 'review') to = req.revision > 0 ? 'revising' : 'in-progress'
-    if (to !== req.status) setStatus(req, to)
-    else run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
-    logEvent(id, user.id, 'part-status', req.status, to, `${sub.round}차 · ${name} → ${label} (관리자 변경, ${progress} 올림)`)
-    notify([uid], user.id, id, `${user.name}님이 내 상태를 ${label}(으)로 바꿨습니다: ${req.title}`)
-    if (to === 'review') {
-      notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${sub.round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
-    }
+    setLane(id, uid, to)
+    logEvent(id, user.id, 'part-status', lane.work_status || 'waiting', to, `${name} → ${LANE_LABEL[to]} (관리자 변경)`, uid)
+    notify([uid], user.id, id, `${user.name}님이 내 상태를 ${LANE_LABEL[to]}(으)로 바꿨습니다: ${req.title}`)
+    afterLaneChange(user, req, syncRequest(req))
   })
+}
+
+// 요청 전체 상태가 바뀌었을 때 알림(모든 작업자 컨펌·모든 작업자 원본 업로드)
+function afterLaneChange(user: PublicUser, req: RequestRow, to: Status) {
+  if (to === req.status) return
+  if (to === 'source-pending') notify(requestersOf(req), user.id, req.id, `모든 작업자의 시안이 컨펌되어 작업이 완료되었습니다: ${req.title}`)
+  if (to === 'done') notify(requestersOf(req), user.id, req.id, `모든 작업자의 작업 원본이 등록되었습니다: ${req.title}`)
+}
+
+const LANE_ACTIONS: Action[] = ['start', 'submit', 'approve', 'reject', 'upload-source']
+
+// 개별 컨펌의 작업자별 동작. 작업 시작·컨펌 요청·원본 업로드는 내 것, 컨펌·반려는 고른 작업자(designerId), 작업 취소는 고른 작업자의 마지막 단계
+function laneAction(user: PublicUser, req: RequestRow, assignees: string[], action: Action, body: Record<string, unknown>, note: string) {
+  const id = req.id
+  const nameOf = (uid: string) => findUser(uid)?.name ?? uid
+  const pick = () => {
+    const reviewing = lanesOf(id).filter((l) => l.work_status === 'review').map((l) => l.user_id)
+    const uid = typeof body.designerId === 'string' ? body.designerId : reviewing.length === 1 ? reviewing[0] : ''
+    if (!uid) throw new HttpError(400, '컨펌·반려할 작업자를 골라 주세요.')
+    if (!reviewing.includes(uid)) throw new HttpError(400, `${nameOf(uid)}님은 컨펌 대기가 아닙니다. 화면을 새로 고쳐 주세요.`)
+    return uid
+  }
+  switch (action) {
+    case 'start': {
+      setLane(id, user.id, 'in-progress')
+      logEvent(id, user.id, 'start', 'waiting', 'in-progress', note, user.id)
+      notify(requestersOf(req), user.id, id, `${nameOf(user.id)}님이 작업을 시작했습니다: ${req.title}`)
+      break
+    }
+    case 'submit': {
+      const lane = laneOf(id, user.id)!
+      const last = get<{ round: number }>(
+        'SELECT MAX(round) AS round FROM submissions WHERE request_id = :id AND (designer_id = :uid OR designer_id IS NULL)',
+        { id, uid: user.id },
+      )
+      const round = (last?.round ?? 0) + 1
+      const submissionId = Number(
+        run(
+          'INSERT INTO submissions (request_id, round, author_id, note, created_at, designer_id) VALUES (:id, :round, :uid, :note, :now, :uid)',
+          { id, round, uid: user.id, note, now: Date.now() },
+        ).lastInsertRowid,
+      )
+      const count = claimFiles(user, body.fileIds, { requestId: id, submissionId, kind: 'deliverable' }, { imagesOnly: true })
+      if (count === 0) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
+      setLane(id, user.id, 'review')
+      logEvent(id, user.id, 'submit', lane.work_status, 'review', `${nameOf(user.id)} ${round}차 시안${note ? ` · ${note}` : ''}`, user.id)
+      notify(
+        [...requestersOf(req), approverFor(req.department) ?? req.requester_id],
+        user.id,
+        id,
+        `${nameOf(user.id)}님 ${round}차 시안 컨펌 요청이 왔습니다: ${req.title}`,
+      )
+      break
+    }
+    case 'reject':
+    case 'approve': {
+      const uid = pick()
+      const lane = laneOf(id, uid)!
+      const latest = laneLatest(id, uid)
+      if (!latest) throw new HttpError(400, '확인할 시안이 없습니다.')
+      if (action === 'reject') {
+        const pinCount = get<{ n: number }>('SELECT COUNT(*) AS n FROM pins p JOIN files f ON f.id = p.file_id WHERE f.submission_id = :sid', { sid: latest.id })!.n
+        if (!note && pinCount === 0) throw new HttpError(400, '반려 사유를 적거나 이미지에 핀으로 수정 사항을 남겨 주세요.')
+      }
+      run('UPDATE submissions SET decision = :decision, decided_by = :by, decided_at = :now, decision_note = :note WHERE id = :sid', {
+        sid: latest.id,
+        decision: action === 'reject' ? 'rejected' : 'approved',
+        by: user.id,
+        now: Date.now(),
+        note,
+      })
+      if (action === 'reject') {
+        setLane(id, uid, 'revising', lane.work_revision + 1)
+        logEvent(id, user.id, 'reject', 'review', 'revising', `${nameOf(uid)} ${latest.round}차 시안 반려${note ? ` · ${note}` : ''}`, uid)
+        notify([uid], user.id, id, `${latest.round}차 시안이 반려되었습니다: ${req.title}`)
+      } else {
+        setLane(id, uid, 'source-pending')
+        logEvent(id, user.id, 'approve', 'review', 'source-pending', `${nameOf(uid)} ${latest.round}차 시안 컨펌${note ? ` · ${note}` : ''}`, uid)
+        notify([uid], user.id, id, `컨펌 완료 · 작업 원본 파일을 올려 주세요: ${req.title}`)
+      }
+      break
+    }
+    case 'upload-source': {
+      const kind = ORIGINAL_KINDS.includes(body.originalKind as OriginalKind) ? (body.originalKind as OriginalKind) : 'file'
+      const link = text(body.originalLink, '링크', { max: 500 })
+      const tool = text(body.originalTool, '디자인 툴', { max: 40 })
+      if (link && !isHttpUrl(link)) throw new HttpError(400, '링크는 https:// 로 시작하는 주소를 넣어 주세요.')
+      if ((kind === 'figma' || kind === 'link') && !link) throw new HttpError(400, '작업 링크를 넣어 주세요.')
+      if (kind === 'tool' && !tool) throw new HttpError(400, '사용한 디자인 툴을 골라 주세요.')
+      const count = claimFiles(user, body.fileIds, { requestId: id, kind: 'final' })
+      if (kind === 'file' && count === 0) throw new HttpError(400, '작업 원본 파일을 한 개 이상 올려 주세요.')
+      // 요청의 원본 형태는 마지막으로 올린 작업자 것으로 둔다(보관함 표시용)
+      run('UPDATE requests SET original_kind = :kind, original_link = :link, original_tool = :tool WHERE id = :id', { id, kind, link, tool: kind === 'tool' ? tool : '' })
+      setLane(id, user.id, 'done')
+      const what = [nameOf(user.id), ORIGINAL_LABEL[kind] + (kind === 'tool' ? `(${tool})` : ''), count > 0 ? `원본 ${count}개` : '', note].filter(Boolean).join(' · ')
+      logEvent(id, user.id, 'upload-source', 'source-pending', 'done', what, user.id)
+      notify(requestersOf(req), user.id, id, `${nameOf(user.id)}님이 작업을 마쳤습니다(원본 등록): ${req.title}`)
+      break
+    }
+    case 'undo': {
+      const uid = String(body.designerId)
+      const t = laneUndoTarget(id, uid)
+      if (!t || !(isManager(user) || t.actor_id === user.id)) throw new HttpError(403, '되돌릴 단계가 없습니다. 화면을 새로 고쳐 주세요.')
+      const lane = laneOf(id, uid)!
+      const latest = laneLatest(id, uid)
+      let revision: number | undefined
+      if (t.type === 'submit' && latest && latest.decision === null) {
+        // 올린 시안을 지운다(핀·핀 댓글·시안 파일 기록 포함). 예전 방식으로 함께 올린 차수는 그 사람 파일만
+        const sid = latest.id
+        const own = 'SELECT id FROM files WHERE submission_id = :sid AND uploader_id = :uid'
+        run(`DELETE FROM comments WHERE pin_id IN (SELECT id FROM pins WHERE file_id IN (${own}))`, { sid, uid })
+        run(`DELETE FROM pins WHERE file_id IN (${own})`, { sid, uid })
+        run('DELETE FROM files WHERE submission_id = :sid AND uploader_id = :uid', { sid, uid })
+        if (!get('SELECT 1 FROM files WHERE submission_id = :sid', { sid })) run('DELETE FROM submissions WHERE id = :sid', { sid })
+      }
+      if ((t.type === 'approve' || t.type === 'reject') && latest) {
+        run("UPDATE submissions SET decision = NULL, decided_by = NULL, decided_at = NULL, decision_note = '' WHERE id = :sid", { sid: latest.id })
+      }
+      if (t.type === 'reject') revision = Math.max(0, lane.work_revision - 1)
+      setLane(id, uid, t.from_status as LaneStatus, revision)
+      run('UPDATE events SET undone = 1 WHERE id = :eid', { eid: t.id })
+      logEvent(id, user.id, 'undo', lane.work_status, t.from_status, `${nameOf(uid)} · 취소한 단계: ${UNDO_LABEL[t.type]}${note ? ` · ${note}` : ''}`, uid)
+      notify([uid, ...requestersOf(req)], user.id, id, `${nameOf(uid)}님 작업이 이전 단계로 되돌려졌습니다(${UNDO_LABEL[t.type]} 취소): ${req.title}`)
+      break
+    }
+    default:
+      throw new HttpError(400, '알 수 없는 동작입니다.')
+  }
+  afterLaneChange(user, req, syncRequest(req))
 }
 
 // ── 진행 동작 ─────────────────────────────────────────
@@ -777,6 +1029,12 @@ export function performAction(user: PublicUser, id: number, action: Action, body
   const assignees = assigneesOf(id)
   const everyone = [...requestersOf(req), ...assignees]
 
+  // 개별 컨펌: 작업 시작·컨펌 요청·컨펌·반려·원본 업로드는 작업자별로. 작업 취소도 작업자를 고르면(designerId) 그 사람 단계만
+  if (isIndividual(req, assignees) && (LANE_ACTIONS.includes(action) || (action === 'undo' && typeof body.designerId === 'string'))) {
+    transaction(() => laneAction(user, req, assignees, action, body, note))
+    return
+  }
+
   transaction(() => {
     switch (action) {
       case 'reassign': {
@@ -787,12 +1045,16 @@ export function performAction(user: PublicUser, id: number, action: Action, body
           // 작업자는 그대로 두고 개별 컨펌만 켜거나 끈다(진행 상태는 그대로)
           if (individual === req.individual_confirm) throw new HttpError(400, '지금과 다른 작업자를 골라 주세요.')
           run('UPDATE requests SET individual_confirm = :individual, updated_at = :now WHERE id = :id', { id, individual, now: Date.now() })
+          // 진행 중에 켜면 지금 상태에서 작업자마다 이어서 진행한다. 끄면 요청 하나 단위로 돌아간다
+          run("UPDATE assignees SET work_status = '', work_revision = 0 WHERE request_id = :id", { id })
+          if (individual) initLanes(loadRequest(id))
           logEvent(id, user.id, 'individual', req.status, req.status, individual ? '개별 컨펌 켬' : '개별 컨펌 끔')
           return
         }
         run('UPDATE requests SET individual_confirm = :individual WHERE id = :id', { id, individual })
         run('DELETE FROM assignees WHERE request_id = :id', { id })
         ids.forEach((uid, ord) => run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, :ord)', { id, uid, ord }))
+        if (individual) run("UPDATE assignees SET work_status = 'waiting' WHERE request_id = :id", { id })
         setStatus(req, 'waiting', { started_at: null })
         const nameOf = (list: string[]) => list.map((uid) => findUser(uid)?.name ?? uid).join(', ')
         logEvent(id, user.id, action, req.status, 'waiting', `담당: ${nameOf(assignees)} → ${nameOf(ids)}`)
@@ -812,6 +1074,10 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         }
         run('DELETE FROM assignees WHERE request_id = :id', { id })
         ids.forEach((uid, ord) => run('INSERT INTO assignees (request_id, user_id, ord) VALUES (:id, :uid, :ord)', { id, uid, ord }))
+        // 개별 컨펌: 작업자마다 작업 대기부터(맡기·지정은 작업 시작 전에만 한다)
+        if (ids.length > 1 && get<{ n: number }>('SELECT individual_confirm AS n FROM requests WHERE id = :id', { id })!.n === 1) {
+          run("UPDATE assignees SET work_status = 'waiting' WHERE request_id = :id", { id })
+        }
         const to: Status = req.status === 'requested' ? 'waiting' : req.status
         if (to !== req.status) setStatus(req, to)
         else run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
@@ -847,63 +1113,6 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         return
       }
       case 'submit': {
-        if (isIndividual(req, assignees)) {
-          // 개별 컨펌: 모으는 중인 차수에 내 시안을 더한다(없으면 새 차수). 모두 올리면 시안 확인으로
-          const open = openRound(req)
-          let submissionId: number
-          let round: number
-          if (open) {
-            submissionId = open.id
-            round = open.round
-          } else {
-            const last = get<{ round: number }>('SELECT MAX(round) AS round FROM submissions WHERE request_id = :id', { id })
-            round = (last?.round ?? 0) + 1
-            const result = run(
-              `INSERT INTO submissions (request_id, round, author_id, note, created_at) VALUES (:id, :round, :author, '', :now)`,
-              { id, round, author: user.id, now: Date.now() },
-            )
-            submissionId = Number(result.lastInsertRowid)
-          }
-          // 바로 컨펌 요청(남은 작업자를 기다리지 않음): 담당이 아닌 관리자(슈퍼관리자·관리자)만.
-          // 담당인 관리자는 다른 작업자처럼 모두 올릴 때까지 기다린다. 단, 작업자 변경 등으로 남은 사람이 없는데 멈춘 요청은 넘길 수 있다
-          const before = partsOf(submissionId)
-          const leftBefore = assignees.filter((uid) => !before.some((p) => p.user_id === uid))
-          const force = isManager(user) && (!assignees.includes(user.id) || leftBefore.length === 0)
-          const count = claimFiles(user, body.fileIds, { requestId: id, submissionId, kind: 'deliverable' }, { imagesOnly: true })
-          // 바로 컨펌 요청은 작업자들이 이미 올린 시안이 있으면 새 이미지 없이도 된다
-          if (count === 0 && !(force && before.length > 0)) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
-          if (count > 0) {
-            run('INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:submissionId, :uid, :note, :now) ON CONFLICT DO NOTHING', {
-              submissionId,
-              uid: user.id,
-              note,
-              now: Date.now(),
-            })
-          }
-          // 차수 메모: 작업자별 메모를 "이름: 메모" 로 모은다
-          const parts = partsOf(submissionId)
-          const memo = parts
-            .filter((p) => p.note)
-            .map((p) => `${findUser(p.user_id)?.name ?? p.user_id}: ${p.note}`)
-            .join('\n')
-          run('UPDATE submissions SET note = :memo WHERE id = :submissionId', { submissionId, memo })
-          const done = assignees.filter((uid) => parts.some((p) => p.user_id === uid))
-          const left = assignees.filter((uid) => !done.includes(uid))
-          const progress = `${done.length}/${assignees.length}`
-          if (left.length === 0 || force) {
-            setStatus(req, 'review')
-            const how = left.length === 0 ? `작업자 ${assignees.length}명 모두 올림` : `${user.role === 'superadmin' ? '슈퍼관리자' : '관리자'}가 바로 컨펌 요청(${progress} 올림)`
-            logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · ${how}${note ? ` · ${note}` : ''}`)
-            notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
-            notify(assignees, user.id, id, left.length === 0 ? `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}` : `관리자가 ${round}차 시안을 바로 컨펌 요청했습니다(${progress} 올림): ${req.title}`)
-          } else {
-            run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
-            const leftNames = left.map((uid) => findUser(uid)?.name ?? uid).join(', ')
-            logEvent(id, user.id, 'submit-part', req.status, req.status, `${round}차 시안 올림 (${progress}) · 남은 작업자: ${leftNames}${note ? ` · ${note}` : ''}`)
-            notify(left, user.id, id, `${findUser(user.id)?.name ?? '작업자'}님이 ${round}차 시안을 올렸습니다(${progress}). 시안을 올려 주세요: ${req.title}`)
-          }
-          return
-        }
         const last = get<{ round: number }>('SELECT MAX(round) AS round FROM submissions WHERE request_id = :id', { id })
         const round = (last?.round ?? 0) + 1
         const result = run(
@@ -1054,10 +1263,17 @@ export function addPin(user: PublicUser, fileId: string, body: Record<string, un
   if (!file || file.request_id === null || file.submission_id === null) throw new HttpError(404, '시안을 찾을 수 없습니다.')
   const req = loadRequest(file.request_id)
   requireAction(user, req, 'pin')
-  const latest = get<{ id: number }>('SELECT id FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1', {
-    id: req.id,
-  })
-  if (latest?.id !== file.submission_id) throw new HttpError(400, '핀은 최신 시안에만 꽂을 수 있습니다.')
+  if (isIndividual(req, assigneesOf(req.id))) {
+    const owner = get<{ designer_id: string | null }>('SELECT designer_id FROM submissions WHERE id = :sid', { sid: file.submission_id })?.designer_id ?? file.uploader_id
+    if (laneOf(req.id, owner)?.work_status !== 'review' || laneLatest(req.id, owner)?.id !== file.submission_id) {
+      throw new HttpError(400, '핀은 컨펌 대기 중인 최신 시안에만 꽂을 수 있습니다.')
+    }
+  } else {
+    const latest = get<{ id: number }>('SELECT id FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1', {
+      id: req.id,
+    })
+    if (latest?.id !== file.submission_id) throw new HttpError(400, '핀은 최신 시안에만 꽂을 수 있습니다.')
+  }
   const x = Number(body.x)
   const y = Number(body.y)
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) throw new HttpError(400, '핀 위치가 올바르지 않습니다.')
@@ -1198,4 +1414,13 @@ export function notifyLink(userIds: string[], message: string, link: string) {
 
 export function markNotificationsRead(userId: string) {
   run('UPDATE notifications SET read_at = :now WHERE user_id = :userId AND read_at IS NULL', { userId, now: Date.now() })
+}
+
+// 서버가 켜질 때 한 번: 개별 컨펌 요청 중 작업자 상태가 아직 없는 것(예전 요청)을 채운다
+for (const row of all<RequestRow>('SELECT * FROM requests WHERE individual_confirm = 1')) {
+  try {
+    transaction(() => initLanes(row))
+  } catch (e) {
+    console.error('개별 컨펌 작업자 상태를 채우지 못했습니다', row.id, e)
+  }
 }

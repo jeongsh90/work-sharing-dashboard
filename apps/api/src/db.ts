@@ -200,6 +200,13 @@ addColumn('users', 'show_on_home', 'INTEGER NOT NULL DEFAULT 1')
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 // 보류(요청 수정에서 체크): 일정은 그대로 두고 잠시 멈춘 요청. 마감 지남·이번 주 마감에 걸리지 않는다.
 addColumn('requests', 'on_hold', 'INTEGER NOT NULL DEFAULT 0')
+// 개별 컨펌: 작업자마다 진행 상태(work_status)와 반려 횟수(work_revision). 개별 컨펌이 아니면 ''
+addColumn('assignees', 'work_status', "TEXT NOT NULL DEFAULT ''")
+addColumn('assignees', 'work_revision', 'INTEGER NOT NULL DEFAULT 0')
+// 개별 컨펌: 이 시안을 올린 작업자(작업자마다 차수가 따로). 일반 요청·예전 개별 컨펌(여럿이 한 차수)은 비어 있다
+addColumn('submissions', 'designer_id', 'TEXT')
+// 개별 컨펌: 작업자 한 사람의 진행 기록이면 그 작업자(from/to 는 그 사람 상태)
+addColumn('events', 'designer_id', 'TEXT')
 // 개발 요청(요청서의 "개발요청" 체크). 홈 작업 현황에서 디자인 요청과 나눠 보인다.
 // 칸을 처음 만들 때 정상훈 담당의 계속 업무는 개발 건으로 옮긴다(한 번만).
 if (addColumn('requests', 'is_dev', 'INTEGER NOT NULL DEFAULT 0')) {

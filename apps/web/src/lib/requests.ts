@@ -33,7 +33,7 @@ export type DesignRequest = {
   onHold: boolean // 보류(요청 수정에서 체크). 일정은 그대로 두고 마감 지남·이번 주 마감에 걸리지 않는다
   isDev: boolean // 개발 요청(요청서의 "개발요청" 체크). 홈 작업 현황에서 따로 보인다
   individualConfirm: boolean // 개별 컨펌(작업자마다 시안)
-  partsDone: string[] // 개별 컨펌: 이번 차수에 시안을 올린 작업자
+  lanes: Lane[] // 개별 컨펌: 작업자마다 진행 상태(일반 요청은 빈 목록)
   urgency: Urgency
   status: RequestStatus
   revision: number // 수정 차수. 수정 중일 때 표시
@@ -73,7 +73,7 @@ export type RequestSummaryDto = {
   designers: string[]
   coRequesters: string[] // 공동 요청자(같은 팀에서 함께 요청한 사람). 원래 요청자처럼 내 요청·컨펌
   individualConfirm: boolean // 개별 컨펌: 작업자마다 시안을 올리고 모두 올리면 시안 확인으로
-  partsDone?: string[] // 개별 컨펌: 이번 차수에 시안을 올린 작업자
+  lanes?: Lane[] // 개별 컨펌: 작업자마다 진행 상태
   urgency: Urgency
   status: RequestStatus
   revision: number
@@ -115,7 +115,7 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     onHold: dto.onHold ?? false,
     isDev: dto.isDev ?? false,
     individualConfirm: !!dto.individualConfirm && dto.designers.length > 1,
-    partsDone: dto.partsDone ?? [],
+    lanes: dto.lanes ?? [],
     urgency: dto.urgency,
     status: dto.status,
     revision: dto.revision,
@@ -209,15 +209,34 @@ export function formatDateTime(date: Date) {
 }
 
 // 마감 표시: 보류면 마감 일시 없이 "보류", 계속 업무면 "계속 업무"
-// 작업자 한 사람에게 보이는 상태. 개별 컨펌이면 작업자마다 다르다:
-// 아직 시안을 안 올린 사람은 요청이 컨펌 대기여도 작업 중, 이미 올린 사람은 남은 작업자를 기다려도 컨펌 대기
-export function statusFor(r: Pick<DesignRequest, "status" | "individualConfirm" | "partsDone" | "revision">, userId: string): RequestStatus {
-  if (!r.individualConfirm) return r.status
-  const done = r.partsDone.includes(userId)
-  if (r.status === "review" && !done) return "in-progress"
-  if ((r.status === "in-progress" || r.status === "revising") && done) return "review"
-  return r.status
+// ── 개별 컨펌: 작업자별 진행 ──
+// 작업자마다: 작업 대기 → 작업 중 → 컨펌 대기 → (반려) n차 수정 중 → … → (컨펌) 원본 대기 → (원본 업로드) 완료
+// 요청 전체 상태는 서버가 가장 늦은 작업자 기준으로 계산한다(apps/api/src/requests.ts)
+export type LaneStatus = "waiting" | "in-progress" | "review" | "revising" | "source-pending" | "done"
+export type Lane = { userId: string; status: LaneStatus; revision: number }
+export const LANE_STATUSES: LaneStatus[] = ["waiting", "in-progress", "review", "revising", "source-pending", "done"]
+export const LANE_LABEL: Record<LaneStatus, string> = {
+  waiting: "작업 대기",
+  "in-progress": "작업 중",
+  review: "컨펌 대기",
+  revising: "수정 중",
+  "source-pending": "원본 대기",
+  done: "완료",
 }
+export const laneText = (l: Pick<Lane, "status" | "revision">) => (l.status === "revising" ? `${l.revision}차 수정 중` : LANE_LABEL[l.status])
+
+// 한 사람에게 보이는 상태. 개별 컨펌이면 작업자는 자기 상태, 요청자는 컨펌 대기인 작업자가 있으면 컨펌 대기(볼 시안이 있다)
+type Viewable = Pick<DesignRequest, "status" | "revision" | "individualConfirm" | "lanes" | "requesterId" | "coRequesters">
+export function viewAs<T extends Viewable>(r: T, userId: string): T {
+  if (!r.individualConfirm || r.lanes.length === 0) return r
+  const lane = r.lanes.find((l) => l.userId === userId)
+  if (lane) return { ...r, status: lane.status, revision: lane.revision }
+  if (isRequesterOf(r, userId) && (r.status === "in-progress" || r.status === "revising") && r.lanes.some((l) => l.status === "review")) {
+    return { ...r, status: "review" }
+  }
+  return r
+}
+export const statusFor = (r: Viewable, userId: string): RequestStatus => viewAs(r, userId).status
 
 export function dueText(r: { ongoing: boolean; onHold?: boolean; dueAt: Date }) {
   if (r.onHold) return "보류"
@@ -280,6 +299,7 @@ export type SubmissionDto = {
   decidedBy: string | null
   decidedAt: number | null
   decisionNote: string
+  designerId?: string | null // 개별 컨펌: 이 시안을 올린 작업자(예전 방식으로 함께 올린 차수는 비어 있다)
   files: FileInfo[]
   parts: { userId: string; note: string; createdAt: number }[] // 개별 컨펌: 이 차수에 시안을 올린 작업자
 }
@@ -292,6 +312,7 @@ export type EventDto = {
   toStatus: RequestStatus | null
   note: string
   createdAt: number
+  designerId?: string | null // 개별 컨펌: 작업자 한 사람의 기록이면 그 작업자
 }
 
 // 서버가 정해 주는, 지금 로그인한 사람이 이 요청에 할 수 있는 동작
@@ -329,6 +350,7 @@ export type RequestDetailDto = RequestSummaryDto & {
   events: EventDto[]
   actions: RequestAction[]
   undo: { label: string; to: RequestStatus } | null // 작업 취소로 되돌릴 마지막 단계와 돌아갈 상태
+  laneUndo?: { designerId: string; label: string; to: LaneStatus }[] // 개별 컨펌: 내가 되돌릴 수 있는 작업자별 단계
   finalApprover: string | null // 부서별 최종 컨펌자(정해진 부서만). 이 사람이 컨펌해야 완료
 }
 
@@ -352,4 +374,5 @@ export const EVENT_LABEL: Record<string, string> = {
   cancel: '요청 취소',
   undo: '작업 취소',
   'ask-requester': '요청자 확인 요청',
+  'part-status': '작업자 상태 변경(관리자)',
 }

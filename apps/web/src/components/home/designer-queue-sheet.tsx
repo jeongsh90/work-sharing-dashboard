@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { StatusBadge, UrgencyBadge } from "@/components/home/status-badge"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { UserAvatar } from "@/components/user-avatar"
-import { dueText, type DesignRequest, type Designer, type RequestStatus, statusFor } from "@/lib/requests"
+import { dueText, type DesignRequest, type Designer, type RequestStatus, viewAs } from "@/lib/requests"
 import { openRequest } from "@/lib/router"
 import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 
@@ -42,7 +42,7 @@ export function DesignerQueueSheet({
   onClose: () => void
 }) {
   // 개별 컨펌 요청은 이 작업자의 상태로 나눈다(안 올렸으면 작업 중, 올렸으면 검토 대기)
-  const mine = designer ? requests.filter((r) => r.designers.includes(designer.id)).map((r) => ({ ...r, status: statusFor(r, designer.id) })) : []
+  const mine = designer ? requests.filter((r) => r.designers.includes(designer.id)).map((r) => viewAs(r, designer.id)) : []
   const groups = QUEUE_GROUPS.map((g) => ({
     ...g,
     items: mine.filter((r) => g.statuses.includes(r.status)).sort(byDue),

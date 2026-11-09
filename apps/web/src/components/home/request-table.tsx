@@ -38,7 +38,9 @@ import {
   formatDateTime,
   isActive,
   isUnassigned,
-  statusFor,
+  LANE_LABEL,
+  laneText,
+  viewAs,
   type DesignRequest,
   type RequestStatus,
 } from "@/lib/requests"
@@ -90,10 +92,10 @@ export function RequestTable({
   statusTabs?: boolean
   asDesigner?: string
 }) {
-  // 개별 컨펌 요청은 작업자마다 상태가 다르다: 담당 작업자 화면에서는 그 사람 상태(안 올렸으면 작업 중, 올렸으면 검토 대기)
+  // 개별 컨펌 요청은 작업자마다 상태가 다르다: 담당 작업자는 자기 상태, 요청자는 컨펌 대기인 작업자가 있으면 컨펌 대기
   const viewer = asDesigner ?? loadSession()?.id
   const requests = useMemo(
-    () => allRequests.map((r) => (viewer && r.individualConfirm && r.designers.includes(viewer) ? { ...r, status: statusFor(r, viewer) } : r)),
+    () => allRequests.map((r) => (viewer && r.individualConfirm ? viewAs(r, viewer) : r)),
     [allRequests, viewer],
   )
   const [filter, setFilter] = useState("all")
@@ -307,11 +309,13 @@ export function RequestTable({
                     ) : (
                       <StatusBadge request={r} />
                     )}
-                    {/* 개별 컨펌: 이번 차수에 시안을 올린 작업자 수 */}
-                    {r.individualConfirm && (r.partsDone.length > 0 || r.status === "review") && (
-                      <Tip content={`올린 사람: ${r.partsDone.map((id) => userName(id)).join(", ") || "없음"}\n남은 사람: ${r.designers.filter((id) => !r.partsDone.includes(id)).map((id) => userName(id)).join(", ") || "없음"}`}>
+                    {/* 개별 컨펌: 작업자별 진행(마우스를 올리면 사람마다 상태) */}
+                    {r.individualConfirm && r.lanes.length > 0 && (
+                      <Tip content={r.lanes.map((l) => `${userName(l.userId) ?? l.userId}: ${laneText(l)}`).join("\n")}>
                         <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                          개별 {r.partsDone.length}/{r.designers.length} 올림
+                          개별 · {LANE_LABEL.review} {r.lanes.filter((l) => l.status === "review").length}/{r.lanes.length}
+                          {r.lanes.some((l) => l.status === "done" || l.status === "source-pending") &&
+                            ` · 컨펌 ${r.lanes.filter((l) => l.status === "done" || l.status === "source-pending").length}`}
                         </div>
                       </Tip>
                     )}
