@@ -23,6 +23,7 @@ import {
   type DesignRequest,
   type Designer,
   type RequestStatus,
+  statusFor,
 } from "@/lib/requests"
 import { INNER_GRID } from "@/lib/layout"
 import { PRESENCE_DOT, PRESENCE_LABEL, type Presence } from "@/lib/presence"
@@ -97,7 +98,8 @@ export function DesignerCards({
         const now: Presence = presence[d.id] ?? "off"
         // 진행 중인 작업은 마감이 이번 주가 아니어도 모두 보인다(카드 활성화·테두리 빛·작업 표시).
         // 완료는 이번 주에 완료한 것만(완료 시각 기준).
-        const mine = requests.filter((r) => r.designers.includes(d.id))
+        // 개별 컨펌 요청은 이 작업자의 상태로 센다(statusFor)
+        const mine = requests.filter((r) => r.designers.includes(d.id)).map((r) => ({ ...r, status: statusFor(r, d.id) }))
         const counted = mine.filter((r) => isActive(r) || (r.completedAt !== null && isThisWeek(r.completedAt)))
         const tags = WEEK_TAGS.map((t) => ({ ...t, count: counted.filter((r) => t.statuses.includes(r.status)).length }))
         const working = mine

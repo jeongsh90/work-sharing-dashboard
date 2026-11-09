@@ -403,6 +403,13 @@ const isHttpUrl = (v: string) => {
   }
 }
 
+// 개별 컨펌: 이번 차수(아직 컨펌·반려 전)에 시안을 올린 작업자. 작업자별 상태(올린 사람 컨펌 대기 / 안 올린 사람 작업 중)에 쓴다
+function partsDoneOf(row: RequestRow) {
+  if (row.individual_confirm !== 1 || !['in-progress', 'revising', 'review'].includes(row.status)) return []
+  const s = get<{ id: number; decision: string | null }>('SELECT id, decision FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1', { id: row.id })
+  return s && s.decision === null ? partsOf(s.id).map((p) => p.user_id) : []
+}
+
 function summary(row: RequestRow & { requester_name: string }) {
   return {
     id: row.id,
@@ -422,6 +429,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     designers: assigneesOf(row.id),
     coRequesters: coRequestersOf(row.id), // 공동 요청자(같은 팀, 여러 명)
     individualConfirm: row.individual_confirm === 1,
+    partsDone: partsDoneOf(row),
     urgency: row.urgency,
     status: row.status,
     revision: row.revision,

@@ -297,6 +297,14 @@ export function RequestTable({
                     ) : (
                       <StatusBadge request={r} />
                     )}
+                    {/* 개별 컨펌: 이번 차수에 시안을 올린 작업자 수 */}
+                    {r.individualConfirm && (r.partsDone.length > 0 || r.status === "review") && (
+                      <Tip content={`올린 사람: ${r.partsDone.map((id) => userName(id)).join(", ") || "없음"}\n남은 사람: ${r.designers.filter((id) => !r.partsDone.includes(id)).map((id) => userName(id)).join(", ") || "없음"}`}>
+                        <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                          개별 {r.partsDone.length}/{r.designers.length} 올림
+                        </div>
+                      </Tip>
+                    )}
                   </TableCell>
                   <TableCell className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>

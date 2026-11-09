@@ -32,6 +32,8 @@ export type DesignRequest = {
   ongoing: boolean // 계속 업무(마감 없음). 이때 dueAt 은 아주 먼 날짜라 마감 지남·이번 주 마감에 걸리지 않는다
   onHold: boolean // 보류(요청 수정에서 체크). 일정은 그대로 두고 마감 지남·이번 주 마감에 걸리지 않는다
   isDev: boolean // 개발 요청(요청서의 "개발요청" 체크). 홈 작업 현황에서 따로 보인다
+  individualConfirm: boolean // 개별 컨펌(작업자마다 시안)
+  partsDone: string[] // 개별 컨펌: 이번 차수에 시안을 올린 작업자
   urgency: Urgency
   status: RequestStatus
   revision: number // 수정 차수. 수정 중일 때 표시
@@ -71,6 +73,7 @@ export type RequestSummaryDto = {
   designers: string[]
   coRequesters: string[] // 공동 요청자(같은 팀에서 함께 요청한 사람). 원래 요청자처럼 내 요청·컨펌
   individualConfirm: boolean // 개별 컨펌: 작업자마다 시안을 올리고 모두 올리면 시안 확인으로
+  partsDone?: string[] // 개별 컨펌: 이번 차수에 시안을 올린 작업자
   urgency: Urgency
   status: RequestStatus
   revision: number
@@ -111,6 +114,8 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     ongoing: dto.ongoing,
     onHold: dto.onHold ?? false,
     isDev: dto.isDev ?? false,
+    individualConfirm: !!dto.individualConfirm && dto.designers.length > 1,
+    partsDone: dto.partsDone ?? [],
     urgency: dto.urgency,
     status: dto.status,
     revision: dto.revision,
@@ -204,6 +209,16 @@ export function formatDateTime(date: Date) {
 }
 
 // 마감 표시: 보류면 마감 일시 없이 "보류", 계속 업무면 "계속 업무"
+// 작업자 한 사람에게 보이는 상태. 개별 컨펌이면 작업자마다 다르다:
+// 아직 시안을 안 올린 사람은 요청이 컨펌 대기여도 작업 중, 이미 올린 사람은 남은 작업자를 기다려도 컨펌 대기
+export function statusFor(r: Pick<DesignRequest, "status" | "individualConfirm" | "partsDone" | "revision">, userId: string): RequestStatus {
+  if (!r.individualConfirm) return r.status
+  const done = r.partsDone.includes(userId)
+  if (r.status === "review" && !done) return "in-progress"
+  if ((r.status === "in-progress" || r.status === "revising") && done) return "review"
+  return r.status
+}
+
 export function dueText(r: { ongoing: boolean; onHold?: boolean; dueAt: Date }) {
   if (r.onHold) return "보류"
   return r.ongoing ? "계속 업무" : formatDateTime(r.dueAt)
