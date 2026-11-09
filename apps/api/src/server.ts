@@ -8,8 +8,6 @@ import { pipeline } from 'node:stream/promises'
 import {
   ALLOWED_ORIGINS,
   COMPANY_EMAIL_DOMAIN,
-  LOCK_MS,
-  MAX_FAILED_LOGINS,
   SWITCH_ACCOUNTS,
   BACKUP_DIR,
   ONLINE_VIEWERS,
@@ -102,7 +100,6 @@ import {
   touchSeen,
 } from './users.ts'
 
-const failures = new Map<string, { count: number; lockedUntil: number }>()
 // 회원가입 남용 막기: 같은 주소(IP)에서 한 시간에 5번까지
 const signups = new Map<string, number[]>()
 const SIGNUP_LIMIT = 5
@@ -206,19 +203,13 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse) {
     return sendJson(res, 400, { error: `회사 이메일(@${COMPANY_EMAIL_DOMAIN})로 로그인해 주세요.` })
   }
 
-  const failure = failures.get(id)
-  if (failure && failure.lockedUntil > Date.now()) {
-    return sendJson(res, 429, { error: '로그인에 여러 번 실패했습니다. 10분 뒤에 다시 시도해 주세요.' })
-  }
-
   const user = await verifyUser(id, password)
   if (!user) {
-    const count = (failure?.count ?? 0) + 1
-    failures.set(id, { count, lockedUntil: count >= MAX_FAILED_LOGINS ? Date.now() + LOCK_MS : 0 })
+    // 잠그지는 않는다(10분 대기 없음). 대신 틀리면 1초 쉬고 답해 비밀번호를 마구 넣어 보는 것만 느리게 한다
+    await new Promise((r) => setTimeout(r, 1000))
     return sendJson(res, 401, { error: '아이디 또는 비밀번호가 맞지 않습니다.' })
   }
 
-  failures.delete(id)
   if (!user.approved) {
     return sendJson(res, 403, { error: '가입 승인을 기다리고 있습니다. 슈퍼관리자가 승인하면 로그인할 수 있습니다.' })
   }

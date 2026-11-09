@@ -14,6 +14,7 @@ export const CHANGELOG: Release[] = [
     version: '0.6.12',
     date: '2026-11-10',
     changes: [
+      '로그인: 여러 번 틀려도 "10분 뒤에 다시 시도" 잠금 없음(틀리면 1초 뒤 안내)',
       '사내망 직통: 사내 IP(192.168.x) PC 는 등록하지 않았어도 직통 주소(https://owenfood-wsd.duckdns.org:4443)로 바로 들어옴 — IP 가 바뀐 PC·바깥 중계가 막혔을 때도 접속. 외부 IP 는 허용한 것만',
     ],
   },

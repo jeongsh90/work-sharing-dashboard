@@ -26,9 +26,6 @@ export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 // 로그인 화면에서 "로그인 상태 유지"를 고르면 이 기간 동안 다시 로그인하지 않아도 된다.
 export const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
-// 같은 아이디로 연속 실패하면 잠시 막는다.
-export const MAX_FAILED_LOGINS = 5
-export const LOCK_MS = 10 * 60 * 1000
 
 // 계정 전환 묶음: 이 계정들끼리는 헤더의 "계정 전환"으로 비밀번호 없이 오갈 수 있다(테스트·운영 확인용).
 // 건의게시판에 새 글이 올라오면 알림을 받을 계정
