@@ -290,3 +290,123 @@
   pointer-events: none;
   color: var(--muted-foreground);
 }
+
+/* 구글 색인 보고서(index-report-page): 올린 보고서 HTML 을 WSD 디자인으로 다시 입힌다. 원본 스타일은 서버에서 뺀다. */
+.index-report {
+  @apply flex flex-col gap-3 text-sm leading-relaxed break-keep;
+}
+.index-report h1 {
+  display: none; /* 제목은 화면 머리에 따로 보인다 */
+}
+.index-report h2 {
+  @apply mt-5 border-b pb-2 text-base font-semibold first:mt-0;
+}
+.index-report h3 {
+  @apply mt-2 text-sm font-semibold;
+}
+.index-report p {
+  @apply my-0;
+}
+.index-report b,
+.index-report strong {
+  @apply font-semibold;
+}
+.index-report ul {
+  @apply flex list-disc flex-col gap-1 pl-5;
+}
+.index-report code {
+  @apply rounded bg-muted px-1 py-0.5 font-mono text-xs;
+}
+.index-report .meta {
+  @apply text-xs text-muted-foreground;
+}
+.index-report .note {
+  @apply text-xs text-muted-foreground;
+}
+.index-report .summary {
+  @apply flex flex-col gap-1.5 rounded-xl border bg-muted/40 p-4;
+}
+.index-report .tiles {
+  @apply grid grid-cols-2 gap-3 lg:grid-cols-4;
+}
+.index-report .tile {
+  @apply flex flex-col gap-0.5 rounded-xl border bg-card p-3;
+}
+.index-report .tile .k {
+  @apply text-xs text-muted-foreground;
+}
+.index-report .tile .v {
+  @apply text-2xl leading-tight font-semibold tabular-nums;
+}
+.index-report .tile .s {
+  @apply text-xs text-muted-foreground;
+}
+.index-report .table-wrap {
+  @apply overflow-x-auto rounded-xl border;
+}
+.index-report table {
+  @apply w-full border-collapse text-sm;
+}
+.index-report th,
+.index-report td {
+  @apply border-b px-3 py-2 text-left align-top;
+}
+.index-report tr:last-child > th,
+.index-report tr:last-child > td {
+  @apply border-b-0;
+}
+.index-report th {
+  @apply bg-muted/50 font-medium whitespace-nowrap text-muted-foreground;
+}
+.index-report tr:last-child > th {
+  @apply text-foreground;
+}
+.index-report .c {
+  @apply text-center whitespace-nowrap;
+}
+.index-report .r,
+.index-report .n {
+  @apply text-right whitespace-nowrap tabular-nums;
+}
+.index-report tr.grp td {
+  @apply bg-muted/30 text-xs font-semibold text-muted-foreground;
+}
+.index-report .ok {
+  @apply font-semibold text-emerald-700 dark:text-emerald-300;
+}
+.index-report .wn {
+  @apply font-semibold text-amber-700 dark:text-amber-300;
+}
+.index-report .ng {
+  @apply font-semibold text-destructive;
+}
+.index-report .charts {
+  @apply grid grid-cols-1 gap-3 md:grid-cols-2;
+}
+.index-report .chart {
+  @apply rounded-xl border bg-card p-3;
+}
+.index-report .chart .t {
+  @apply mb-1 text-sm font-medium;
+}
+/* 차트 색을 테마에 맞춘다(원본의 고정 색 → WSD 색) */
+.index-report svg text {
+  font-family: inherit;
+}
+.index-report svg [fill="#1a1a1a"] {
+  fill: var(--foreground);
+}
+.index-report svg [fill="#555"],
+.index-report svg [fill="#888"] {
+  fill: var(--muted-foreground);
+}
+.index-report svg [fill="#e8590c"] {
+  @apply fill-blue-600 dark:fill-blue-400;
+}
+.index-report svg [fill="#868e96"] {
+  @apply fill-slate-400 dark:fill-slate-500;
+}
+.index-report svg [stroke="#ececf0"],
+.index-report svg [stroke="#bbb"] {
+  stroke: var(--border);
+}

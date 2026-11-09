@@ -7,6 +7,7 @@
     "start": "node src/server.ts",
     "user:set": "node src/set-user.ts",
     "backup": "node src/backup-now.ts",
+    "index-reports:import": "node src/import-index-reports.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

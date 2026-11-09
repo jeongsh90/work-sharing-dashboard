@@ -4,6 +4,7 @@ import {
   StickyNote,
   CalendarDays,
   FilePlus2,
+  FileSearch,
   FolderArchive,
   FolderOpen,
   HardDrive,
@@ -71,6 +72,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "ftp-servers", title: "FTP 서버", icon: Server, roles: ["superadmin"] },
       // 계정 정보(슈퍼관리자): 외부 서비스 계정 모음. 비밀번호는 서버에 암호화
       { id: "accounts", title: "계정 정보", icon: KeyRound, roles: ["superadmin"] },
+      // 구글 색인 보고서(슈퍼관리자): 서치콘솔 색인 요청 보고서를 날짜별로 올려 두고 본다
+      { id: "index-reports", title: "구글 색인 보고서", icon: FileSearch, roles: ["superadmin"] },
     ],
   },
   {

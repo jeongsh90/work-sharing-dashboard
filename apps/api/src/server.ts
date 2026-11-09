@@ -46,6 +46,7 @@ import { answerSuggestion, createSuggestion, deleteSuggestion, listSuggestions }
 import { createRoadmap, deleteRoadmap, listRoadmap, updateRoadmap } from './roadmap.ts'
 import { createWorklogEntry, deleteWorklogEntry, teamWorklog, updateWorklogEntry, worklog } from './worklog.ts'
 import { createMemo, deleteMemo, listMemos, updateMemo } from './memos.ts'
+import { deleteIndexReport, getIndexReport, indexReportPdf, listIndexReports, saveIndexReport } from './index-reports.ts'
 import { addChecklistItem, clearDoneChecklist, createChecklist, deleteChecklist, deleteChecklistItem, listChecklists, reorderChecklistItems, reorderChecklists, resetChecklist, updateChecklist, updateChecklistItem } from './checklists.ts'
 import { startBackupSchedule } from './backup.ts'
 import { startStorageSweep } from './storage-sweep.ts'
@@ -751,6 +752,27 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if ((m = path.match(/^\/api\/schedule-plans\/lines\/(\d{4}-\d{2}-\d{2})\/(\d+)$/))) {
     if (method === 'PATCH') return sendJson(res, 200, await updatePlanLine(user, m[1], Number(m[2]), await readJson(req)))
     if (method === 'DELETE') return sendJson(res, 200, await deletePlanLine(user, m[1], Number(m[2])))
+  }
+
+  // ── 구글 색인 보고서(index-reports.ts): 슈퍼관리자만 ──
+  if (path === '/api/index-reports') {
+    if (method === 'GET') return sendJson(res, 200, listIndexReports(user))
+    if (method === 'POST') return sendJson(res, 201, saveIndexReport(user, await readJson(req, 40_000_000)))
+  }
+  if ((m = path.match(/^\/api\/index-reports\/(\d+)(\/pdf)?$/))) {
+    const id = Number(m[1])
+    if (m[2] && method === 'GET') {
+      const pdf = indexReportPdf(user, id)
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Length': pdf.data.length,
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(pdf.name)}`,
+        'Cache-Control': 'private, no-store',
+      })
+      return res.end(pdf.data)
+    }
+    if (!m[2] && method === 'GET') return sendJson(res, 200, getIndexReport(user, id))
+    if (!m[2] && method === 'DELETE') return sendJson(res, 200, deleteIndexReport(user, id))
   }
 
   // ── 메모(memos.ts): 계정마다 내 것만 ──

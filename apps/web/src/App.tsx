@@ -49,6 +49,7 @@ const LoginBackground = lazy(() => import('@/components/login-background'))
 const WorklogPage = lazyPage(() => import('@/components/worklog-page'), (m) => m.WorklogPage)
 const ChecklistPage = lazyPage(() => import('@/components/checklist-page'), (m) => m.ChecklistPage)
 const MemoPage = lazyPage(() => import('@/components/memo-page'), (m) => m.MemoPage)
+const IndexReportPage = lazyPage(() => import('@/components/index-report-page'), (m) => m.IndexReportPage)
 const VersionPage = lazyPage(() => import('@/components/version-page'), (m) => m.VersionPage)
 
 // 새 버전을 올리면 예전 화면 조각 파일이 사라진다. 그 조각을 못 받으면 새로 고쳐 새 버전을 받는다.
@@ -234,6 +235,8 @@ export default function App() {
         return <FtpPage session={session} />
       case 'ftp-servers':
         return <FtpAdminPage />
+      case 'index-reports':
+        return <IndexReportPage />
       case 'accounts':
         return <AccountsPage />
       case 'team':
