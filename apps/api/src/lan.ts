@@ -263,7 +263,10 @@ export function unignoreLanMiss(user: PublicUser, userId: string) {
 function gate(handler: (req: IncomingMessage, res: ServerResponse) => void) {
   return (req: IncomingMessage, res: ServerResponse) => {
     if (req.method === 'OPTIONS') return handler(req, res)
-    const row = get<{ id: string }>('SELECT id FROM lan_ips WHERE ip = :ip', { ip: remoteIp(req) })
+    const ip = remoteIp(req)
+    const row = get<{ id: string }>('SELECT id FROM lan_ips WHERE ip = :ip', { ip })
+    // 사내 IP(192.168.x 등)는 등록하지 않았어도 지나간다(IP 가 바뀐 사무실 PC, 바깥 중계가 막혔을 때도 바로 들어오게). 외부 IP 는 허용한 것만
+    if (!row && PRIVATE_IP.test(ip)) return handler(req, res)
     if (!row) {
       // 등록하지 않은 PC: 화면이 이 응답을 보고 바깥 중계로 보낸다(브라우저가 응답을 읽을 수 있게 CORS 머리글을 붙인다)
       const origin = req.headers.origin
