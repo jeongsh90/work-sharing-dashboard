@@ -62,7 +62,7 @@ import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, up
 import { deleteRequestDraft, getRequestDraft, saveRequestDraft } from './request-drafts.ts'
 import { deleteDeptApprover, listDeptApprovers, setDeptApprover } from './dept-approvers.ts'
 import { accountSecret, addAccount, deleteAccount, listAccounts, reorderAccounts, updateAccount } from './accounts.ts'
-import { addLanIp, deleteLanIp, ignoreLanMiss, lanAddress, listLanIgnored, listLanIps, listLanMisses, reportLan, startLan, unignoreLanMiss, updateLanIp } from './lan.ts'
+import { addLanIp, deleteLanIp, ignoreLanMiss, lanAddress, lanExternalAddress, listLanIgnored, listLanIps, listLanMisses, reportLan, startLan, unignoreLanMiss, updateLanIp } from './lan.ts'
 import {
   addFtpServer,
   deleteFtpServer,
@@ -368,7 +368,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (method === 'POST' && path === '/api/login') return handleLogin(req, res)
   if (method === 'POST' && path === '/api/signup') return handleSignup(req, res)
   // 사내망 직통 주소(lan.ts). 화면이 이 주소의 /api/lan 에 닿으면 같은 사무실이라 보고 파일을 그쪽으로 주고받는다.
-  if (method === 'GET' && path === '/api/lan') return sendJson(res, 200, { url: lanAddress() })
+  if (method === 'GET' && path === '/api/lan') return sendJson(res, 200, { url: lanAddress(), externalUrl: lanExternalAddress() })
 
   if (method === 'POST' && path === '/api/logout') {
     const token = bearer(req)

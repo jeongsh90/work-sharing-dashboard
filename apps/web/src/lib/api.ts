@@ -49,18 +49,31 @@ function probeLan() {
   lanProbe = (async () => {
     let url: string | null = null
     try {
-      url = ((await (await fetch(`${API_BASE}/api/lan`)).json()) as { url: string | null }).url
-      if (!url) return null
-      const res = await fetch(`${url}/api/lan`, { signal: AbortSignal.timeout(8000) })
-      if (res.ok) lanResult = { ok: true }
-      else {
+      const info = (await (await fetch(`${API_BASE}/api/lan`)).json()) as { url: string | null; externalUrl?: string | null }
+      // 사내망 주소 먼저, 닿지 않으면 회사 밖용 주소(설정했을 때만). 어느 쪽이든 서버가 등록한 IP 만 통과시킨다
+      const candidates = [info.url, info.externalUrl].filter((u): u is string => !!u)
+      if (candidates.length === 0) return null
+      for (const candidate of candidates) {
+        url = candidate
+        let res: Response
+        try {
+          res = await fetch(`${candidate}/api/lan`, { signal: AbortSignal.timeout(8000) })
+        } catch {
+          continue // 닿지 않음 → 다음 주소
+        }
+        if (res.ok) {
+          lanResult = { ok: true }
+          return candidate
+        }
         // 등록 안 된 IP: 받은 표를 본 주소에 알려 관리 화면에 "누가·어느 IP"로 보이게 한다
         const body = (await res.json().catch(() => null)) as { nonce?: string } | null
         lanResult = body?.nonce ? { nonce: body.nonce } : null
+        return null
       }
-      return res.ok ? url : null
+      // 어느 주소에도 닿지 않음(회사 밖, 또는 브라우저가 로컬 네트워크 접근을 막음)
+      lanResult = { unreachable: true }
+      return null
     } catch {
-      // 사내망 주소에 닿지 않음(회사 밖, 또는 브라우저가 로컬 네트워크 접근을 막음)
       if (url) lanResult = { unreachable: true }
       return null
     } finally {

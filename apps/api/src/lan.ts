@@ -18,9 +18,13 @@ import type { PublicUser } from './users.ts'
 // 정식 인증서(Let's Encrypt, DNS 확인)를 붙여 https 로 연다. 화면(lib/api.ts)이 이 주소에 닿으면 올리기·받기를 이쪽으로 보낸다.
 //
 // 설정: data/lan.json = { "domain": "xxx.duckdns.org", "token": "DuckDNS 토큰", "port": 4443 }  (git 에 올리지 않는다)
+//
+// 회사 밖에서도 직통(선택): lan.json 에 "externalDomain": "yyy.duckdns.org" 를 더하면 그 주소는 회사 공인 IP 를 가리키게 하고
+// 같은 포트로 받는다(공유기에서 그 포트를 서버 PC 로 넘겨 주고, 서버 PC 방화벽도 바깥에 열어야 한다).
+// 인증서는 두 주소를 함께 받는다. 바깥에서 오는 PC 도 등록한 IP(관리 화면에서 허용한 외부 IP)만 지나간다.
 // 인증서: data/lan-cert/{key,cert}.pem. 90일짜리라 하루에 한 번 보고 30일 남으면 새로 받는다.
 
-type LanConfig = { domain: string; token: string; port?: number; email?: string }
+type LanConfig = { domain: string; token: string; port?: number; email?: string; externalDomain?: string; externalPort?: number }
 
 const CONFIG_FILE = join(DATA_DIR, 'lan.json')
 const CERT_DIR = join(DATA_DIR, 'lan-cert')
@@ -28,8 +32,10 @@ const RENEW_BEFORE_MS = 30 * 24 * 60 * 60 * 1000
 const DAY = 24 * 60 * 60 * 1000
 
 let lanUrl: string | null = null
-// 화면이 물어보면 알려 줄 사내망 주소(열려 있을 때만)
+let externalUrl: string | null = null
+// 화면이 물어보면 알려 줄 사내망 주소(열려 있을 때만)와 회사 밖용 주소(설정했을 때만)
 export const lanAddress = () => lanUrl
+export const lanExternalAddress = () => externalUrl
 
 // ── 등록한 PC(IP)만 쓰기 ──
 // 서버 PC 방화벽은 같은 사무실 네트워크 전체에 열어 두고(open-lan-4443-all.bat), 누가 쓸지는 여기서 정한다.
@@ -61,7 +67,8 @@ function requireSuperadmin(user: PublicUser) {
   if (user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자만 쓸 수 있습니다.')
 }
 
-const toDto = (r: IpRow) => ({ id: r.id, ip: r.ip, name: r.name, createdBy: r.created_by, createdAt: r.created_at, lastSeen: r.last_seen })
+// external: 회사 밖(공인) IP 로 허용한 PC
+const toDto = (r: IpRow) => ({ id: r.id, ip: r.ip, name: r.name, createdBy: r.created_by, createdAt: r.created_at, lastSeen: r.last_seen, external: !PRIVATE_IP.test(r.ip) })
 
 export function listLanIps(user: PublicUser) {
   requireSuperadmin(user)
@@ -72,9 +79,10 @@ export function listLanIps(user: PublicUser) {
 const PRIVATE_IP = /^(192\.168|10\.\d{1,3}|172\.(1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}$/
 
 function fields(body: Record<string, unknown>) {
+  // 사내 IP(192.168.x 등)와, 회사 밖에서 쓸 PC 의 외부(공인) IP 를 받는다. 외부 IP 는 관리자가 허용한 것만 지나간다
   const ip = typeof body.ip === 'string' ? body.ip.trim() : ''
-  if (!PRIVATE_IP.test(ip) || ip.split('.').some((n) => Number(n) > 255)) {
-    throw new HttpError(400, '사무실 PC 의 IP 를 입력해 주세요(예: 192.168.219.77).')
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || ip.split('.').some((n) => Number(n) > 255) || /^(0|127|169\.254|22[4-9]|2[3-5]\d)\./.test(ip)) {
+    throw new HttpError(400, 'PC 의 IP 를 입력해 주세요(예: 사내 192.168.219.77, 회사 밖은 외부 IP).')
   }
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 40) : ''
   if (!name) throw new HttpError(400, 'PC 이름을 입력해 주세요.')
@@ -285,10 +293,9 @@ function lanIp() {
   return null
 }
 
-const sub = (c: LanConfig) => c.domain.replace(/\.duckdns\.org$/, '')
 
-async function duck(c: LanConfig, params: Record<string, string>) {
-  const q = new URLSearchParams({ domains: sub(c), token: c.token, ...params })
+async function duck(c: LanConfig, params: Record<string, string>, domain = c.domain) {
+  const q = new URLSearchParams({ domains: domain.replace(/\.duckdns\.org$/, ''), token: c.token, ...params })
   const text = await (await fetch(`https://www.duckdns.org/update?${q}`)).text()
   if (!text.startsWith('OK')) throw new Error(`DuckDNS 응답: ${text}`)
 }
@@ -307,19 +314,20 @@ async function readCert() {
 async function issue(c: LanConfig) {
   log('인증서를 받는 중…', c.domain)
   const client = new acme.Client({ directoryUrl: acme.directory.letsencrypt.production, accountKey: await acme.crypto.createPrivateKey() })
-  const [key, csr] = await acme.crypto.createCsr({ commonName: c.domain })
+  const [key, csr] = await acme.crypto.createCsr({ commonName: c.domain, altNames: certNames(c) })
   const cert = await client.auto({
     csr,
     email: c.email,
     termsOfServiceAgreed: true,
     challengePriority: ['dns-01'],
-    challengeCreateFn: async (_authz, _challenge, keyAuthorization) => {
-      await duck(c, { txt: keyAuthorization })
+    // 주소마다(사내용·회사 밖용) 그 주소의 TXT 에 넣는다
+    challengeCreateFn: async (authz, _challenge, keyAuthorization) => {
+      await duck(c, { txt: keyAuthorization }, authz.identifier.value)
       // DuckDNS 가 TXT 를 퍼뜨릴 시간을 준다
       await new Promise((r) => setTimeout(r, 30_000))
     },
-    challengeRemoveFn: async () => {
-      await duck(c, { txt: 'removed', clear: 'true' }).catch(() => {})
+    challengeRemoveFn: async (authz) => {
+      await duck(c, { txt: 'removed', clear: 'true' }, authz.identifier.value).catch(() => {})
     },
   })
   await mkdir(CERT_DIR, { recursive: true })
@@ -329,9 +337,18 @@ async function issue(c: LanConfig) {
   return { key: key.toString(), cert }
 }
 
+// 인증서에 넣을 주소들(사내용 + 회사 밖용)
+const certNames = (c: LanConfig) => [c.domain, ...(c.externalDomain ? [c.externalDomain] : [])]
+
 async function ensureCert(c: LanConfig) {
   const cur = await readCert()
-  if (cur && cur.expires - Date.now() > RENEW_BEFORE_MS) return cur
+  // 회사 밖용 주소를 새로 넣었으면 그 주소까지 든 인증서를 다시 받는다
+  const covers = (cert: string) => {
+    const info = acme.crypto.readCertificateInfo(cert).domains
+    const names = new Set([info.commonName, ...info.altNames])
+    return certNames(c).every((n) => names.has(n))
+  }
+  if (cur && cur.expires - Date.now() > RENEW_BEFORE_MS && covers(cur.cert)) return cur
   return issue(c)
 }
 
@@ -357,6 +374,19 @@ export async function startLan(handler: (req: IncomingMessage, res: ServerRespon
     })
     lanUrl = `https://${c.domain}:${port}`
     log(`열림: ${lanUrl} → ${ip}`)
+    // 회사 밖용 주소: 회사 공인 IP 를 가리키게 한다(ip 를 비우면 DuckDNS 가 이 서버의 바깥 IP 로 맞춘다). 30분마다 다시 맞춘다
+    if (c.externalDomain) {
+      const ext = c.externalDomain
+      const point = () => duck(c, {}, ext)
+      try {
+        await point()
+        externalUrl = `https://${ext}:${c.externalPort ?? port}`
+        log(`회사 밖용 열림: ${externalUrl}`)
+      } catch (error) {
+        log('회사 밖용 주소를 맞추지 못했습니다:', error)
+      }
+      setInterval(() => void point().catch((error) => log('회사 밖용 주소 맞추기 실패:', error)), 30 * 60 * 1000)
+    }
     // 공유기가 서버 PC 의 IP 를 바꿀 수 있어(자동 배정) 5분마다 보고, 바뀌었으면 주소도 새 IP 로 옮긴다
     let current = ip
     setInterval(async () => {

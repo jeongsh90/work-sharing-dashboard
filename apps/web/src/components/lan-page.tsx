@@ -24,7 +24,7 @@ import { invalidate, useApi, useUserNames } from "@/lib/store"
 // 관리 → 사내망 직통(슈퍼관리자): 같은 사무실 PC 의 IP 와 이름을 등록하면 그 PC 는 파일 올리기·큰 파일 받기를
 // 바깥 중계 대신 서버 PC 로 바로 주고받는다(서버 apps/api/src/lan.ts). 등록하지 않은 IP 는 그대로 중계를 쓴다.
 
-type LanIp = { id: string; ip: string; name: string; createdBy: string; createdAt: number; lastSeen: number | null }
+type LanIp = { id: string; ip: string; name: string; createdBy: string; createdAt: number; lastSeen: number | null; external?: boolean }
 
 export function LanPage() {
   const { data, error } = useApi<LanIp[]>("/lan/ips")
@@ -45,8 +45,8 @@ export function LanPage() {
       <Section title="PC 등록" className="col-span-12 lg:col-span-4">
         <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
           <p className="text-sm break-keep text-muted-foreground">
-            등록한 PC 는 파일 올리기·큰 파일 받기가 바깥 중계 대신 서버 PC 로 바로 가서 훨씬 빠릅니다. IP 는 그 PC 에서 명령 프롬프트 → ipconfig 의
-            "IPv4 주소"입니다.
+            등록한 PC 는 파일 올리기·큰 파일 받기가 바깥 중계 대신 서버 PC 로 바로 가서 훨씬 빠릅니다. 사내 PC 는 명령 프롬프트 → ipconfig 의
+            "IPv4 주소"(192.168.x)이고, 사내 IP 는 그 사람이 들어오면 저절로 등록됩니다. 회사 밖 PC 는 외부 IP 를 허용해 등록합니다(아래 "직통을 못 탄 PC"에서 허용).
           </p>
           <IpForm key={data.length} submitText="추가" onSubmit={(body) => api("/lan/ips", { body })} />
         </div>
@@ -77,7 +77,10 @@ export function LanPage() {
                 {data.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="tabular-nums">{row.ip}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {row.ip}
+                      {row.external && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300">외부</span>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {row.lastSeen ? formatDateTime(new Date(row.lastSeen)) : "아직 없음"}
                     </TableCell>
@@ -268,7 +271,7 @@ function Misses({ registered }: { registered: LanIp[] }) {
           <IpForm
             key={allowing.userId}
             formId="lan-allow"
-            initial={{ ip: "", name: userName(allowing.userId) }}
+            initial={{ ip: allowing.publicIp ?? "", name: userName(allowing.userId) }}
             submitText="허용"
             onSubmit={async (body) => {
               await api("/lan/ips", { body: { ...body, userId: allowing.userId } })
