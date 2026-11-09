@@ -31,6 +31,7 @@ export type DesignRequest = {
   completedAt: Date | null
   ongoing: boolean // 계속 업무(마감 없음). 이때 dueAt 은 아주 먼 날짜라 마감 지남·이번 주 마감에 걸리지 않는다
   onHold: boolean // 보류(요청 수정에서 체크). 일정은 그대로 두고 마감 지남·이번 주 마감에 걸리지 않는다
+  isDev: boolean // 개발 요청(요청서의 "개발요청" 체크). 홈 작업 현황에서 따로 보인다
   urgency: Urgency
   status: RequestStatus
   revision: number // 수정 차수. 수정 중일 때 표시
@@ -76,6 +77,7 @@ export type RequestSummaryDto = {
   requestedStartAt: number | null // 요청자가 고른 작업 시작일
   ongoing: boolean // 계속 업무(마감 없음)
   onHold: boolean // 보류
+  isDev?: boolean // 개발 요청
   dueAt: number
   createdAt: number
   updatedAt: number // 마지막으로 바뀐 때(상태·내용)
@@ -108,6 +110,7 @@ export function toRequest(dto: RequestSummaryDto): DesignRequest {
     completedAt: toDate(dto.completedAt),
     ongoing: dto.ongoing,
     onHold: dto.onHold ?? false,
+    isDev: dto.isDev ?? false,
     urgency: dto.urgency,
     status: dto.status,
     revision: dto.revision,

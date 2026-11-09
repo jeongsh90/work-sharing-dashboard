@@ -43,6 +43,8 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
   const allDesigners = useDesigners()
   const designers = useMemo(() => allDesigners?.filter((d) => d.showOnHome) ?? null, [allDesigners])
   const [batchOpen, setBatchOpen] = useState(false)
+  const designRequests = useMemo(() => requests?.filter((r) => !r.isDev) ?? [], [requests])
+  const devRequests = useMemo(() => requests?.filter((r) => r.isDev) ?? [], [requests])
 
   if (!requests || !designers) return <PageState error={error} />
 
@@ -91,8 +93,12 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
           onClose={() => setBatchOpen(false)}
         />
       )}
-      <Section title="작업 현황">
-        <RequestTable requests={requests} emptyMessage="아직 들어온 요청이 없습니다." />
+      {/* 작업 현황: 디자인 요청과 개발 요청(요청서의 "개발요청" 체크)을 나눠 보인다 */}
+      <Section title="작업 현황 · 디자인 요청" aside={<span className="text-sm text-muted-foreground tabular-nums">{designRequests.length}건</span>}>
+        <RequestTable requests={designRequests} emptyMessage="아직 들어온 디자인 요청이 없습니다." />
+      </Section>
+      <Section title="작업 현황 · 개발 요청" aside={<span className="text-sm text-muted-foreground tabular-nums">{devRequests.length}건</span>}>
+        <RequestTable requests={devRequests} emptyMessage="아직 들어온 개발 요청이 없습니다." />
       </Section>
     </div>
   )

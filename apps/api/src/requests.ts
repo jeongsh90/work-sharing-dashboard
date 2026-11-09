@@ -49,6 +49,7 @@ type RequestRow = {
   requested_start_at: number | null
   ongoing: number
   on_hold: number
+  is_dev: number
   due_at: number
   created_at: number
   updated_at: number
@@ -427,6 +428,7 @@ function summary(row: RequestRow & { requester_name: string }) {
     requestedStartAt: row.requested_start_at,
     ongoing: row.ongoing === 1,
     onHold: row.on_hold === 1,
+    isDev: row.is_dev === 1, // 개발 요청
     dueAt: row.due_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -595,8 +597,8 @@ export function createRequest(user: PublicUser, body: Record<string, unknown>) {
   const now = Date.now()
   return transaction(() => {
     const result = run(
-      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, ongoing, created_at, updated_at, source, created_by, requester_label)
-       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :ongoing, :now, :now, :source, :createdBy, :label)`,
+      `INSERT INTO requests (title, work_type, description, department, requester_id, urgency, status, requested_start_at, due_at, ongoing, is_dev, created_at, updated_at, source, created_by, requester_label)
+       VALUES (:title, :workType, :description, :department, :requester, :urgency, 'requested', :startAt, :dueAt, :ongoing, :isDev, :now, :now, :source, :createdBy, :label)`,
       {
         title,
         workType,
@@ -607,6 +609,7 @@ export function createRequest(user: PublicUser, body: Record<string, unknown>) {
         startAt,
         dueAt,
         ongoing,
+        isDev: body.isDev === true ? 1 : 0,
         now,
         source: proxy?.source ?? '',
         createdBy: user.id,
@@ -653,7 +656,7 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
     saveItems(id, itemList)
     run(
       `UPDATE requests SET title = :title, work_type = :workType, description = :description, department = :department,
-       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, ongoing = :ongoing, on_hold = :onHold, updated_at = :now WHERE id = :id`,
+       urgency = :urgency, requested_start_at = :startAt, due_at = :dueAt, ongoing = :ongoing, on_hold = :onHold, is_dev = :isDev, updated_at = :now WHERE id = :id`,
       {
         id,
         title: text(body.title, '제목', { required: true, max: 100 }),
@@ -665,6 +668,8 @@ export function updateRequest(user: PublicUser, id: number, body: Record<string,
         dueAt,
         ongoing,
         onHold: body.onHold === true ? 1 : 0,
+        // 예전 화면처럼 isDev 를 안 보내면 그대로 둔다
+        isDev: typeof body.isDev === 'boolean' ? (body.isDev ? 1 : 0) : req.is_dev,
         now: Date.now(),
       },
     )

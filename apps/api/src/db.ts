@@ -174,9 +174,12 @@ CREATE TABLE IF NOT EXISTS suggestions (
 `)
 
 // 이미 만들어진 DB 에 나중에 생긴 칸을 더한다.
+// 새로 더했으면 true(처음 한 번만 할 일에 쓴다)
 export function addColumn(table: string, column: string, definition: string) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
-  if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  if (columns.some((c) => c.name === column)) return false
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  return true
 }
 
 // 요청자가 원하는 작업 시작일(작업 기간의 시작). 마감은 due_at
@@ -197,6 +200,12 @@ addColumn('users', 'show_on_home', 'INTEGER NOT NULL DEFAULT 1')
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 // 보류(요청 수정에서 체크): 일정은 그대로 두고 잠시 멈춘 요청. 마감 지남·이번 주 마감에 걸리지 않는다.
 addColumn('requests', 'on_hold', 'INTEGER NOT NULL DEFAULT 0')
+// 개발 요청(요청서의 "개발요청" 체크). 홈 작업 현황에서 디자인 요청과 나눠 보인다.
+// 칸을 처음 만들 때 정상훈 담당의 계속 업무는 개발 건으로 옮긴다(한 번만).
+if (addColumn('requests', 'is_dev', 'INTEGER NOT NULL DEFAULT 0')) {
+  db.exec(`UPDATE requests SET is_dev = 1 WHERE ongoing = 1 AND id IN
+    (SELECT a.request_id FROM assignees a JOIN users u ON u.id = a.user_id WHERE u.name = '정상훈')`)
+}
 // 대신 작성: 구두·전화 등으로 받은 요청을 작업자·관리자가 요청서로 옮겨 적은 경우.
 // source 는 받은 경로(구두·전화·메신저·메일·기타, 시스템에서 직접 쓴 요청은 ''), created_by 는 실제로 쓴 사람.
 // requester_label 은 계정이 없는 요청자의 이름(이때 requester_id 는 쓴 사람)

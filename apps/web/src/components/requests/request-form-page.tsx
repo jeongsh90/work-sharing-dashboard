@@ -167,6 +167,7 @@ type DraftData = {
   to?: number | null
   dueTime?: string
   urgent?: boolean
+  isDev?: boolean
   items?: ItemRow[]
   coIds?: string[]
   proxyOn?: boolean
@@ -227,6 +228,8 @@ export function RequestForm({
   // 긴급 처리 요청 체크. 체크하면 긴급도 '급함'. 예전에 '매우 급함'으로 들어온 요청은 체크를 유지하면 그대로 둔다.
   const [urgent, setUrgent] = useState(initial ? initial.urgency !== "normal" : !!d.urgent)
   const urgency: Urgency = !urgent ? "normal" : initial?.urgency === "critical" ? "critical" : "urgent"
+  // 개발 요청 체크: 홈 작업 현황에서 디자인 요청과 나눠 보인다
+  const [isDev, setIsDev] = useState(initial?.isDev ?? !!d.isDev)
   // 묶음이 없던 예전 요청은 요청 내용을 첫 묶음에 넣어 보여 준다.
   const [items, setItems] = useState<ItemRow[]>(() =>
     initial?.items.length
@@ -288,6 +291,7 @@ export function RequestForm({
         to: range?.to?.getTime() ?? null,
         dueTime,
         urgent,
+        isDev,
         items,
         coIds,
         proxyOn,
@@ -367,6 +371,7 @@ export function RequestForm({
         requestedStartAt: startDay!.getTime(),
         ongoing,
         onHold,
+        isDev,
         dueAt: ongoing ? undefined : dueAt!.getTime(),
         // 새 요청: 임시저장 때 올려 둔 파일(kept)도 함께 붙인다. 요청 수정: kept 는 남겨 둘 기존 파일
         fileIds: [...uploaded.map((f) => f.id), ...(initial ? [] : kept.map((f) => f.id))],
@@ -632,12 +637,16 @@ export function RequestForm({
         {/* 하단 고정 막대에 가려지지 않게 빈 공간 */}
         <div className="h-24 shrink-0" aria-hidden />
       </FieldGroup>
-      {/* 화면 하단 고정 막대: 긴급처리요청 체크 · (취소) · 요청 보내기 */}
+      {/* 화면 하단 고정 막대: 긴급처리요청 · 개발요청 체크 · (취소) · 요청 보내기 */}
       <BottomBar>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <label className="mr-2 flex cursor-pointer items-center gap-2 text-sm font-medium">
             <Checkbox checked={urgent} onCheckedChange={(v) => setUrgent(v === true)} />
             긴급처리요청
+          </label>
+          <label className="mr-2 flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <Checkbox checked={isDev} onCheckedChange={(v) => setIsDev(v === true)} />
+            개발요청
           </label>
           {onCancel && (
             <Button type="button" variant="outline" className="h-14 px-8 text-base" onClick={onCancel} disabled={busy}>
