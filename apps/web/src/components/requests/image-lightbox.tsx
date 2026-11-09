@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -43,6 +43,27 @@ export function ImageLightbox({
   const scale = zoom ?? 1
   // 지금 이미지의 실제 가로(px). 배율은 처음 보이는 크기(= 화면 폭과 이 가로 중 작은 쪽) 기준이다
   const [natural, setNatural] = useState<{ id: string; width: number } | null>(null)
+  // 아래 작은 그림 줄: 열 때 보였다가 그 자리에 마우스가 없으면 잠시 뒤 사라진다(스크롤바처럼). 그 자리에 마우스를 올리면 다시 보인다
+  const [stripShown, setStripShown] = useState(true)
+  const stripTimer = useRef<number | null>(null)
+  const hideStripLater = (ms = 2500) => {
+    if (stripTimer.current) window.clearTimeout(stripTimer.current)
+    stripTimer.current = window.setTimeout(() => setStripShown(false), ms)
+  }
+  const showStrip = () => {
+    if (stripTimer.current) window.clearTimeout(stripTimer.current)
+    setStripShown(true)
+  }
+  useEffect(() => {
+    if (!open) return
+    setStripShown(true)
+    hideStripLater()
+    return () => {
+      if (stripTimer.current) window.clearTimeout(stripTimer.current)
+    }
+    // 열 때마다 한 번
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
   const go = (step: number) => onIndex((i + step + images.length) % images.length)
 
   // 보여 줄 칸 크기에 맞춘 이미지(크게 보기는 칸 안에, 전체 화면은 가로 기준). 칸이 줄 때는 다시 받지 않는다.
@@ -163,7 +184,13 @@ export function ImageLightbox({
             </div>
             {/* 아래 작은 그림 줄: 눌러서 바로 이동 */}
             {images.length > 1 && (
-              <ul className="flex gap-2 overflow-x-auto pb-1">
+              <ul
+                className={`flex gap-2 overflow-x-auto pb-1 transition-opacity duration-300 motion-reduce:transition-none ${stripShown ? "opacity-100" : "opacity-0"}`}
+                onMouseEnter={showStrip}
+                onMouseLeave={() => hideStripLater(1500)}
+                onFocus={showStrip}
+                onBlur={() => hideStripLater(1500)}
+              >
                 {images.map((f, n) => (
                   <li key={f.id} className="shrink-0">
                     <button
