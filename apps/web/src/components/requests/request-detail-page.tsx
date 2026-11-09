@@ -17,6 +17,7 @@ import { Timeline } from "@/components/requests/timeline"
 import { EDIT_ON_OPEN_KEY, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type RequestDetailDto, type RequestStatus } from "@/lib/requests"
+import { PartStatus } from "@/components/requests/part-status"
 import { STATUS_BEAM } from "@/lib/status-colors"
 import { downloadFile } from "@/lib/api"
 import { useApi, invalidate, useUserNames } from "@/lib/store"
@@ -281,12 +282,16 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
                 {detail.designers.map((uid) => (
                   <span key={uid} className="flex items-center gap-1.5">
                     {userName(uid)}
-                    {(detail.status === "in-progress" || detail.status === "revising") &&
-                      (uploaded(uid) ? (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ 올림</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">올리기 전</span>
-                      ))}
+                    {/* 작업자별 상태(작업 중 / 컨펌 대기). 관리자는 눌러서 바꾼다 */}
+                    {(detail.status === "in-progress" || detail.status === "revising" || detail.status === "review") && (
+                      <PartStatus
+                        requestId={detail.id}
+                        userId={uid}
+                        name={userName(uid) ?? uid}
+                        done={(detail.partsDone ?? []).includes(uid)}
+                        canChange={session.role === "superadmin" || session.role === "admin"}
+                      />
+                    )}
                   </span>
                 ))}
               </span>

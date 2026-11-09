@@ -35,6 +35,7 @@ import {
   notifyLink,
   markNotificationsRead,
   performAction,
+  setPartStatus,
   requestDetail,
   resolvePin,
   updateRequest,
@@ -597,6 +598,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       await Promise.all(fileIds.map((f) => unlink(join(UPLOAD_DIR, f)).catch(() => {})))
       return sendJson(res, 200, { ok: true })
     }
+  }
+  // 개별 컨펌: 작업자별 상태 바꾸기(관리자)
+  if ((m = path.match(/^\/api\/requests\/(\d+)\/part-status$/)) && method === 'POST') {
+    const id = Number(m[1])
+    setPartStatus(user, id, await readJson(req))
+    return sendJson(res, 200, requestDetail(user, id))
   }
   if ((m = path.match(/^\/api\/requests\/(\d+)\/actions\/([a-z-]+)$/)) && method === 'POST') {
     const id = Number(m[1])

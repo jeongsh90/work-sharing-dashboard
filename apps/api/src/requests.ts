@@ -721,6 +721,53 @@ function designerIdsFrom(body: Record<string, unknown>) {
   return ids
 }
 
+// ── 개별 컨펌: 작업자별 상태 바꾸기(관리자) ─────────────
+// 슈퍼관리자·관리자가 작업자 한 사람의 이번 차수 상태를 "컨펌 대기(올림)" / "작업 중(올리기 전)"으로 바꾼다.
+// 올린 시안 파일은 지우지 않는다(작업 중으로 돌려도 그 사람이 다시 올리면 더해진다).
+// 모두 컨펌 대기가 되면 요청이 컨펌 대기로 넘어가고, 컨펌 대기인 요청에서 한 사람을 작업 중으로 돌리면 요청도 작업 중(수정 중)으로 돌아간다.
+export function setPartStatus(user: PublicUser, id: number, body: Record<string, unknown>) {
+  if (!isManager(user)) throw new HttpError(403, '작업자별 상태는 관리자만 바꿀 수 있습니다.')
+  const req = loadRequest(id)
+  const assignees = assigneesOf(id)
+  if (!isIndividual(req, assignees)) throw new HttpError(400, '개별 컨펌 요청이 아닙니다.')
+  if (!['in-progress', 'revising', 'review'].includes(req.status)) throw new HttpError(400, '작업 중·수정 중·컨펌 대기일 때만 바꿀 수 있습니다.')
+  const uid = typeof body.userId === 'string' ? body.userId : ''
+  if (!assignees.includes(uid)) throw new HttpError(400, '이 요청의 담당 작업자가 아닙니다.')
+  const done = body.done === true
+  const name = findUser(uid)?.name ?? uid
+  const label = done ? '컨펌 대기' : '작업 중'
+  transaction(() => {
+    let sub = get<{ id: number; round: number; decision: string | null }>(
+      'SELECT id, round, decision FROM submissions WHERE request_id = :id ORDER BY round DESC LIMIT 1',
+      { id },
+    )
+    if (!sub || sub.decision !== null) {
+      if (!done) throw new HttpError(400, `${name}님은 이미 작업 중입니다.`)
+      const round = (sub?.round ?? 0) + 1
+      const result = run(`INSERT INTO submissions (request_id, round, author_id, note, created_at) VALUES (:id, :round, :author, '', :now)`, { id, round, author: user.id, now: Date.now() })
+      sub = { id: Number(result.lastInsertRowid), round, decision: null }
+    }
+    const sid = sub.id
+    const has = partsOf(sid).some((p) => p.user_id === uid)
+    if (done === has) throw new HttpError(400, `${name}님은 이미 ${label}입니다.`)
+    if (done) run("INSERT INTO submission_parts (submission_id, user_id, note, created_at) VALUES (:sid, :uid, '', :now) ON CONFLICT DO NOTHING", { sid, uid, now: Date.now() })
+    else run('DELETE FROM submission_parts WHERE submission_id = :sid AND user_id = :uid', { sid, uid })
+    const parts = partsOf(sid)
+    const left = assignees.filter((a) => !parts.some((p) => p.user_id === a))
+    const progress = `${assignees.length - left.length}/${assignees.length}`
+    let to: Status = req.status
+    if (done && left.length === 0 && req.status !== 'review') to = 'review'
+    if (!done && req.status === 'review') to = req.revision > 0 ? 'revising' : 'in-progress'
+    if (to !== req.status) setStatus(req, to)
+    else run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
+    logEvent(id, user.id, 'part-status', req.status, to, `${sub.round}차 · ${name} → ${label} (관리자 변경, ${progress} 올림)`)
+    notify([uid], user.id, id, `${user.name}님이 내 상태를 ${label}(으)로 바꿨습니다: ${req.title}`)
+    if (to === 'review') {
+      notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${sub.round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
+    }
+  })
+}
+
 // ── 진행 동작 ─────────────────────────────────────────
 
 export function performAction(user: PublicUser, id: number, action: Action, body: Record<string, unknown>) {
