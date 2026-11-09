@@ -245,9 +245,9 @@ export function ActionPanel({
   const latest = detail.submissions[detail.submissions.length - 1]
   const collecting = individual && (detail.status === "in-progress" || detail.status === "revising") && latest?.decision === null ? latest : null
   const waiting = detail.designers.filter((uid) => !collecting?.parts.some((p) => p.userId === uid))
-  // 관리자(슈퍼관리자·관리자)가 담당이 아니거나 이미 올렸으면: 남은 작업자를 기다리지 않고 바로 컨펌 요청
+  // 바로 컨펌 요청(남은 작업자를 기다리지 않음): 담당이 아닌 관리자만. 담당인 관리자는 모두 올릴 때까지 기다린다(남은 사람 없이 멈춘 요청은 넘길 수 있다)
   const me = loadSession()
-  const force = individual && (me?.role === "superadmin" || me?.role === "admin") && (!detail.designers.includes(me.id) || !waiting.includes(me.id))
+  const force = individual && (me?.role === "superadmin" || me?.role === "admin") && (!detail.designers.includes(me.id) || waiting.length === 0)
   const submitLabel = force ? "바로 컨펌 요청" : "내 시안 올리기"
   const spec: ActionSpec | null | undefined =
     open === "undo"

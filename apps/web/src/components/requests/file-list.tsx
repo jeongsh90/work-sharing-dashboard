@@ -14,11 +14,13 @@ export function AuthImage({
   className,
   onLoad,
   size,
+  style,
 }: {
   size?: ImageSize // 화면용 줄인 이미지(없으면 원본)
   fileId: string
   alt: string
   className?: string
+  style?: React.CSSProperties
   onLoad?: () => void
 }) {
   const { url, error } = useFileUrl(fileId, size)
@@ -38,7 +40,7 @@ export function AuthImage({
       </div>
     )
   }
-  return <img src={url} alt={alt} className={className} onLoad={onLoad} draggable={false} />
+  return <img src={url} alt={alt} className={className} style={style} onLoad={onLoad} draggable={false} />
 }
 
 // 파일 이름과 내려받기 버튼

@@ -6,6 +6,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { AuthImage } from "@/components/requests/file-list"
 import { downloadFile, formatBytes, sizeForBox, sizeForWidth, sizeRank, type ImageSize } from "@/lib/api"
 import type { FileInfo } from "@/lib/requests"
+import { ZoomControl } from "@/components/tools/zoom-control"
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -20,6 +21,7 @@ async function downloadAll(files: FileInfo[]) {
 // 이미지 슬라이드 보기(모달). 이전·다음 버튼과 키보드 ←/→ 로 넘기고, 슬라이드마다 내려받기 버튼이 있다.
 // 기본: 모달 크기는 화면 높이에서 위아래 여백만 뺀 고정 크기(이미지마다 크기가 바뀌지 않는다), 이미지는 그 안에 맞춰 보인다.
 // fullscreen: 화면 전체를 덮고, 이미지는 원래 크기(폭은 화면까지)로 보여 세로로 긴 이미지는 스크롤해서 본다.
+//   오른쪽 위 − / + 로 작게 볼 수 있다(화면 폭의 40% ~ 100%, 가운데 숫자를 누르면 100%)
 export function ImageLightbox({
   images,
   index,
@@ -36,6 +38,9 @@ export function ImageLightbox({
   const open = index !== null && images.length > 0
   const i = index ?? 0
   const current = images[i]
+  // 전체 화면 보기 배율(null = 화면 폭에 맞춤 = 100%). 이미지를 넘겨도 그대로 둔다
+  const [zoom, setZoom] = useState<number | null>(null)
+  const scale = zoom ?? 1
   const go = (step: number) => onIndex((i + step + images.length) % images.length)
 
   // 보여 줄 칸 크기에 맞춘 이미지(크게 보기는 칸 안에, 전체 화면은 가로 기준). 칸이 줄 때는 다시 받지 않는다.
@@ -112,8 +117,12 @@ export function ImageLightbox({
                   alt={current.name}
                   // 칸 크기에 맞춘 줄인 이미지. 원본은 다운로드로
                   size={size}
-                  className={fullscreen ? "mx-auto block h-auto max-w-full" : "absolute inset-0 m-auto max-h-full max-w-full object-contain"}
+                  style={fullscreen ? { maxWidth: `${scale * 100}%` } : undefined}
+                  className={fullscreen ? "mx-auto block h-auto max-w-full transition-[max-width] duration-200 motion-reduce:transition-none" : "absolute inset-0 m-auto max-h-full max-w-full object-contain"}
                 />
+              )}
+              {fullscreen && (
+                <ZoomControl zoom={zoom} scale={scale} onZoom={setZoom} className="fixed top-20 right-8 z-10" />
               )}
               {images.length > 1 && (
                 <>

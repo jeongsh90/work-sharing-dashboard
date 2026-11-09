@@ -809,9 +809,11 @@ export function performAction(user: PublicUser, id: number, action: Action, body
             )
             submissionId = Number(result.lastInsertRowid)
           }
-          // 관리자(슈퍼관리자·관리자)가 담당이 아니거나 이미 올렸으면: 남은 작업자를 기다리지 않고 바로 컨펌 요청
+          // 바로 컨펌 요청(남은 작업자를 기다리지 않음): 담당이 아닌 관리자(슈퍼관리자·관리자)만.
+          // 담당인 관리자는 다른 작업자처럼 모두 올릴 때까지 기다린다. 단, 작업자 변경 등으로 남은 사람이 없는데 멈춘 요청은 넘길 수 있다
           const before = partsOf(submissionId)
-          const force = isManager(user) && (!assignees.includes(user.id) || before.some((p) => p.user_id === user.id))
+          const leftBefore = assignees.filter((uid) => !before.some((p) => p.user_id === uid))
+          const force = isManager(user) && (!assignees.includes(user.id) || leftBefore.length === 0)
           const count = claimFiles(user, body.fileIds, { requestId: id, submissionId, kind: 'deliverable' }, { imagesOnly: true })
           // 바로 컨펌 요청은 작업자들이 이미 올린 시안이 있으면 새 이미지 없이도 된다
           if (count === 0 && !(force && before.length > 0)) throw new HttpError(400, '시안 이미지를 한 개 이상 올려 주세요.')
@@ -838,7 +840,7 @@ export function performAction(user: PublicUser, id: number, action: Action, body
             const how = left.length === 0 ? `작업자 ${assignees.length}명 모두 올림` : `${user.role === 'superadmin' ? '슈퍼관리자' : '관리자'}가 바로 컨펌 요청(${progress} 올림)`
             logEvent(id, user.id, action, req.status, 'review', `${round}차 시안 · ${how}${note ? ` · ${note}` : ''}`)
             notify([...requestersOf(req), approverFor(req.department) ?? req.requester_id], user.id, id, `${round}차 시안 컨펌 요청이 왔습니다(작업자 ${assignees.length}명): ${req.title}`)
-            notify(assignees, user.id, id, `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}`)
+            notify(assignees, user.id, id, left.length === 0 ? `모든 작업자가 ${round}차 시안을 올려 컨펌 요청이 갔습니다: ${req.title}` : `관리자가 ${round}차 시안을 바로 컨펌 요청했습니다(${progress} 올림): ${req.title}`)
           } else {
             run('UPDATE requests SET updated_at = :now WHERE id = :id', { id, now: Date.now() })
             const leftNames = left.map((uid) => findUser(uid)?.name ?? uid).join(', ')
@@ -939,7 +941,14 @@ export function performAction(user: PublicUser, id: number, action: Action, body
         if (t.type === 'assign') run('DELETE FROM assignees WHERE request_id = :id', { id })
         if (t.type === 'take') run('DELETE FROM assignees WHERE request_id = :id AND user_id = :uid', { id, uid: t.actor_id })
         const parts = latest ? partsOf(latest.id) : []
-        if ((t.type === 'submit' || t.type === 'submit-part') && latest && parts.length > 0) {
+        // 개별 컨펌의 "바로 컨펌 요청"을 취소할 때: 그 사람이 이번 차수에 먼저 올린 시안(submit-part)이 있으면 시안은 두고 상태만 되돌린다
+        const lastStep = get<{ id: number }>("SELECT MAX(id) AS id FROM events WHERE request_id = :id AND id < :eid AND undone = 0 AND type IN ('submit', 'reject', 'approve')", { id, eid: t.id })
+        const keepParts =
+          t.type === 'submit' &&
+          !!get("SELECT 1 FROM events WHERE request_id = :id AND actor_id = :uid AND type = 'submit-part' AND undone = 0 AND id < :eid AND id > :after", { id, uid: t.actor_id, eid: t.id, after: lastStep?.id ?? 0 })
+        if (keepParts) {
+          // 시안은 그대로(상태만 아래에서 되돌린다)
+        } else if ((t.type === 'submit' || t.type === 'submit-part') && latest && parts.length > 0) {
           // 개별 컨펌: 그 단계를 한 작업자가 올린 시안만 지우고, 다른 작업자가 올린 것은 남긴다
           const sid = latest.id
           const files = `SELECT id FROM files WHERE submission_id = :sid AND uploader_id = :uid`
