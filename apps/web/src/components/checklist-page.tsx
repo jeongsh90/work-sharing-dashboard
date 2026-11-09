@@ -18,7 +18,7 @@ import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { SortableList } from "@/components/sortable-list"
 import { api, ApiError } from "@/lib/api"
-import { PAGE_GRID } from "@/lib/layout"
+import { PAGE_GRID, SHEET_STACK } from "@/lib/layout"
 import { invalidate, useApi } from "@/lib/store"
 
 // 체크리스트(개인 메뉴): 계정마다 자기 체크리스트를 여러 개 만들어 항목을 체크한다(남의 것은 안 보임, 서버 apps/api/src/checklists.ts).
@@ -45,7 +45,8 @@ const writeSelected = (id: number) => {
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
-export function ChecklistPage() {
+// inSheet: 헤더 버튼으로 연 오른쪽 시트 안(위아래로 쌓는다)
+export function ChecklistPage({ inSheet = false }: { inSheet?: boolean } = {}) {
   const { data, error } = useApi<List[]>("/checklists")
   // 체크·순서는 바로 화면에 반영하고(서버 응답을 기다리지 않음) 저장 뒤 다시 받는다
   const [lists, setLists] = useState<List[] | null>(null)
@@ -87,12 +88,12 @@ export function ChecklistPage() {
   }
 
   return (
-    <div className={PAGE_GRID}>
+    <div className={inSheet ? SHEET_STACK : PAGE_GRID}>
       {/* 왼쪽: 내 체크리스트 목록 */}
       <Section
         title="내 체크리스트"
         aside={<span className="text-sm text-muted-foreground tabular-nums">{lists.length}개</span>}
-        className="col-span-12 lg:col-span-4"
+        className={inSheet ? "" : "col-span-12 lg:col-span-4"}
       >
         <div className="flex flex-col gap-3 rounded-xl border bg-card p-3">
           <form
@@ -146,7 +147,7 @@ export function ChecklistPage() {
       </Section>
 
       {/* 오른쪽: 고른 체크리스트의 항목 */}
-      <div className="col-span-12 lg:col-span-8">
+      <div className={inSheet ? "" : "col-span-12 lg:col-span-8"}>
         {current ? (
           <ListView key={current.id} list={current} patch={(f) => patchList(current.id, f)} onDeleted={() => setSelected(null)} />
         ) : (

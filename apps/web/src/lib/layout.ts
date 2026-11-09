@@ -3,3 +3,6 @@ export const PAGE_GRID = 'grid w-full grid-cols-12 gap-x-4 gap-y-8 p-4 md:gap-x-
 
 // 영역 안에서 다시 12칸으로 나눌 때 쓴다(카드 묶음 등).
 export const INNER_GRID = 'grid grid-cols-12 gap-4 md:gap-6'
+
+// 오른쪽 시트(헤더의 체크리스트·메모 버튼) 안에서는 영역을 위아래로 쌓는다.
+export const SHEET_STACK = 'flex flex-col gap-6 p-4'

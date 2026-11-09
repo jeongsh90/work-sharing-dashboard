@@ -10,7 +10,7 @@ import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { api, ApiError } from "@/lib/api"
-import { PAGE_GRID } from "@/lib/layout"
+import { PAGE_GRID, SHEET_STACK } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { invalidate, useApi } from "@/lib/store"
 
@@ -21,7 +21,8 @@ type Memo = { id: number; title: string; body: string; pinned: boolean; createdA
 
 const headline = (m: Pick<Memo, "title" | "body">) => m.title.trim() || m.body.trim().split("\n")[0]?.trim() || "(빈 메모)"
 
-export function MemoPage() {
+// inSheet: 헤더 버튼으로 연 오른쪽 시트 안(위아래로 쌓고, 목록은 시트와 함께 스크롤)
+export function MemoPage({ inSheet = false }: { inSheet?: boolean } = {}) {
   const { data, error: loadError } = useApi<Memo[]>("/memos")
   // 저장 직후 목록에 바로 보이게 서버 응답으로 고쳐 두고, 다시 받으면 서버 것으로
   const [memos, setMemos] = useState<Memo[] | null>(null)
@@ -110,7 +111,7 @@ export function MemoPage() {
   const current = memos.find((m) => m.id === editingId) ?? null
 
   return (
-    <div className={PAGE_GRID}>
+    <div className={inSheet ? SHEET_STACK : PAGE_GRID}>
       {/* 왼쪽: 작성 */}
       <Section
         title={editingId ? "메모 고치기" : "새 메모"}
@@ -120,7 +121,7 @@ export function MemoPage() {
             <Plus data-icon="inline-start" />새 메모
           </Button>
         }
-        className="col-span-12 lg:col-span-5"
+        className={inSheet ? "" : "col-span-12 lg:col-span-5"}
       >
         <form
           className="flex flex-col gap-3 rounded-xl border bg-card p-4"
@@ -149,7 +150,7 @@ export function MemoPage() {
                 onChange={(e) => setBody(e.target.value)}
                 maxLength={20000}
                 placeholder="메모를 적어 주세요"
-                className="min-h-80 break-keep lg:min-h-[28rem]"
+                className={inSheet ? "min-h-48 break-keep" : "min-h-80 break-keep lg:min-h-[28rem]"}
               />
             </Field>
           </FieldGroup>
@@ -179,7 +180,7 @@ export function MemoPage() {
       <Section
         title="메모 목록"
         aside={<span className="text-sm text-muted-foreground tabular-nums">{memos.length}개</span>}
-        className="col-span-12 lg:col-span-7"
+        className={inSheet ? "" : "col-span-12 lg:col-span-7"}
       >
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -193,7 +194,7 @@ export function MemoPage() {
         ) : list.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">"{query}" 와 맞는 메모가 없습니다.</p>
         ) : (
-          <SmoothScrollArea className="max-h-[calc(100svh-14rem)] overflow-y-auto pr-1">
+          <ListScroll inSheet={inSheet}>
             <ul className="flex flex-col gap-2">
               {list.map((m) => {
                 const active = m.id === editingId
@@ -223,9 +224,15 @@ export function MemoPage() {
                 )
               })}
             </ul>
-          </SmoothScrollArea>
+          </ListScroll>
         )}
       </Section>
     </div>
   )
+}
+
+// 목록 스크롤: 페이지에서는 목록만 따로(부드럽게) 스크롤, 시트 안에서는 시트와 함께 스크롤한다
+function ListScroll({ inSheet, children }: { inSheet: boolean; children: React.ReactNode }) {
+  if (inSheet) return <>{children}</>
+  return <SmoothScrollArea className="max-h-[calc(100svh-14rem)] overflow-y-auto pr-1">{children}</SmoothScrollArea>
 }
