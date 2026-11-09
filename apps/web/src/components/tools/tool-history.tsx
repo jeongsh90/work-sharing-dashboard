@@ -20,18 +20,21 @@ export type HistoryItem<F> = {
   createdAt: number
 }
 
-// fileName: 다시 내려받을 때 이름(기본 "제품명_r.jpg" = 상품정보고시)
+// fileName: 다시 내려받을 때 이름(기본 "제품명_r.jpg" = 상품정보고시). 기록마다 다르면 두 번째 인자(기록)를 쓴다
+// contain: 썸네일을 자르지 않고 칸 안에 다 보이게(가로로 긴 움짤 등)
 export function ToolHistory<F>({
   tool,
   onLoad,
   fileName = (title) => `${title}_r.jpg`,
   meta,
+  contain = false,
 }: {
   tool: string
   onLoad?: (form: F) => void | Promise<void>
-  fileName?: (title: string) => string
+  fileName?: (title: string, item: HistoryItem<F>) => string
   // 주면 썸네일 없이 목록으로 보여 준다(상세페이지: 카테고리·번호 같은 정보 한 줄)
   meta?: (form: F) => string
+  contain?: boolean
 }) {
   const { data } = useApi<HistoryItem<F>[]>(`/tools/${tool}/history`, 60_000)
   const [query, setQuery] = useState("")
@@ -121,10 +124,10 @@ export function ToolHistory<F>({
             <li key={h.id} className="flex flex-col overflow-hidden rounded-xl border bg-card">
               <Tip content={`${h.title} 다운로드`}><button
                 type="button"
-                className="relative block aspect-[3/4] overflow-hidden bg-white"
-                onClick={() => downloadFile(h.fileId, fileName(h.title))}
+                className={`relative block overflow-hidden ${contain ? "aspect-square bg-muted" : "aspect-[3/4] bg-white"}`}
+                onClick={() => downloadFile(h.fileId, fileName(h.title, h))}
               >
-                <AuthImage fileId={h.fileId} alt={h.title} size="w640" className="size-full object-cover object-top" />
+                <AuthImage fileId={h.fileId} alt={h.title} size="w640" className={contain ? "size-full object-contain" : "size-full object-cover object-top"} />
               </button></Tip>
               <div className="flex flex-col gap-1 p-3">
                 <Tip content={h.title}><p className="truncate text-sm font-medium">
@@ -134,7 +137,7 @@ export function ToolHistory<F>({
                   {h.authorName} · {formatDateTime(new Date(h.createdAt))}
                 </p>
                 <div className="mt-1 flex items-center gap-1">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => downloadFile(h.fileId, fileName(h.title))}>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => downloadFile(h.fileId, fileName(h.title, h))}>
                     <Download data-icon="inline-start" />
                     다운로드
                   </Button>

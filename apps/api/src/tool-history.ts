@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS tool_history_tool ON tool_history(tool, created_at);
 // 입력에 넣은 그림(이렇게 보내드려요 사진 등)의 파일 id 목록(JSON). 불러오기 때 다시 받는다. 기록을 지우면 다른 데서 안 쓰는 그림은 지운다
 addColumn('tool_history', 'asset_ids', "TEXT NOT NULL DEFAULT '[]'")
 
-const TOOLS = new Set(['product-notice', 'ship', 'detail-page', 'talk', 'dp-thumb', 'dp-hero', 'dp-point', 'dp-qa', 'dp-recipe', 'dp-why'])
+const TOOLS = new Set(['product-notice', 'ship', 'detail-page', 'talk', 'video', 'dp-thumb', 'dp-hero', 'dp-point', 'dp-qa', 'dp-recipe', 'dp-why'])
 // 디자인 툴은 로그인한 누구나(요청자·작업자·관리자) 쓴다
 const canUse = (_u: PublicUser) => true
 
@@ -54,14 +54,17 @@ export function listToolHistory(user: PublicUser, tool: string, query: string) {
 }
 
 // 새로 남기기: body = { title, form, image: 'data:image/jpeg;base64,...', fileName }
+// 동영상 → WebP·GIF(video)는 만든 움짤 파일 그대로(image/webp·image/gif) 남긴다
 export async function addToolHistory(user: PublicUser, tool: string, body: Record<string, unknown>) {
   requireTool(user, tool)
   const title = typeof body.title === 'string' ? body.title.trim().slice(0, 100) : ''
-  const m = typeof body.image === 'string' ? /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(body.image) : null
-  if (!m) throw new HttpError(400, '이미지가 올바르지 않습니다.')
-  const data = Buffer.from(m[1], 'base64')
+  const m = typeof body.image === 'string' ? /^data:image\/(jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(body.image) : null
+  if (!m || (m[1] !== 'jpeg' && tool !== 'video')) throw new HttpError(400, '이미지가 올바르지 않습니다.')
+  const mime = `image/${m[1]}`
+  const ext = m[1] === 'jpeg' ? 'jpg' : m[1]
+  const data = Buffer.from(m[2], 'base64')
   if (data.length > 20 * 1024 * 1024) throw new HttpError(413, '이미지가 너무 큽니다.')
-  const fileName = typeof body.fileName === 'string' && /^[\w.\-가-힣 ]{1,60}\.jpg$/.test(body.fileName) ? body.fileName : 'r.jpg'
+  const fileName = typeof body.fileName === 'string' && /^[\w.\-가-힣 ]{1,60}\.(jpg|webp|gif)$/.test(body.fileName) && body.fileName.endsWith(`.${ext}`) ? body.fileName : `r.${ext}`
   const form = JSON.stringify(body.form ?? {})
   if (form.length > 200_000) throw new HttpError(413, '입력 내용이 너무 깁니다.')
   const assetIds = Array.isArray(body.fileIds) ? [...new Set(body.fileIds.filter((f): f is string => typeof f === 'string' && /^[0-9a-f-]{36}$/.test(f)))] : []
@@ -79,8 +82,8 @@ export async function addToolHistory(user: PublicUser, tool: string, body: Recor
   const now = Date.now()
   run(
     `INSERT INTO files (id, uploader_id, name, mime, size, kind, created_at)
-     VALUES (:id, :me, :name, 'image/jpeg', :size, 'tool', :now)`,
-    { id: fileId, me: user.id, name: fileName, size: data.length, now },
+     VALUES (:id, :me, :name, :mime, :size, 'tool', :now)`,
+    { id: fileId, me: user.id, name: fileName, mime, size: data.length, now },
   )
   run(
     `INSERT INTO tool_history (tool, title, file_id, form, asset_ids, author_id, created_at)

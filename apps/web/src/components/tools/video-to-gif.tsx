@@ -8,7 +8,9 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { formatBytes } from "@/lib/api"
+import { api, formatBytes } from "@/lib/api"
+import { invalidate } from "@/lib/store"
+import { ToolHistory } from "@/components/tools/tool-history"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
@@ -81,6 +83,32 @@ const MAX_FRAMES = 900
 
 type Source = { file: File; url: string; duration: number; width: number; height: number }
 type Result = { url: string; size: number; width: number; height: number; frames: number; name: string }
+
+// 히스토리에 남기는 설정(원본 동영상은 남기지 않는다. 불러오면 형식·크기·화질·속도·반복·색 보정을 채운다)
+type VideoForm = {
+  format: Format
+  width: string
+  fps: string
+  colors: string
+  speed: string
+  repeat: string
+  adjust: Adjust
+  source: string // 원본 파일 이름
+  start: number // 구간(초)
+  end: number
+  outW: number
+  outH: number
+  frames: number
+  size: number // 만든 파일 크기(byte)
+}
+const HISTORY_MAX = 20 * 1024 * 1024 // 서버가 받는 크기. 더 크면 히스토리에 남기지 않는다
+const blobToDataUrl = (b: Blob) =>
+  new Promise<string>((ok, fail) => {
+    const r = new FileReader()
+    r.onload = () => ok(r.result as string)
+    r.onerror = () => fail(r.error)
+    r.readAsDataURL(b)
+  })
 
 const fmt = (s: number) => `${s.toFixed(1)}초`
 
@@ -534,6 +562,14 @@ export function VideoConvertTool() {
       const base = source.file.name.replace(/\.[^.]+$/, "")
       const made = { url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.${format}` }
       setResult(made)
+      // 만든 움짤과 설정을 히스토리에 남긴다(제목 = 만든 파일 이름. 같은 동영상도 WebP·GIF 는 따로 보인다)
+      if (blob.size <= HISTORY_MAX) {
+        const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, source: source.file.name, start: range[0], end: range[1], outW, outH, frames, size: blob.size }
+        const safe = base.replace(/[^\w.\-가-힣 ]/g, "_").slice(0, 50) || "video"
+        blobToDataUrl(blob)
+          .then((image) => api("/tools/video/history", { body: { title: made.name, fileName: `${safe}.${format}`, form, image } }))
+          .then(() => invalidate(), () => {})
+      }
       // 변환이 끝나면 바로 내려받는다(결과 화면에서 다시 받을 수도 있다)
       const a = document.createElement("a")
       a.href = made.url
@@ -556,6 +592,20 @@ export function VideoConvertTool() {
     a.href = result.url
     a.download = result.name
     a.click()
+  }
+
+  // 히스토리에서 불러오기: 그때 설정(형식·크기·화질·속도·반복·색 보정)을 채운다. 동영상은 다시 골라야 한다
+  const loadForm = (f: VideoForm) => {
+    if (busy) return
+    setFormat(f.format)
+    setWidth(f.width)
+    setFps(f.fps)
+    setColors(f.colors)
+    setSpeed(f.speed)
+    setRepeat(f.repeat)
+    setAdjust(f.adjust ?? NO_ADJUST)
+    setResult(null)
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   const reset = () => {
@@ -959,6 +1009,15 @@ export function VideoConvertTool() {
           ) : null}
         </div>
       )}
+      {/* 만든 움짤 히스토리(다시 내려받기 · 설정 불러오기) */}
+      <div className="col-span-12 lg:order-3">
+        <ToolHistory<VideoForm>
+          tool="video"
+          onLoad={loadForm}
+          contain
+          fileName={(t, h) => (t.endsWith(`.${h.form.format}`) ? t : `${t}.${h.form.format ?? "webp"}`)}
+        />
+      </div>
     </div>
   )
 }
