@@ -8,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 
 import acme from 'acme-client'
 
-import { ALLOWED_ORIGINS, DATA_DIR } from './config.ts'
+import { ALLOWED_ORIGINS, DATA_DIR, SWITCH_ACCOUNTS } from './config.ts'
 import { all, db, get, run } from './db.ts'
 import { HttpError } from './requests.ts'
 import type { PublicUser } from './users.ts'
@@ -123,6 +123,10 @@ const nonces = new Map<string, { ip: string; at: number }>()
 // publicIp: 그 사람이 본 주소에 들어온 바깥(공인) IP. 사내 IP 를 알아내지 못했을 때 관리 화면에 대신 보인다
 type Miss = { userId: string; ip: string | null; publicIp: string | null; kind: 'unregistered' | 'unreachable'; at: number }
 const misses = new Map<string, Miss>()
+// 계정 전환 묶음(SWITCH_ACCOUNTS)은 한 사람이 같은 PC 에서 바꿔 쓰는 계정이라 같은 사람으로 본다
+const groupOf = (userId: string) => (SWITCH_ACCOUNTS.includes(userId) ? SWITCH_ACCOUNTS : [userId])
+// 직통을 탄 마지막 시각(사람별). 같은 묶음 계정이 방금 탔으면 다른 계정의 "닿지 않음"은 남기지 않는다
+const oks = new Map<string, number>()
 
 function issueNonce(ip: string) {
   const now = Date.now()
@@ -149,7 +153,7 @@ async function officePublicIp() {
 // 처음 보는 사람의 PC 를 사내 IP 로 새로 등록한다(이름 = 그 사람 이름). 이미 등록한 PC 가 있거나, IP 를 다른 PC 가 쓰거나, 거절한 사람이면 하지 않는다
 function autoAdd(user: PublicUser, ip: string) {
   if (!PRIVATE_IP.test(ip) || !user.name.trim() || isIgnored(user.id)) return false
-  if (get('SELECT id FROM lan_ips WHERE ip = :ip OR user_id = :u', { ip, u: user.id })) return false
+  if (get('SELECT id FROM lan_ips WHERE ip = :ip OR user_id IN (SELECT value FROM json_each(:g))', { ip, g: JSON.stringify(groupOf(user.id)) })) return false
   run('INSERT INTO lan_ips (id, ip, name, created_by, created_at, user_id) VALUES (:id, :ip, :name, :me, :now, :me)', { id: randomUUID(), ip, name: user.name.trim(), me: user.id, now: Date.now() })
   log(`${user.name}: 사내 IP 자동 등록 ${ip}`)
   return true
@@ -159,8 +163,13 @@ function autoAdd(user: PublicUser, ip: string) {
 // 새 IP 를 이미 다른 PC 가 쓰고 있으면 건드리지 않는다(관리 화면에서 사람이 고른다)
 export function autoMove(user: PublicUser, ip: string) {
   if (!PRIVATE_IP.test(ip)) return false
-  if (get('SELECT id FROM lan_ips WHERE ip = :ip', { ip })) return false
-  let row = get<IpRow>('SELECT * FROM lan_ips WHERE user_id = :u', { u: user.id })
+  const group = groupOf(user.id)
+  const taken = get<IpRow>('SELECT * FROM lan_ips WHERE ip = :ip', { ip })
+  // 그 IP 가 같은 사람(계정 전환 묶음)의 PC 로 이미 등록돼 있으면 할 일 없음(정상)
+  if (taken) return !!taken.user_id && group.includes(taken.user_id)
+  let row =
+    get<IpRow>('SELECT * FROM lan_ips WHERE user_id = :u', { u: user.id }) ??
+    get<IpRow>(`SELECT * FROM lan_ips WHERE user_id IN (SELECT value FROM json_each(:g)) ORDER BY last_seen DESC LIMIT 1`, { g: JSON.stringify(group) })
   if (!row && user.name.trim()) {
     const named = all<IpRow>("SELECT * FROM lan_ips WHERE user_id IS NULL AND instr(name, :n) > 0", { n: user.name.trim() })
     if (named.length === 1) row = named[0]
@@ -181,7 +190,8 @@ export async function reportLan(user: PublicUser, body: Record<string, unknown>,
     }
   }
   if (body.ok === true) {
-    misses.delete(user.id)
+    oks.set(user.id, now)
+    for (const id of groupOf(user.id)) misses.delete(id)
   } else if (typeof body.nonce === 'string') {
     const n = nonces.get(body.nonce)
     nonces.delete(body.nonce)
@@ -192,6 +202,8 @@ export async function reportLan(user: PublicUser, body: Record<string, unknown>,
       else misses.set(user.id, { userId: user.id, ip: n.ip, publicIp: publicIp || null, kind: 'unregistered', at: now })
     }
   } else if (body.unreachable === true) {
+    // 같은 묶음 계정이 10분 안에 직통을 탔으면(같은 PC 의 다른 계정) 남기지 않는다
+    if (groupOf(user.id).some((id) => now - (oks.get(id) ?? 0) < 10 * 60 * 1000)) return { ok: true }
     const prev = misses.get(user.id)
     // 방금 "등록 안 된 IP"로 알아낸 게 있으면 그쪽이 더 쓸모 있어 덮지 않는다
     if (!prev || prev.kind !== 'unregistered' || now - prev.at > 60 * 60 * 1000) misses.set(user.id, { userId: user.id, ip: null, publicIp: publicIp || null, kind: 'unreachable', at: now })
