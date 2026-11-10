@@ -1970,7 +1970,7 @@ export function VideoConvertTool() {
                   <span className="truncate text-xs text-muted-foreground tabular-nums">
                     {multi ? `${clipNo}번 클립 · ` : ""}
                     {saving ? `원본 히스토리 저장 중 ${Math.round(saving.ratio * 100)}% · ` : ""}
-                    {source.file.name} · {source.width}×{source.height} → {outW}×{outH} ({ratio}) · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제 · Ctrl+Z 되돌리기
+                    {source.file.name} · {source.width}×{source.height} → {outW}×{outH} ({ratio})
                   </span>
                 ) : null
               }
