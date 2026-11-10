@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, Download, FileInput, History, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
+import { CopyPlus, FileInput, History, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
@@ -18,20 +18,13 @@ import { ToolHistory, type HistoryItem } from "@/components/tools/tool-history"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
-import { drawWithMotion, isNoMotion, NO_MOTION, type Motion } from "@/components/tools/video-motion"
+import { isNoMotion, NO_MOTION, type Motion } from "@/components/tools/video-motion"
 import { Tip } from "@/components/tip"
 
 // 동영상 → GIF · 동영상 → WebP: 동영상 파일(MP4·MOV·WebM)을 골라 구간·크기·초당 장수를 정하고 GIF(또는 움직이는 WebP)로 바꾼다.
 // 서버에 올리지 않고 이 브라우저 안에서 바꾼다. 장면을 한 장씩 뽑아(canvas) Web Worker 가 GIF·WebP 로 묶는다.
 // 두 도구는 화면이 같고 만드는 형식(FORMATS)만 다르다.
 
-const WIDTHS = [
-  { value: "860", label: "860px (상세페이지)" },
-  { value: "640", label: "640px" },
-  { value: "480", label: "480px" },
-  { value: "320", label: "320px" },
-  { value: "0", label: "원본 크기" },
-]
 const FPS = ["10", "12", "15", "20", "24", "25", "30"]
 const COLORS = [
   { value: "256", label: "고화질 (256색)" },
@@ -94,42 +87,51 @@ type Clip = { id: number; source: Source; start: number; end: number }
 let clipSeq = 1
 const newClip = (source: Source, start: number, end: number): Clip => ({ id: clipSeq++, source, start, end })
 const clipLen = (c: Clip) => Math.max(0, c.end - c.start)
-// 클립 한 장면을 출력 캔버스에 그린다. 첫 클립과 화면 비율이 다르면 비율을 지켜 가운데에 맞추고 남는 곳은 검정(프리미어 시퀀스와 같다)
-function drawClipFrame(
-  ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-  src: Source,
-  outW: number,
-  outH: number,
-  motion: Motion,
-  tmp: { canvas?: HTMLCanvasElement },
-) {
-  const same = Math.abs(src.width / src.height - outW / outH) < 0.01
-  if (same) {
-    drawWithMotion(ctx, video, src.width, src.height, outW, outH, motion)
-    return
-  }
-  const k = Math.min(outW / src.width, outH / src.height)
-  const fw = Math.max(1, Math.round(src.width * k))
-  const fh = Math.max(1, Math.round(src.height * k))
-  const c = (tmp.canvas ??= document.createElement("canvas"))
-  if (c.width !== fw || c.height !== fh) {
-    c.width = fw
-    c.height = fh
-  }
-  const tctx = c.getContext("2d")!
-  tctx.imageSmoothingQuality = "high"
-  drawWithMotion(tctx, video, src.width, src.height, fw, fh, motion)
+// 화면 비율(출력 틀). 가로는 860 기준
+const RATIOS = [
+  { value: "16:9", label: "16:9", w: 16, h: 9 },
+  { value: "16:10", label: "16:10", w: 16, h: 10 },
+  { value: "1:1", label: "1:1", w: 1, h: 1 },
+]
+const OUT_W = 860
+const ratioOf = (v: string) => RATIOS.find((r) => r.value === v) ?? RATIOS[0]
+// 장면 하나를 틀(outW×outH)에 그린다: 원본 비율 그대로 틀 안에 맞춰 가운데(남는 곳 검정, 프리미어 시퀀스와 같다).
+// 모션(위치·비율·회전·기준점·자르기·불투명도)은 원본 픽셀 기준이고 틀 밖으로 잘리지 않아, 비율을 키우면 틀을 채운다
+function drawFramed(ctx: CanvasRenderingContext2D, video: CanvasImageSource, srcW: number, srcH: number, outW: number, outH: number, m: Motion) {
+  const k = Math.min(outW / srcW, outH / srcH)
+  const ox = (outW - srcW * k) / 2
+  const oy = (outH - srcH * k) / 2
   ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.filter = "none"
   ctx.fillStyle = "#000"
   ctx.fillRect(0, 0, outW, outH)
-  ctx.drawImage(c, Math.round((outW - fw) / 2), Math.round((outH - fh) / 2))
+  if (isNoMotion(m, srcW, srcH)) {
+    ctx.drawImage(video, ox, oy, srcW * k, srcH * k)
+    return
+  }
+  const l = (srcW * m.cropL) / 100
+  const t = (srcH * m.cropT) / 100
+  const r = srcW * (1 - m.cropR / 100)
+  const b = srcH * (1 - m.cropB / 100)
+  if (r - l < 0.5 || b - t < 0.5 || m.opacity <= 0) return
+  ctx.save()
+  ctx.globalAlpha = Math.min(1, m.opacity / 100)
+  if (m.flicker > 0) ctx.filter = `blur(${(m.flicker * k).toFixed(2)}px)`
+  ctx.setTransform(k, 0, 0, k, ox, oy)
+  ctx.translate(m.x ?? srcW / 2, m.y ?? srcH / 2)
+  ctx.rotate((m.rotation * Math.PI) / 180)
+  ctx.scale((m.uniform ? m.scale : m.scaleW) / 100, m.scale / 100)
+  ctx.translate(-(m.ax ?? srcW / 2), -(m.ay ?? srcH / 2))
+  ctx.drawImage(video, l, t, r - l, b - t, l, t, r - l, b - t)
+  ctx.restore()
 }
 
 // 히스토리에 남기는 설정(원본 동영상은 남기지 않는다. 불러오면 형식·크기·화질·속도·반복·색 보정을 채운다)
 type VideoForm = {
   format: Format
   width: string
+  ratio?: string // 화면 비율(16:9 · 16:10 · 1:1), 가로 860
   fps: string
   colors: string
   speed: string
@@ -217,7 +219,7 @@ async function measurePerFrame(
     for (const t of times) {
       if (!alive()) return null
       await seek(video, t)
-      drawWithMotion(ctx, video, video.videoWidth, video.videoHeight, w, h, motion)
+      drawFramed(ctx, video, video.videoWidth, video.videoHeight, w, h, motion)
       const img = ctx.getImageData(0, 0, w, h)
       applyAdjust(img.data, adjust)
       const data = img.data.buffer
@@ -818,16 +820,15 @@ export function VideoConvertTool() {
   const seqRef = useRef(false)
   seqRef.current = seqPlay
   const autoPlay = useRef(false) // 다음 클립으로 넘어간 뒤 동영상이 준비되면 그 클립 시작부터 재생
-  const [width, setWidth] = useState("860")
+  const [width, setWidth] = useState("860") // 예전 기록 호환(지금은 늘 860)
+  const [ratio, setRatio] = useState("16:9") // 화면 비율(기본 16:9)
   const [fps, setFps] = useState("25")
   // 화질: GIF 는 색 수, WebP 는 압축 품질
   const [colors, setColors] = useState(F.defaultOption)
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")
   const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST) // 색 보정(노출·오프셋·감마·색조·채도·명도)
-  const adjusted = !isNoAdjust(adjust)
   const [motion, setMotion] = useState<Motion>(NO_MOTION) // 모션·불투명도(위치·비율·회전·기준점·깜박임 제거·자르기)
-  const moved = source ? !isNoMotion(motion, source.width, source.height) : false
   const adjustCanvas = useRef<HTMLCanvasElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ step: string; ratio: number; done: number } | null>(null)
@@ -1141,15 +1142,13 @@ export function VideoConvertTool() {
     const v = preview.current
     const c = adjustCanvas.current
     if (!v || !c || !v.videoWidth) return
-    if (isNoAdjust(adjustRef.current) && isNoMotion(motionRef.current, v.videoWidth, v.videoHeight)) return
-    const w = Math.min(860, v.videoWidth)
-    const h = Math.max(1, Math.round((v.videoHeight * w) / v.videoWidth))
+    const [w, h] = outSizeRef.current
     if (c.width !== w || c.height !== h) {
       c.width = w
       c.height = h
     }
     const ctx = c.getContext("2d", { willReadFrequently: true })!
-    drawWithMotion(ctx, v, v.videoWidth, v.videoHeight, w, h, motionRef.current)
+    drawFramed(ctx, v, v.videoWidth, v.videoHeight, w, h, motionRef.current)
     if (isNoAdjust(adjustRef.current)) return
     const img = ctx.getImageData(0, 0, w, h)
     applyAdjust(img.data, adjustRef.current)
@@ -1210,8 +1209,14 @@ export function VideoConvertTool() {
   }
 
   // 출력 크기는 첫 클립 기준(프리미어 시퀀스 설정처럼). 장수·길이는 모든 클립을 더한다
-  const outW = first ? Math.min(Number(width) || first.width, first.width) : 0
-  const outH = first ? Math.max(1, Math.round((first.height * outW) / first.width)) : 0
+  const outW = OUT_W
+  const outH = Math.round((OUT_W * ratioOf(ratio).h) / ratioOf(ratio).w)
+  const outSizeRef = useRef<[number, number]>([outW, outH])
+  outSizeRef.current = [outW, outH]
+  useEffect(() => {
+    drawAdjusted()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ratio])
   const length = Math.max(0, range[1] - range[0]) // 고른 클립 구간
   const clipFrames = (c: Clip) => Math.max(1, Math.round(clipLen(c) * Number(fps)))
   const totalLength = clips.reduce((s, c) => s + clipLen(c), 0)
@@ -1291,7 +1296,6 @@ export function VideoConvertTool() {
       })
       worker.postMessage(F.start(outW, outH, Number(repeat), colors, delay))
       setProgress({ step: "변환하는 중", ratio: 0, done: 0 })
-      const tmp: { canvas?: HTMLCanvasElement } = {}
       // 클립을 순서대로 이어 붙인다(클립마다 시작부터 초당 장수만큼)
       for (const c of seqClips) {
         if (cancelled) return
@@ -1300,7 +1304,7 @@ export function VideoConvertTool() {
         for (let i = 0; i < n; i++) {
           if (cancelled) return
           await seek(video, Math.min(c.start + i / Number(fps), c.end - 0.001, c.source.duration - 0.001))
-          drawClipFrame(ctx, video, c.source, outW, outH, motion, tmp)
+          drawFramed(ctx, video, c.source.width, c.source.height, outW, outH, motion)
           const img = ctx.getImageData(0, 0, outW, outH)
           applyAdjust(img.data, adjust)
           const data = img.data.buffer
@@ -1319,7 +1323,7 @@ export function VideoConvertTool() {
       // 만든 움짤과 설정을 히스토리에 남긴다(제목 = 만든 파일 이름. 같은 동영상도 WebP·GIF 는 따로 보인다)
       if (blob.size <= HISTORY_MAX) {
         const head = seqClips[0]
-        const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, motion, source: head.source.file.name, start: head.start, end: head.end, outW, outH, frames, size: blob.size }
+        const form: VideoForm = { format, width, ratio, fps, colors, speed, repeat, adjust, motion, source: head.source.file.name, start: head.start, end: head.end, outW, outH, frames, size: blob.size }
         const safe = base.replace(/[^\w.\-가-힣 ]/g, "_").slice(0, 50) || "video"
         // 원본 동영상도 함께 남긴다(불러오면 그 동영상들이 다시 열린다). 못 올리면 설정·움짤만 남긴다
         const files = [...new Set(seqClips.map((c) => c.source.file))]
@@ -1356,13 +1360,6 @@ export function VideoConvertTool() {
     }
   }
 
-  const download = () => {
-    if (!result) return
-    const a = document.createElement("a")
-    a.href = result.url
-    a.download = result.name
-    a.click()
-  }
 
   // 히스토리에서 불러오기: 그때 설정(형식·크기·화질·속도·반복·색 보정)을 채운다. 동영상은 다시 골라야 한다
   const [fetching, setFetching] = useState<{ name: string; ratio: number } | null>(null)
@@ -1423,6 +1420,7 @@ export function VideoConvertTool() {
   const applyForm = (f: VideoForm) => {
     setFormat(f.format)
     setWidth(f.width)
+    setRatio(f.ratio ?? "16:9")
     setFps(f.fps)
     setColors(f.colors)
     setSpeed(f.speed)
@@ -1509,7 +1507,7 @@ export function VideoConvertTool() {
   const [previewZoom, setPreviewZoom] = useState("fit")
   const [saveOpen, setSaveOpen] = useState(false)
   // 저장 안 한 작업: 마지막으로 저장(변환)한 뒤 클립·설정이 바뀌었으면 닫을 때 묻는다
-  const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end]), format, width, fps, colors, speed, repeat, adjust, motion])
+  const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end]), format, ratio, fps, colors, speed, repeat, adjust, motion])
   const [savedKey, setSavedKey] = useState("")
   const workKeyRef = useRef(workKey)
   workKeyRef.current = workKey
@@ -1616,7 +1614,7 @@ export function VideoConvertTool() {
   const canRedo = hist.current.future.length > 0
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keysRef.current = (e: KeyboardEvent) => {
-    if (!source || result || busy || saveOpen) return
+    if (!source || busy || saveOpen) return
     // 확인 창·고르기 목록이 열려 있으면 그쪽이 먼저
     if (document.querySelector('[role=alertdialog], [role=listbox], [role=menu]')) return
     // 글자를 치는 칸에서만 단축키를 쉰다(눈금·버튼·슬라이더에 포커스가 있어도 편집 단축키가 먼저)
@@ -1764,7 +1762,29 @@ export function VideoConvertTool() {
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <BarSelect id="gif-width" label="가로 크기" value={width} onChange={setWidth} disabled={busy} options={WIDTHS} />
+              <div className="col-span-2 flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">화면 비율 (가로 860)</span>
+                <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="화면 비율">
+                  {RATIOS.map((r) => (
+                    <Button
+                      key={r.value}
+                      type="button"
+                      variant={ratio === r.value ? "default" : "outline"}
+                      size="sm"
+                      role="radio"
+                      aria-checked={ratio === r.value}
+                      disabled={busy}
+                      onClick={() => setRatio(r.value)}
+                      className="flex h-auto flex-col gap-0 py-1.5"
+                    >
+                      <span className="font-semibold">{r.label}</span>
+                      <span className="text-[11px] opacity-80 tabular-nums">
+                        {OUT_W}×{Math.round((OUT_W * r.h) / r.w)}
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
               <BarSelect id="gif-fps" label="초당 장수" value={fps} onChange={setFps} disabled={busy} options={FPS.map((f) => ({ value: f, label: `${f}장` }))} />
               <BarSelect id="gif-colors" label="화질" value={colors} onChange={setColors} disabled={busy} options={F.options} />
               <BarSelect
@@ -1823,7 +1843,6 @@ export function VideoConvertTool() {
               {!tooMany && estimate !== null && estimate > 10 * 1024 * 1024 && (
                 <span className="break-keep text-amber-700 dark:text-amber-300">10MB 가 넘습니다. 가로 크기·초당 장수·화질을 낮추거나 구간을 줄이면 가벼워집니다.</span>
               )}
-              {first && outW < (Number(width) || 0) && <span className="text-muted-foreground">원본보다 크게는 만들지 않습니다.</span>}
             </div>
           </SmoothScrollArea>
           <SheetFooter className="border-t">
@@ -1880,50 +1899,22 @@ export function VideoConvertTool() {
       <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,24vw,420px)]">
         <div className="grid min-h-0 gap-2 lg:grid-rows-[minmax(0,62fr)_minmax(0,38fr)]">
           <div className="grid min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,22vw,400px)]">
-            {/* ① 미리보기(결과가 있으면 결과) */}
+            {/* ① 미리보기(저장할 틀 모양 그대로) */}
             <Panel
-              title={result ? `결과 ${F.label}` : "미리보기"}
+              title="미리보기"
               actions={
-                result ? (
-                  <>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {result.width}×{result.height} · {result.frames}장 · {formatBytes(result.size)}
-                    </span>
-                    <Button variant="outline" size="xs" onClick={() => setResult(null)}>
-                      <RotateCcw data-icon="inline-start" />
-                      다시 설정
-                    </Button>
-                    <Button size="xs" onClick={download}>
-                      <Download data-icon="inline-start" />
-                      내려받기
-                    </Button>
-                  </>
-                ) : source ? (
+                source ? (
                   <span className="truncate text-xs text-muted-foreground tabular-nums">
                     {multi ? `${clipNo}번 클립 · ` : ""}
-                    {source.file.name} · {source.width}×{source.height} · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제 · Ctrl+Z 되돌리기
+                    {saving ? `원본 히스토리 저장 중 ${Math.round(saving.ratio * 100)}% · ` : ""}
+                    {source.file.name} · {source.width}×{source.height} → {outW}×{outH} ({ratio}) · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제 · Ctrl+Z 되돌리기
                   </span>
                 ) : null
               }
             >
-              {result ? (
+              {source ? (
                 <div className="flex min-h-64 flex-1 flex-col gap-2 p-2">
-                  <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px]">
-                    <img src={result.url} alt={`${result.name} 미리보기`} className="max-h-full max-w-full object-contain" />
-                  </div>
-                  {saving && (
-                    <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-                      <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
-                      원본 동영상을 히스토리에 저장하는 중… <span className="tabular-nums">{Math.round(saving.ratio * 100)}%</span>
-                    </p>
-                  )}
-                  {result.size > 10 * 1024 * 1024 && (
-                    <p className="text-xs text-amber-700 dark:text-amber-300">10MB 가 넘습니다. 쇼핑몰에 올리기 무거우면 가로 크기·초당 장수·화질을 낮추거나 구간을 줄여 보세요.</p>
-                  )}
-                </div>
-              ) : source ? (
-                <div className="flex min-h-64 flex-1 flex-col gap-2 p-2">
-                  <div className="relative flex min-h-0 flex-1 overflow-auto rounded-md bg-black" data-lenis-prevent>
+                  <div className="relative flex min-h-0 flex-1 overflow-auto rounded-md bg-neutral-700/60" data-lenis-prevent>
                     {progress && (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
                         <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
@@ -1961,7 +1952,7 @@ export function VideoConvertTool() {
                           onLoadedData={onFront(onPreviewReady)}
                           onEnded={onFront(onEnded)}
                           aria-hidden={front !== i}
-                          className={`absolute inset-0 size-full object-contain ${front === i ? "cursor-pointer" : "pointer-events-none opacity-0"}`}
+                          className={`absolute inset-0 size-full object-contain opacity-0 ${front === i ? "cursor-pointer" : "pointer-events-none"}`}
                         />
                       )
                     })}
@@ -1969,7 +1960,7 @@ export function VideoConvertTool() {
                     <canvas
                       ref={adjustCanvas}
                       aria-hidden
-                      className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted || moved ? "" : "hidden"}`}
+                      className="pointer-events-none absolute inset-0 h-full w-full object-contain"
                     />
                     </div>
                   </div>
