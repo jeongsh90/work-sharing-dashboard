@@ -661,6 +661,8 @@ function SequenceTimeline({
         setMoving({ id: c.id, dx })
         const tr = rowAt(e.clientY)
         setUpTarget(tr && tr > 0 ? tr : null)
+        if (tr && tr > 0) snap(Math.max(0, timeAtFree(e.clientX) - (d.offT ?? 0)), c.id, clipLen(c))
+        else setSnapLine(null)
       }
       else {
         const dt = dx / pps
@@ -681,7 +683,8 @@ function SequenceTimeline({
         setUpTarget(null)
         const tr = d.moved ? rowAt(e.clientY) : null
         if (tr && tr > 0) {
-          onMoveClip(c.id, tr, Math.max(0, timeAtFree(e.clientX) - (d.offT ?? 0)))
+          onMoveClip(c.id, tr, snap(Math.max(0, timeAtFree(e.clientX) - (d.offT ?? 0)), c.id, clipLen(c)))
+          setSnapLine(null)
           return
         }
         if (d.moved) {
@@ -701,6 +704,28 @@ function SequenceTimeline({
     },
   })
   const dropAt = moving ? targetIndex(moving.id, moving.dx) : -1
+  // 자석: 시퀀스 처음·끝, 재생 헤드, V1 클립 경계, 다른 위 트랙 클립의 시작·끝(화면에서 8px 안이면 붙는다)
+  const [snapLine, setSnapLine] = useState<number | null>(null)
+  const snapPoints = (excludeId: number) => {
+    const pts = [0, total, now, ...starts, ...starts.map((st, i) => st + clipLen(clips[i]))]
+    for (const c of layers) if (c.id !== excludeId) pts.push(c.at ?? 0, (c.at ?? 0) + clipLen(c))
+    return pts
+  }
+  // t = 클립 앞끝 시점, len 이 있으면 뒤끝(t + len)도 맞춰 본다. 붙으면 그 자리, 아니면 그대로
+  const snap = (t: number, excludeId: number, len?: number) => {
+    const thr = 8 / pps
+    let best: { t: number; line: number; d: number } | null = null
+    for (const p of snapPoints(excludeId)) {
+      const d1 = Math.abs(t - p)
+      if (d1 <= thr && (!best || d1 < best.d)) best = { t: p, line: p, d: d1 }
+      if (len !== undefined) {
+        const d2 = Math.abs(t + len - p)
+        if (d2 <= thr && (!best || d2 < best.d)) best = { t: p - len, line: p, d: d2 }
+      }
+    }
+    setSnapLine(best ? best.line : null)
+    return best ? Math.max(0, best.t) : t
+  }
   const ldrag = useRef<{ id: number; x: number; y: number; mode: "move" | "start" | "end"; start: number; end: number; at: number; track: number; offT: number; moved: boolean; last?: Partial<Clip> } | null>(null)
   const [ghost, setGhost] = useState<{ id: number; at: number; track: number } | null>(null)
   const layerHandlers = (c: Clip, mode: "move" | "start" | "end") => ({
@@ -721,25 +746,32 @@ function SequenceTimeline({
       d.moved = true
       const r2 = (v: number) => Math.round(v * 100) / 100
       if (d.mode === "move") {
-        setGhost({ id: c.id, at: r2(Math.max(0, timeAtFree(e.clientX) - d.offT)), track: rowAt(e.clientY) ?? d.track })
+        setGhost({ id: c.id, at: r2(snap(Math.max(0, timeAtFree(e.clientX) - d.offT), c.id, clipLen(c))), track: rowAt(e.clientY) ?? d.track })
         return
       }
       const dt = dx / pps
       if (d.mode === "start") {
         let ns = Math.min(Math.max(d.start + dt, 0), d.end - 0.1)
-        let na = d.at + (ns - d.start)
+        let na = snap(d.at + (ns - d.start), c.id)
+        ns = Math.min(Math.max(d.start + (na - d.at), 0), d.end - 0.1)
+        na = d.at + (ns - d.start)
         if (na < 0) {
           ns -= na
           na = 0
         }
         d.last = { start: r2(ns), at: r2(na) }
-      } else d.last = { end: r2(Math.max(Math.min(d.end + dt, c.source.duration), d.start + 0.1)) }
+      } else {
+        const rawEnd = Math.max(Math.min(d.end + dt, c.source.duration), d.start + 0.1)
+        const seqEnd = snap(d.at + (rawEnd - d.start), c.id)
+        d.last = { end: r2(Math.max(Math.min(d.start + (seqEnd - d.at), c.source.duration), d.start + 0.1)) }
+      }
       onLayerChange(c.id, d.last, false)
     },
     onPointerUp: (e: React.PointerEvent) => {
       const d = ldrag.current
       ldrag.current = null
       setFrozenPps(null)
+      setSnapLine(null)
       if (!d || d.id !== c.id) return
       e.stopPropagation()
       if (d.mode === "move") {
@@ -945,6 +977,7 @@ function SequenceTimeline({
               />
             )}
           </div>
+          {snapLine !== null && <div className="pointer-events-none absolute inset-y-0 z-40 w-px bg-amber-300" style={{ left: snapLine * pps }} />}
           {/* 재생 헤드 */}
           <div className="pointer-events-none absolute inset-y-0 z-30" style={{ left: now * pps }}>
             <div className="absolute top-0 -left-[5px] h-3 w-[11px] rounded-b-sm bg-sky-500" />
