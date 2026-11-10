@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, Download, FileInput, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Upload, Wand2, X } from "lucide-react"
+import { CopyPlus, Download, FileInput, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
-import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -389,98 +386,433 @@ function useClipThumbs(clips: Clip[]) {
   return (c: Clip) => thumbs[key(c)] ?? null
 }
 
-// 타임라인: 클립을 길이 비율대로 옆으로 늘어놓는다. 누르면 그 클립을 고르고(구간·프레임 띠가 그 클립으로 바뀐다), 끌어서 순서를 바꾼다.
-function Timeline({
+// 시퀀스 타임라인(프리미어처럼): 위 시간 눈금 + 비디오 트랙 하나. 클립은 앞 클립 끝에 바로 이어 붙고(빈틈 없음),
+// 클립 양 끝을 끌어 길이를 바꾸면 뒤 클립이 알아서 당겨지거나 밀린다. 재생 헤드(파란 머리·세로선)를 끌거나 눈금·트랙을 누르면
+// 그 시점 장면이 미리보기에 나온다. 클립 몸통을 끌면 순서가 바뀐다.
+const timecode = (t: number, fps: number) => {
+  const f = Math.max(1, Math.round(fps))
+  const total = Math.max(0, Math.round(t * f))
+  const ff = total % f
+  const s = Math.floor(total / f)
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}:${p(ff)}`
+}
+const RULER_STEPS = [0.2, 0.5, 1, 2, 4, 5, 10, 15, 30, 60, 120, 300]
+// 포인터 잡기(끄는 동안 칸 밖으로 나가도 이어서 받는다). 못 잡아도 끌기는 그대로 한다
+const capture = (e: React.PointerEvent) => {
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId)
+  } catch {
+    // 잡을 수 없는 포인터(합성 이벤트 등)
+  }
+}
+// 시간 눈금(그 칸 너비에 시퀀스 전체가 맞게): 미리보기 아래 막대에서 쓴다
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [w, setW] = useState(600)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setW(el.clientWidth))
+    ro.observe(el)
+    setW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, w] as const
+}
+
+const PREVIEW_ZOOMS = [
+  { value: "fit", label: "맞추기" },
+  { value: "0.25", label: "25%" },
+  { value: "0.5", label: "50%" },
+  { value: "0.75", label: "75%" },
+  { value: "1", label: "100%" },
+]
+
+// 미리보기 아래 막대(프리미어 프로그램 모니터처럼): 지금 시간 · 보기 배율 · 시간 눈금과 재생 헤드 · 전체 길이 · 재생 버튼
+function MonitorBar({
+  now,
+  total,
+  fps,
+  playing,
+  disabled,
+  zoom,
+  onZoom,
+  onSeek,
+  onPlay,
+  onStep,
+  onHome,
+  onEnd,
+  onMarkIn,
+  onMarkOut,
+  onSplit,
+  loop,
+  onLoop,
+}: {
+  now: number
+  total: number
+  fps: number
+  playing: boolean
+  disabled?: boolean
+  zoom: string
+  onZoom: (z: string) => void
+  onSeek: (t: number) => void
+  onPlay: () => void
+  onStep: (dir: -1 | 1) => void
+  onHome: () => void
+  onEnd: () => void
+  onMarkIn: () => void
+  onMarkOut: () => void
+  onSplit: () => void
+  loop: boolean
+  onLoop: () => void
+}) {
+  const [ref, w] = useWidth<HTMLDivElement>()
+  const pps = w / Math.max(total, 0.1)
+  const step = RULER_STEPS.find((s) => s * pps >= 90) ?? 600
+  const minor = step / 5
+  const ticks: number[] = []
+  for (let t = 0; t <= total + 0.001; t += minor) ticks.push(Math.round(t * 1000) / 1000)
+  const timeAt = (x: number) => {
+    const r = ref.current!.getBoundingClientRect()
+    return Math.min(Math.max(((x - r.left) / r.width) * total, 0), total)
+  }
+  const pct = total > 0 ? Math.min(now / total, 1) * 100 : 0
+  const btn = (label: string, icon: React.ReactNode, onClick: () => void, key?: string) => (
+    <Tip content={key ? `${label} (${key})` : label}>
+      <Button variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} onClick={onClick}>
+        {icon}
+      </Button>
+    </Tip>
+  )
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-xs tabular-nums">
+        <span className="min-w-24 font-semibold text-sky-500">{timecode(now, fps)}</span>
+        <Select value={zoom} onValueChange={onZoom}>
+          <SelectTrigger size="sm" className="h-7 w-24 text-xs" aria-label="미리보기 배율">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PREVIEW_ZOOMS.map((z) => (
+              <SelectItem key={z.value} value={z.value}>
+                {z.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="ml-auto text-muted-foreground">{timecode(total, fps)}</span>
+      </div>
+      {/* 시간 눈금 + 재생 헤드: 누르거나 끌면 그 장면으로 */}
+      <div
+        ref={ref}
+        className="relative h-7 cursor-pointer touch-none select-none"
+        onPointerDown={(e) => {
+          if (disabled || total <= 0) return
+          capture(e)
+          onSeek(timeAt(e.clientX))
+        }}
+        onPointerMove={(e) => {
+          if (!disabled && e.buttons === 1) onSeek(timeAt(e.clientX))
+        }}
+        role="slider"
+        aria-label="미리보기 재생 헤드"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(total * 100) / 100}
+        aria-valuenow={Math.round(now * 100) / 100}
+        aria-valuetext={timecode(now, fps)}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") {
+            e.preventDefault()
+            onStep(-1)
+          }
+          if (e.key === "ArrowRight") {
+            e.preventDefault()
+            onStep(1)
+          }
+        }}
+      >
+        {ticks.map((t) => {
+          const major = Math.abs(t / step - Math.round(t / step)) < 1e-6
+          return <div key={t} className={`pointer-events-none absolute top-1 w-px bg-muted-foreground/50 ${major ? "h-3" : "h-1.5"}`} style={{ left: `${(t / Math.max(total, 0.1)) * 100}%` }} />
+        })}
+        <div className="pointer-events-none absolute inset-x-0 bottom-1 h-1.5 rounded-full bg-muted" />
+        <div className="pointer-events-none absolute bottom-1 left-0 h-1.5 rounded-full bg-sky-500/40" style={{ width: `${pct}%` }} />
+        <div className="pointer-events-none absolute top-0 bottom-0" style={{ left: `${pct}%` }}>
+          <div className="absolute top-0 -left-[5px] h-2.5 w-[11px] rounded-b-sm bg-sky-500" />
+          <div className="absolute top-0 bottom-0 -left-px w-0.5 bg-sky-500" />
+        </div>
+      </div>
+      {/* 재생 버튼(프리미어 순서) */}
+      <div className="flex flex-wrap items-center justify-center gap-0.5">
+        {btn("시작 표시 — 고른 클립 구간 시작을 여기로", <BracketsLeft />, onMarkIn, "I")}
+        {btn("끝 표시 — 고른 클립 구간 끝을 여기로", <BracketsRight />, onMarkOut, "O")}
+        <span className="mx-1 h-4 w-px bg-border" />
+        {btn("처음으로", <SkipBack />, onHome, "Home")}
+        {btn("1프레임 뒤로", <StepBack />, () => onStep(-1), "←")}
+        <Tip content="재생/멈춤 (스페이스)">
+          <Button variant="secondary" size="icon-sm" aria-label={playing ? "멈춤" : "재생"} disabled={disabled} onClick={onPlay}>
+            {playing ? <Pause /> : <Play />}
+          </Button>
+        </Tip>
+        {btn("1프레임 앞으로", <StepForward />, () => onStep(1), "→")}
+        {btn("끝으로", <SkipForward />, onEnd, "End")}
+        <span className="mx-1 h-4 w-px bg-border" />
+        {btn("재생 헤드에서 자르기", <Scissors />, onSplit, "C")}
+        <Tip content="고른 클립만 반복 재생">
+          <Button variant={loop ? "secondary" : "ghost"} size="icon-sm" aria-label="고른 클립 반복" aria-pressed={loop} disabled={disabled} onClick={onLoop}>
+            <Repeat />
+          </Button>
+        </Tip>
+      </div>
+    </div>
+  )
+}
+const BracketsLeft = () => <span className="text-base leading-none font-semibold">{"{"}</span>
+const BracketsRight = () => <span className="text-base leading-none font-semibold">{"}"}</span>
+
+function SequenceTimeline({
   clips,
   activeId,
+  now,
+  fps,
   disabled,
   onSelect,
+  onSeek,
+  onTrim,
   onReorder,
 }: {
   clips: Clip[]
   activeId: number | null
+  now: number // 재생 헤드(시퀀스 시간, 초)
+  fps: number
   disabled?: boolean
   onSelect: (id: number) => void
+  onSeek: (t: number, commit: boolean) => void
+  onTrim: (id: number, start: number, end: number, edge: "start" | "end", commit: boolean) => void
   onReorder: (next: Clip[]) => void
 }) {
   const thumbOf = useClipThumbs(clips)
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
-  const total = clips.reduce((s, c) => s + clipLen(c), 0) || 1
-  const onDragEnd = ({ active, over }: DragEndEvent) => {
-    if (disabled || !over || active.id === over.id) return
-    const from = clips.findIndex((c) => c.id === active.id)
-    const to = clips.findIndex((c) => c.id === over.id)
-    if (from >= 0 && to >= 0) onReorder(arrayMove(clips, from, to))
-  }
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={clips.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
-        <div className="flex gap-1 overflow-x-auto rounded-lg border bg-muted/40 p-1" role="listbox" aria-label="타임라인 클립">
-          {clips.map((c, i) => (
-            <TimelineClip
-              key={c.id}
-              clip={c}
-              index={i}
-              thumb={thumbOf(c)}
-              grow={clipLen(c) / total}
-              active={c.id === activeId}
-              disabled={disabled}
-              onSelect={() => onSelect(c.id)}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    </DndContext>
-  )
-}
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [boxW, setBoxW] = useState(800)
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setBoxW(el.clientWidth))
+    ro.observe(el)
+    setBoxW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+  const total = clips.reduce((s, c) => s + clipLen(c), 0)
+  // 확대: 1 = 전체가 칸 너비에 맞게(오른쪽에 조금 여유)
+  const [zoom, setZoom] = useState(1)
+  // 끄는 동안에는 배율을 고정한다(길이가 바뀌어 맞추기 배율이 변하면 손잡이가 마우스를 못 따라온다)
+  const [frozenPps, setFrozenPps] = useState<number | null>(null)
+  const pps = frozenPps ?? (boxW / Math.max(total * 1.08, 4)) * zoom // 1초당 픽셀
+  const width = Math.max(boxW, total * pps + 40)
+  const starts = clips.reduce<number[]>((a, _c, i) => [...a, i === 0 ? 0 : a[i - 1] + clipLen(clips[i - 1])], [])
+  const step = RULER_STEPS.find((s) => s * pps >= 80) ?? 600
+  const minor = step / 5
+  const ticks: number[] = []
+  for (let t = 0; t <= width / pps + 0.001; t += minor) ticks.push(Math.round(t * 1000) / 1000)
 
-function TimelineClip({
-  clip,
-  index,
-  thumb,
-  grow,
-  active,
-  disabled,
-  onSelect,
-}: {
-  clip: Clip
-  index: number
-  thumb: string | null
-  grow: number
-  active: boolean
-  disabled?: boolean
-  onSelect: () => void
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: clip.id, disabled })
+  // 눈금·트랙 빈 곳: 누르거나 끌면 재생 헤드가 그 시점으로
+  const timeAt = (clientX: number) => {
+    const r = boxRef.current!.getBoundingClientRect()
+    return Math.min(Math.max((clientX - r.left + boxRef.current!.scrollLeft) / pps, 0), total)
+  }
+  const scrub = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (disabled || total <= 0) return
+      capture(e)
+      onSeek(timeAt(e.clientX), false)
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (!disabled && e.buttons === 1 && e.currentTarget.hasPointerCapture(e.pointerId)) onSeek(timeAt(e.clientX), false)
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      if (!disabled && e.currentTarget.hasPointerCapture(e.pointerId)) onSeek(timeAt(e.clientX), true)
+    },
+  }
+
+  // 클립 끌기: 몸통 = 순서 바꾸기(5px 넘게 움직였을 때), 그냥 누르면 고르고 그 시점으로 재생 헤드 이동 / 양 끝 = 길이 다듬기
+  const drag = useRef<{ id: number; x: number; mode: "move" | "start" | "end"; start: number; end: number; moved: boolean; last?: [number, number] } | null>(null)
+  const [moving, setMoving] = useState<{ id: number; dx: number } | null>(null)
+  const targetIndex = (id: number, dx: number) => {
+    const i = clips.findIndex((c) => c.id === id)
+    const center = (starts[i] + clipLen(clips[i]) / 2) * pps + dx
+    return clips.filter((c, j) => j !== i && (starts[j] + clipLen(c) / 2) * pps < center).length
+  }
+  const clipHandlers = (c: Clip, mode: "move" | "start" | "end") => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (disabled) return
+      e.stopPropagation()
+      capture(e)
+      drag.current = { id: c.id, x: e.clientX, mode, start: c.start, end: c.end, moved: false }
+      if (mode !== "move") setFrozenPps(pps)
+      if (mode !== "move") onSelect(c.id)
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const d = drag.current
+      if (!d || d.id !== c.id || e.buttons !== 1) return
+      e.stopPropagation()
+      const dx = e.clientX - d.x
+      if (!d.moved && Math.abs(dx) < 5) return
+      d.moved = true
+      if (d.mode === "move") setMoving({ id: c.id, dx })
+      else {
+        const dt = dx / pps
+        const r2 = (v: number) => Math.round(v * 100) / 100
+        // 끄는 동안 마지막 값을 기억해 두고 놓을 때 그 값으로 확정한다(놓는 순간 화면이 아직 안 바뀌었어도)
+        d.last = d.mode === "start" ? [r2(Math.min(Math.max(d.start + dt, 0), d.end - 0.1)), d.end] : [d.start, r2(Math.max(Math.min(d.end + dt, c.source.duration), d.start + 0.1))]
+        onTrim(c.id, d.last[0], d.last[1], d.mode, false)
+      }
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const d = drag.current
+      drag.current = null
+      setFrozenPps(null)
+      if (!d || d.id !== c.id) return
+      e.stopPropagation()
+      if (d.mode === "move") {
+        setMoving(null)
+        if (d.moved) {
+          const to = targetIndex(c.id, e.clientX - d.x)
+          const from = clips.findIndex((x) => x.id === c.id)
+          if (to !== from) {
+            const next = [...clips]
+            const [m] = next.splice(from, 1)
+            next.splice(to, 0, m)
+            onReorder(next)
+          }
+        } else {
+          onSelect(c.id)
+          onSeek(timeAt(e.clientX), true)
+        }
+      } else if (d.last) onTrim(c.id, d.last[0], d.last[1], d.mode, true)
+    },
+  })
+  const dropAt = moving ? targetIndex(moving.id, moving.dx) : -1
+
   return (
-    <button
-      type="button"
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      role="option"
-      aria-selected={active}
-      aria-label={`${index + 1}번 클립 ${clip.source.file.name} ${fmt(clip.start)}–${fmt(clip.end)}`}
-      onClick={onSelect}
-      style={{ transform: CSS.Translate.toString(transform), transition, flexGrow: grow, flexBasis: 0 }}
-      className={`relative h-16 min-w-20 cursor-grab touch-none overflow-hidden rounded-md border-2 bg-black text-left active:cursor-grabbing ${
-        active ? "border-primary" : "border-transparent hover:border-primary/40"
-      } ${isDragging ? "z-10 opacity-80 shadow-lg" : ""}`}
-    >
-      {/* 프리미어 비디오 트랙처럼 첫 장면을 원래 비율로 옆으로 이어 붙인다(한 장을 늘리면 뭉개져 보인다) */}
-      {thumb ? (
-        <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-85" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />
-      ) : (
-        <span className="absolute inset-0 animate-pulse bg-muted-foreground/20 motion-reduce:animate-none" />
-      )}
-      <span className="absolute top-1 left-1 rounded bg-black/70 px-1.5 text-[11px] font-semibold text-white tabular-nums">{index + 1}</span>
-      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1.5 pt-3 pb-0.5 text-[11px] text-white tabular-nums">
-        {fmt(clipLen(clip))} · {clip.source.file.name}
-      </span>
-    </button>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-xs tabular-nums">
+        <span className="font-semibold text-primary">{timecode(now, fps)}</span>
+        <span className="text-muted-foreground">/ {timecode(total, fps)}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="ghost" size="icon-xs" aria-label="타임라인 축소" disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z / 1.5))}>
+            <ZoomOut />
+          </Button>
+          <Button variant="ghost" size="xs" disabled={zoom === 1} onClick={() => setZoom(1)}>
+            맞추기
+          </Button>
+          <Button variant="ghost" size="icon-xs" aria-label="타임라인 확대" disabled={zoom >= 20} onClick={() => setZoom((z) => Math.min(20, z * 1.5))}>
+            <ZoomIn />
+          </Button>
+        </div>
+      </div>
+      <div ref={boxRef} className="relative overflow-x-auto overflow-y-hidden rounded-md border bg-muted/30 select-none" data-lenis-prevent>
+        <div className="relative" style={{ width }}>
+          {/* 시간 눈금 */}
+          <div
+            {...scrub}
+            className="relative h-7 cursor-pointer touch-none border-b bg-background/60"
+            role="slider"
+            aria-label="재생 헤드"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(total * 100) / 100}
+            aria-valuenow={Math.round(now * 100) / 100}
+            aria-valuetext={timecode(now, fps)}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              const d = e.shiftKey ? 1 : 1 / Math.max(1, fps)
+              if (e.key === "ArrowLeft") onSeek(Math.max(0, now - d), true)
+              if (e.key === "ArrowRight") onSeek(Math.min(total, now + d), true)
+            }}
+          >
+            {ticks.map((t) => {
+              const major = Math.abs(t / step - Math.round(t / step)) < 1e-6
+              return (
+                <div key={t} className="pointer-events-none absolute bottom-0" style={{ left: t * pps }}>
+                  <div className={`w-px bg-muted-foreground/60 ${major ? "h-3" : "h-1.5"}`} />
+                  {major && <span className="absolute bottom-3 left-1 text-[10px] whitespace-nowrap text-muted-foreground tabular-nums">{timecode(t, fps)}</span>}
+                </div>
+              )
+            })}
+            {/* 시퀀스 끝 */}
+            <div className="pointer-events-none absolute inset-y-0 border-l border-dashed border-amber-400/70" style={{ left: total * pps }} />
+          </div>
+          {/* 비디오 트랙 V1 */}
+          <div {...scrub} className="relative h-16 cursor-pointer touch-none">
+            {clips.map((c, i) => {
+              const active = c.id === activeId
+              const thumb = thumbOf(c)
+              const isMoving = moving?.id === c.id
+              return (
+                <div
+                  key={c.id}
+                  {...clipHandlers(c, "move")}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={active}
+                  aria-label={`${i + 1}번 클립 ${c.source.file.name} ${fmt(c.start)}–${fmt(c.end)}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") onSelect(c.id)
+                    // Alt + ← → 로 순서 바꾸기
+                    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+                      const to = i + (e.key === "ArrowLeft" ? -1 : 1)
+                      if (to < 0 || to >= clips.length) return
+                      const next = [...clips]
+                      ;[next[i], next[to]] = [next[to], next[i]]
+                      onReorder(next)
+                    }
+                  }}
+                  className={`absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-[3px] border-2 bg-sky-900 active:cursor-grabbing ${
+                    active ? "border-white" : "border-sky-700/80 hover:border-sky-300"
+                  } ${isMoving ? "z-20 opacity-80 shadow-lg" : ""}`}
+                  style={{ left: starts[i] * pps, width: Math.max(4, clipLen(c) * pps), transform: isMoving ? `translateX(${moving.dx}px)` : undefined }}
+                >
+                  {thumb && (
+                    <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-70" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />
+                  )}
+                  <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-sky-950/80 px-1.5 text-[11px] leading-4 text-white">
+                    {i + 1} · {c.source.file.name}
+                  </span>
+                  <span className="pointer-events-none absolute right-1 bottom-0.5 rounded bg-black/60 px-1 text-[10px] text-white tabular-nums">{fmt(clipLen(c))}</span>
+                  {/* 양 끝 손잡이: 끌어서 클립 길이 다듬기(뒤 클립은 알아서 따라간다) */}
+                  {(["start", "end"] as const).map((edge) => (
+                    <span
+                      key={edge}
+                      {...clipHandlers(c, edge)}
+                      aria-hidden
+                      className={`absolute inset-y-0 z-10 w-2 cursor-ew-resize bg-white/0 hover:bg-white/50 ${edge === "start" ? "left-0" : "right-0"} ${active ? "bg-white/30" : ""}`}
+                    />
+                  ))}
+                </div>
+              )
+            })}
+            {/* 순서 바꾸기: 놓일 자리 */}
+            {moving && dropAt >= 0 && (
+              <div
+                className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-amber-400"
+                style={{
+                  left: (() => {
+                    const others = clips.filter((c) => c.id !== moving.id)
+                    return others.slice(0, dropAt).reduce((s, c) => s + clipLen(c), 0) * pps
+                  })(),
+                }}
+              />
+            )}
+          </div>
+          {/* 재생 헤드 */}
+          <div className="pointer-events-none absolute inset-y-0 z-30" style={{ left: now * pps }}>
+            <div className="absolute top-0 -left-[5px] h-3 w-[11px] rounded-b-sm bg-sky-500" />
+            <div className="absolute top-0 bottom-0 -left-px w-0.5 bg-sky-500" />
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -734,6 +1066,10 @@ export function VideoConvertTool() {
   // 새 클립 동영상이 준비되면(전체 재생 중) 그 클립 시작부터 재생
   const onPreviewReady = () => {
     drawAdjusted()
+    if (pendingLocal.current !== null && preview.current) {
+      preview.current.currentTime = pendingLocal.current
+      pendingLocal.current = null
+    }
     if (!autoPlay.current) return
     autoPlay.current = false
     const v = preview.current
@@ -1150,6 +1486,118 @@ export function VideoConvertTool() {
     }
     if (e.dataTransfer.files.length) void open([...e.dataTransfer.files], { append: true })
   }
+  // 시퀀스 시간(재생 헤드): 고른 클립의 시퀀스 시작 + 그 클립 안 위치
+  const seqStart = (id: number | undefined) => {
+    let t = 0
+    for (const c of clips) {
+      if (c.id === id) return t
+      t += clipLen(c)
+    }
+    return 0
+  }
+  const now = activeClip ? seqStart(activeClip.id) + Math.min(Math.max(time - activeClip.start, 0), clipLen(activeClip)) : 0
+  // 재생 헤드를 옮기면 그 시점 클립을 고르고 그 장면을 미리보기에 띄운다(다른 동영상이면 열린 뒤에 옮긴다)
+  const pendingLocal = useRef<number | null>(null)
+  const seekSequence = (t: number) => {
+    if (clips.length === 0) return
+    let acc = 0
+    let target = clips[clips.length - 1]
+    for (const c of clips) {
+      if (t < acc + clipLen(c)) {
+        target = c
+        break
+      }
+      acc += clipLen(c)
+    }
+    if (target === clips[clips.length - 1] && t >= acc + clipLen(target)) acc = seqStart(target.id)
+    const local = Math.min(Math.max(target.start + (t - acc), target.start), target.end - 0.001)
+    setSeqPlay(false)
+    setTime(local)
+    if (target.id === activeClip?.id || target.source.url === activeClip?.source.url) {
+      if (target.id !== activeClip?.id) setActiveId(target.id)
+      seekPreview(local)
+    } else {
+      preview.current?.pause()
+      pendingLocal.current = local
+      setActiveId(target.id)
+    }
+  }
+  // 클립 끝 다듬기: 시작·끝만 바꾸면 뒤 클립은 시퀀스에서 알아서 당겨지거나 밀린다
+  const trimClip = (id: number, start: number, end: number, edge: "start" | "end", commit: boolean) => {
+    setSliding(!commit)
+    setClips((cs) => cs.map((c) => (c.id === id ? { ...c, start, end } : c)))
+    setResult(null)
+    if (id === activeClip?.id) seekPreview(edge === "start" ? start : Math.max(start, end - 0.001))
+  }
+  // 프로그램 모니터 막대: 재생 헤드부터 이어서 재생(끝이면 처음부터) · 1프레임 이동 · 처음/끝 · 시작/끝 표시 · 클립 반복
+  const [previewZoom, setPreviewZoom] = useState("fit")
+  const playFromHead = () => {
+    const v = preview.current
+    if (!v || !activeClip) return
+    if (!v.paused) {
+      v.pause()
+      setSeqPlay(false)
+      return
+    }
+    if (now >= totalLength - 0.05) {
+      playSequence()
+      return
+    }
+    setSeqPlay(true)
+    if (v.currentTime < range[0] || v.currentTime >= range[1] - 0.04) v.currentTime = range[0]
+    void v.play().catch(() => {})
+  }
+  const stepFrame = (dir: -1 | 1) => {
+    preview.current?.pause()
+    seekSequence(Math.min(Math.max(now + dir / Math.max(1, Number(fps)), 0), Math.max(0, totalLength - 0.001)))
+  }
+  const markIn = () => {
+    if (!activeClip) return
+    const t = preview.current?.currentTime ?? time
+    setRange([Math.min(Math.max(t, 0), range[1] - 0.1), range[1]])
+    setResult(null)
+  }
+  const markOut = () => {
+    if (!activeClip || !source) return
+    const t = preview.current?.currentTime ?? time
+    setRange([range[0], Math.min(Math.max(t, range[0] + 0.1), source.duration)])
+    setResult(null)
+  }
+  const loopClip = () => {
+    const v = preview.current
+    if (!v) return
+    if (!v.paused && !seqPlay) {
+      v.pause()
+      return
+    }
+    togglePlay()
+  }
+  // 단축키(프리미어와 같게): 스페이스 재생 · ←→ 1프레임(Shift = 1초) · Home/End · I/O 시작·끝 표시 · C 자르기
+  const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  keysRef.current = (e: KeyboardEvent) => {
+    if (!source || result || busy) return
+    const el = e.target instanceof HTMLElement ? e.target : null
+    if (el && (el.closest("input, textarea, select, [contenteditable=true], [role=combobox], [role=listbox], [role=option], [role=tab]") || (el.getAttribute("role") === "slider" && !el.closest("[data-monitor]")))) return
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    const k = e.key
+    if (k === " ") playFromHead()
+    else if (k === "ArrowLeft" || k === "ArrowRight") {
+      const d = (k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 1 : 1 / Math.max(1, Number(fps)))
+      preview.current?.pause()
+      seekSequence(Math.min(Math.max(now + d, 0), Math.max(0, totalLength - 0.001)))
+    } else if (k === "Home") seekSequence(0)
+    else if (k === "End") seekSequence(Math.max(0, totalLength - 0.001))
+    else if (k === "i" || k === "I") markIn()
+    else if (k === "o" || k === "O") markOut()
+    else if (k === "c" || k === "C") splitAtPlayhead()
+    else return
+    e.preventDefault()
+  }
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => keysRef.current(e)
+    window.addEventListener("keydown", on)
+    return () => window.removeEventListener("keydown", on)
+  }, [])
   const mediaThumb = useClipThumbs(media.map((s) => ({ id: -1, source: s, start: 0, end: s.duration })))
   const clipNo = clips.findIndex((c) => c.id === activeClip?.id) + 1
 
@@ -1312,8 +1760,9 @@ export function VideoConvertTool() {
                     </Button>
                   </>
                 ) : source ? (
-                  <span className="text-xs text-muted-foreground">
-                    {seqPlay ? "클립을 순서대로 이어서 보여 줍니다" : multi ? "고른 클립 구간만 반복합니다 · 전체 재생은 이어서" : "고른 구간만 반복해서 보여 줍니다"}
+                  <span className="truncate text-xs text-muted-foreground tabular-nums">
+                    {multi ? `${clipNo}번 클립 · ` : ""}
+                    {source.file.name} · {source.width}×{source.height} · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기
                   </span>
                 ) : null
               }
@@ -1335,7 +1784,7 @@ export function VideoConvertTool() {
                 </div>
               ) : source ? (
                 <div className="flex min-h-64 flex-1 flex-col gap-2 p-2">
-                  <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-black">
+                  <div className="relative flex min-h-0 flex-1 overflow-auto rounded-md bg-black" data-lenis-prevent>
                     {progress && (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
                         <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
@@ -1345,6 +1794,10 @@ export function VideoConvertTool() {
                         <Progress value={progress.ratio * 100} className="h-2 w-2/3 bg-white/20" />
                       </div>
                     )}
+                    <div
+                      className={previewZoom === "fit" ? "absolute inset-0" : "relative m-auto shrink-0"}
+                      style={previewZoom === "fit" ? undefined : { width: source.width * Number(previewZoom), height: source.height * Number(previewZoom) }}
+                    >
                     <video
                       ref={preview}
                       src={source.url}
@@ -1367,25 +1820,28 @@ export function VideoConvertTool() {
                       aria-hidden
                       className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted || moved ? "" : "hidden"}`}
                     />
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
-                      {playing && !seqPlay ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-                      {playing && !seqPlay ? "멈춤" : multi ? "클립 재생" : "구간 재생"}
-                    </Button>
-                    {multi && (
-                      <Button variant={seqPlay ? "default" : "outline"} size="sm" onClick={playSequence} disabled={busy}>
-                        {seqPlay && playing ? <Pause data-icon="inline-start" /> : <ListVideo data-icon="inline-start" />}
-                        {seqPlay && playing ? "멈춤" : "전체 재생"}
-                      </Button>
-                    )}
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {multi ? `${clipNo}번 클립 · ` : ""}
-                      {fmt(time)} / {fmt(source.duration)}
-                    </span>
-                    <span className="ml-auto truncate text-xs text-muted-foreground tabular-nums">
-                      {source.file.name} · {source.width}×{source.height}
-                    </span>
+                  <div data-monitor>
+                    <MonitorBar
+                      now={now}
+                      total={totalLength}
+                      fps={Number(fps)}
+                      playing={playing && seqPlay}
+                      disabled={busy}
+                      zoom={previewZoom}
+                      onZoom={setPreviewZoom}
+                      onSeek={(t) => seekSequence(t)}
+                      onPlay={playFromHead}
+                      onStep={stepFrame}
+                      onHome={() => seekSequence(0)}
+                      onEnd={() => seekSequence(Math.max(0, totalLength - 0.001))}
+                      onMarkIn={markIn}
+                      onMarkOut={markOut}
+                      onSplit={splitAtPlayhead}
+                      loop={playing && !seqPlay}
+                      onLoop={loopClip}
+                    />
                   </div>
                 </div>
               ) : (
@@ -1656,27 +2112,6 @@ export function VideoConvertTool() {
                         </Button>
                       </div>
                     </div>
-                    <Slider
-                      min={0}
-                      max={source.duration}
-                      step={0.1}
-                      minStepsBetweenThumbs={1}
-                      value={range}
-                      disabled={busy}
-                      onValueChange={(v) => {
-                        const next: [number, number] = [v[0], v[1]]
-                        setSliding(true)
-                        // 움직인 손잡이 위치를 미리보기로 보여 준다
-                        seekPreview(next[0] !== range[0] ? next[0] : next[1])
-                        setRange(next)
-                      }}
-                      onValueCommit={(v) => {
-                        setSliding(false)
-                        playRange(v[0])
-                      }}
-                      aria-label={`${F.label} 로 만들 구간`}
-                      className="py-1"
-                    />
                     <FrameStrip
                       thumbs={thumbs}
                       duration={source.duration}
@@ -1694,18 +2129,22 @@ export function VideoConvertTool() {
                         seekPreview(t)
                       }}
                     />
-                    <Timeline
+                    <SequenceTimeline
                       clips={clips}
                       activeId={activeClip?.id ?? null}
+                      now={now}
+                      fps={Number(fps)}
                       disabled={busy}
                       onSelect={selectClip}
+                      onSeek={(t) => seekSequence(t)}
+                      onTrim={trimClip}
                       onReorder={(next) => {
                         setClips(next)
                         setResult(null)
                       }}
                     />
                     <p className="text-xs break-keep text-muted-foreground">
-                      클립을 누르면 그 클립 구간을 다듬고, 끌어서 순서를 바꿉니다. 미디어의 동영상을 여기로 끌어 놓으면 뒤에 붙습니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
+                      위 띠는 고른 클립의 원본(손잡이로 구간 조절), 아래는 이어 붙인 시퀀스입니다. 눈금·트랙을 누르거나 파란 재생 헤드를 끌면 그 장면이 미리보기에 나오고, 클립 양 끝을 끌면 길이가 바뀌며 뒤 클립이 따라 붙습니다. 클립 몸통을 끌면 순서가 바뀌고(Alt+←→ 도 됨), 미디어의 동영상을 끌어 놓으면 뒤에 붙습니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
                     </p>
                   </>
                 ) : (
