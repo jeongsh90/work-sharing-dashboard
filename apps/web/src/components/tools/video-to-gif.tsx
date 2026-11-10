@@ -1616,10 +1616,6 @@ export function VideoConvertTool() {
             {progress.step}… {Math.round(progress.ratio * 100)}%
           </span>
         )}
-        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
-          <History data-icon="inline-start" />
-          히스토리
-        </Button>
         {/* 지금 설정으로 만들 때의 예상 용량(설정·클립을 바꾸면 다시 잰다) */}
         {source && !busy && (
           <Tip content={`${F.label} · ${outW}×${outH}px · ${frames}장 · ${fmt(totalLength / Number(speed))}${estimate !== null && estimate > 10 * 1024 * 1024 ? " — 10MB 가 넘습니다" : ""}`}>
@@ -1638,6 +1634,10 @@ export function VideoConvertTool() {
             </span>
           </Tip>
         )}
+        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+          <History data-icon="inline-start" />
+          히스토리
+        </Button>
         <Button size="sm" disabled={!source} onClick={() => setSaveOpen(true)}>
           <Save data-icon="inline-start" />
           저장하기
