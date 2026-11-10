@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ChevronDown, CopyPlus, FileInput, History, Pipette, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
+import { ChevronDown, CopyPlus, FileInput, History, Pipette, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, Settings2, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
@@ -1534,6 +1534,7 @@ export function VideoConvertTool() {
     setAdjust((a) => ({ ...a, ...neutralize(sr / n, sg / n, sb / n) }))
   }
   const [saveOpen, setSaveOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false) // 동영상 설정 칸
   // 저장 안 한 작업: 마지막으로 저장(변환)한 뒤 클립·설정이 바뀌었으면 닫을 때 묻는다
   const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end]), format, ratio, fps, colors, speed, repeat, adjust, motion])
   const [savedKey, setSavedKey] = useState("")
@@ -1642,7 +1643,7 @@ export function VideoConvertTool() {
   const canRedo = hist.current.future.length > 0
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keysRef.current = (e: KeyboardEvent) => {
-    if (!source || busy || saveOpen) return
+    if (!source || busy || saveOpen || settingsOpen || historyOpen) return
     // 확인 창·고르기 목록이 열려 있으면 그쪽이 먼저
     if (document.querySelector('[role=alertdialog], [role=listbox], [role=menu]')) return
     // 글자를 치는 칸에서만 단축키를 쉰다(눈금·버튼·슬라이더에 포커스가 있어도 편집 단축키가 먼저)
@@ -1728,6 +1729,10 @@ export function VideoConvertTool() {
           <History data-icon="inline-start" />
           히스토리
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+          <Settings2 data-icon="inline-start" />
+          동영상 설정
+        </Button>
         <Button size="sm" disabled={!source} onClick={() => setSaveOpen(true)}>
           <Save data-icon="inline-start" />
           저장하기
@@ -1755,12 +1760,12 @@ export function VideoConvertTool() {
         </SheetContent>
       </Sheet>
 
-      {/* 저장 칸: 형식 · 크기 · 장수 · 화질 · 속도 · 반복 · 예상 용량 · 변환 */}
-      <Sheet open={saveOpen} onOpenChange={setSaveOpen}>
+      {/* 동영상 설정 칸: 형식 · 화면 비율 · 초당 장수 · 화질 · 속도 · 반복 */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
           <SheetHeader className="border-b">
-            <SheetTitle>저장하기</SheetTitle>
-            <SheetDescription className="break-keep">형식·크기·화질을 고르고 변환하면 바로 내려받아지고 히스토리에 남습니다.</SheetDescription>
+            <SheetTitle>동영상 설정</SheetTitle>
+            <SheetDescription className="break-keep">만들 형식·화면 비율·초당 장수·화질·속도·반복. 바꾸면 미리보기와 예상 용량에 바로 들어갑니다.</SheetDescription>
           </SheetHeader>
           <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="flex flex-col gap-4 p-4">
             <div className="flex flex-col gap-1.5">
@@ -1835,6 +1840,50 @@ export function VideoConvertTool() {
                 ]}
                 className="col-span-2"
               />
+            </div>
+            {source && (
+              <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 text-sm" aria-live="polite">
+                <span className="text-xs text-muted-foreground">예상 {F.label} 용량</span>
+                <span className="font-semibold tabular-nums">{estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}</span>
+              </div>
+            )}
+          </SmoothScrollArea>
+          <SheetFooter className="border-t">
+            <Button
+              size="lg"
+              className="w-full"
+              disabled={!source}
+              onClick={() => {
+                setSettingsOpen(false)
+                setSaveOpen(true)
+              }}
+            >
+              <Save data-icon="inline-start" />
+              저장하기로
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* 저장 칸: 형식 · 크기 · 장수 · 화질 · 속도 · 반복 · 예상 용량 · 변환 */}
+      <Sheet open={saveOpen} onOpenChange={setSaveOpen}>
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
+          <SheetHeader className="border-b">
+            <SheetTitle>저장하기</SheetTitle>
+            <SheetDescription className="break-keep">지금 설정으로 변환하면 바로 내려받아지고 히스토리에 남습니다.</SheetDescription>
+          </SheetHeader>
+          <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="flex flex-col gap-4 p-4">
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-xs text-muted-foreground">동영상 설정</span>
+                <span className="text-sm font-medium break-keep tabular-nums">
+                  {F.label} · {ratio} {outW}×{outH} · {fps}장 · {F.options.find((o) => o.value === colors)?.label ?? colors} · {speed}배 · {repeat === "0" ? "계속 반복" : "한 번만"}
+                </span>
+              </div>
+              <Button variant="outline" size="xs" disabled={busy} onClick={() => setSettingsOpen(true)}>
+                <Settings2 data-icon="inline-start" />
+                바꾸기
+              </Button>
             </div>
             {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
             {source && (
@@ -1938,6 +1987,13 @@ export function VideoConvertTool() {
                     {source.file.name} · {source.width}×{source.height} → {outW}×{outH} ({ratio}) · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제 · Ctrl+Z 되돌리기
                   </span>
                 ) : null
+              }
+              trailing={
+                <Tip content="동영상 설정(형식·화면 비율·장수·화질·속도·반복)">
+                  <Button variant="ghost" size="icon-xs" aria-label="동영상 설정" onClick={() => setSettingsOpen(true)}>
+                    <Settings2 />
+                  </Button>
+                </Tip>
               }
             >
               {source ? (
@@ -2273,13 +2329,14 @@ export function VideoConvertTool() {
 
 // 편집 화면 칸(프리미어 패널처럼): 위 제목 줄 + 내용. scroll 이면 내용만 따로 스크롤(부드럽게)
 // bare: 안쪽 칸(모션·색 보정)이 제목·기본값 버튼을 가지고 있어 머리 줄을 그리지 않는다(제목은 화면 읽기용으로만)
-function Panel({ title, actions, scroll, bare, children }: { title: React.ReactNode; actions?: React.ReactNode; scroll?: boolean; bare?: boolean; children: React.ReactNode }) {
+function Panel({ title, actions, trailing, scroll, bare, children }: { title: React.ReactNode; actions?: React.ReactNode; trailing?: React.ReactNode; scroll?: boolean; bare?: boolean; children: React.ReactNode }) {
   return (
     <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label={typeof title === "string" ? title : undefined}>
       {!bare && (
         <div className="flex min-h-10 flex-wrap items-center gap-1.5 border-b px-2 py-1">
-          <h3 className="mr-auto text-sm font-semibold">{title}</h3>
-          {actions}
+          <h3 className="mr-auto shrink-0 text-sm font-semibold">{title}</h3>
+          <div className="flex min-w-0 items-center gap-1.5">{actions}</div>
+          {trailing}
         </div>
       )}
       {scroll ? (
