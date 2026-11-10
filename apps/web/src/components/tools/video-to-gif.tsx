@@ -1365,10 +1365,6 @@ export function VideoConvertTool() {
   const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files")
   // 파일 고르기 창: 가져오기(미디어 칸. 타임라인이 비어 있으면 타임라인에도) / 영상 추가(타임라인 뒤에 붙이기)
   const appendPick = useRef(false)
-  const pickMore = () => {
-    appendPick.current = true
-    picker.current?.click()
-  }
   const pickImport = () => {
     appendPick.current = false
     picker.current?.click()
@@ -1479,7 +1475,7 @@ export function VideoConvertTool() {
     }
     togglePlay()
   }
-  // 단축키(프리미어와 같게): 스페이스 재생 · ←→ 1프레임(Shift = 1초) · Home/End · I/O 시작·끝 표시 · C 자르기
+  // 단축키(프리미어와 같게): 스페이스 재생 · ←→ 1프레임(Shift = 1초) · Home/End · I/O 시작·끝 표시 · C 자르기 · Delete 고른 클립 삭제
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keysRef.current = (e: KeyboardEvent) => {
     if (!source || result || busy || saveOpen) return
@@ -1501,6 +1497,7 @@ export function VideoConvertTool() {
     else if (c === "KeyI") markIn()
     else if (c === "KeyO") markOut()
     else if (c === "KeyC") splitAtPlayhead()
+    else if (c === "Delete" || c === "Backspace") removeClip() // 고른 클립 삭제
     else return
     // 처리한 키는 포커스된 칸(눈금·버튼 등)으로 넘기지 않는다(두 번 움직이거나 버튼이 눌리지 않게)
     e.preventDefault()
@@ -1716,7 +1713,7 @@ export function VideoConvertTool() {
                 ) : source ? (
                   <span className="truncate text-xs text-muted-foreground tabular-nums">
                     {multi ? `${clipNo}번 클립 · ` : ""}
-                    {source.file.name} · {source.width}×{source.height} · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기
+                    {source.file.name} · {source.width}×{source.height} · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제
                   </span>
                 ) : null
               }
@@ -2011,13 +2008,7 @@ export function VideoConvertTool() {
                         복제
                       </Button>
                     </Tip>
-                    <Tip content="다른 동영상을 가져와 뒤에 이어 붙입니다">
-                      <Button variant="outline" size="xs" disabled={busy} onClick={pickMore}>
-                        <Plus data-icon="inline-start" />
-                        영상 추가
-                      </Button>
-                    </Tip>
-                    <Tip content="고른 클립을 타임라인에서 뺍니다">
+                    <Tip content="고른 클립을 타임라인에서 뺍니다 (Delete)">
                       <Button variant="ghost" size="xs" disabled={busy} onClick={removeClip} aria-label="고른 클립 삭제">
                         <Trash2 data-icon="inline-start" />
                         삭제
