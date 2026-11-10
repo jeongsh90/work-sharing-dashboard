@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { Download, FileInput, Film, LoaderCircle, Move, Pause, Play, RotateCcw, Scissors, SlidersHorizontal, Upload, Wand2, X } from "lucide-react"
+import { CopyPlus, Download, FileInput, Film, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Upload, Wand2, X } from "lucide-react"
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -86,6 +89,43 @@ const MAX_FRAMES = 900
 
 type Source = { file: File; url: string; duration: number; width: number; height: number }
 type Result = { url: string; size: number; width: number; height: number; frames: number; name: string }
+// 타임라인 클립(프리미어 시퀀스처럼): 동영상 하나의 한 구간. 클립을 순서대로 이어 붙여 한 움짤로 만든다.
+// 같은 동영상을 자르기·복제하면 Source 를 함께 쓴다.
+type Clip = { id: number; source: Source; start: number; end: number }
+let clipSeq = 1
+const newClip = (source: Source, start: number, end: number): Clip => ({ id: clipSeq++, source, start, end })
+const clipLen = (c: Clip) => Math.max(0, c.end - c.start)
+// 클립 한 장면을 출력 캔버스에 그린다. 첫 클립과 화면 비율이 다르면 비율을 지켜 가운데에 맞추고 남는 곳은 검정(프리미어 시퀀스와 같다)
+function drawClipFrame(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  src: Source,
+  outW: number,
+  outH: number,
+  motion: Motion,
+  tmp: { canvas?: HTMLCanvasElement },
+) {
+  const same = Math.abs(src.width / src.height - outW / outH) < 0.01
+  if (same) {
+    drawWithMotion(ctx, video, src.width, src.height, outW, outH, motion)
+    return
+  }
+  const k = Math.min(outW / src.width, outH / src.height)
+  const fw = Math.max(1, Math.round(src.width * k))
+  const fh = Math.max(1, Math.round(src.height * k))
+  const c = (tmp.canvas ??= document.createElement("canvas"))
+  if (c.width !== fw || c.height !== fh) {
+    c.width = fw
+    c.height = fh
+  }
+  const tctx = c.getContext("2d")!
+  tctx.imageSmoothingQuality = "high"
+  drawWithMotion(tctx, video, src.width, src.height, fw, fh, motion)
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.fillStyle = "#000"
+  ctx.fillRect(0, 0, outW, outH)
+  ctx.drawImage(c, Math.round((outW - fw) / 2), Math.round((outH - fh) / 2))
+}
 
 // 히스토리에 남기는 설정(원본 동영상은 남기지 않는다. 불러오면 형식·크기·화질·속도·반복·색 보정을 채운다)
 type VideoForm = {
@@ -101,6 +141,8 @@ type VideoForm = {
   sourceFileId?: string // 원본 동영상(히스토리에 함께 남긴 파일). 불러오면 이 동영상을 다시 연다
   start: number // 구간(초)
   end: number
+  // 여러 클립을 이어 붙였을 때 타임라인(순서대로). 첫 클립 = source·start·end
+  clips?: { source: string; sourceFileId?: string; start: number; end: number }[]
   outW: number
   outH: number
   frames: number
@@ -300,12 +342,170 @@ function FrameStrip({
   )
 }
 
+// 클립 첫 장면 작은 그림(타임라인 칸). 클립 시작 위치가 바뀌면 다시 뽑는다
+function useClipThumbs(clips: Clip[]) {
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const key = (c: Clip) => `${c.source.url}|${c.start.toFixed(1)}`
+  const want = [...new Set(clips.map(key))].filter((k) => !thumbs[k])
+  const wantKey = want.join(",")
+  useEffect(() => {
+    if (want.length === 0) return
+    let alive = true
+    void (async () => {
+      for (const k of want) {
+        const c = clips.find((x) => key(x) === k)
+        if (!c || !alive) continue
+        const video = document.createElement("video")
+        video.muted = true
+        video.preload = "auto"
+        video.src = c.source.url
+        try {
+          await new Promise<void>((ok, fail) => {
+            video.onloadeddata = () => ok()
+            video.onerror = () => fail(new Error("load"))
+          })
+          await seek(video, Math.min(c.start + 0.05, c.source.duration - 0.001))
+          const h = 64
+          const w = Math.round((c.source.width * h) / c.source.height)
+          const canvas = document.createElement("canvas")
+          canvas.width = w
+          canvas.height = h
+          canvas.getContext("2d")!.drawImage(video, 0, 0, w, h)
+          const url = canvas.toDataURL("image/jpeg", 0.7)
+          if (alive) setThumbs((t) => ({ ...t, [k]: url }))
+        } catch {
+          // 그림을 못 뽑아도 칸은 보인다
+        } finally {
+          video.removeAttribute("src")
+          video.load()
+        }
+      }
+    })()
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantKey])
+  return (c: Clip) => thumbs[key(c)] ?? null
+}
+
+// 타임라인: 클립을 길이 비율대로 옆으로 늘어놓는다. 누르면 그 클립을 고르고(구간·프레임 띠가 그 클립으로 바뀐다), 끌어서 순서를 바꾼다.
+function Timeline({
+  clips,
+  activeId,
+  disabled,
+  onSelect,
+  onReorder,
+}: {
+  clips: Clip[]
+  activeId: number | null
+  disabled?: boolean
+  onSelect: (id: number) => void
+  onReorder: (next: Clip[]) => void
+}) {
+  const thumbOf = useClipThumbs(clips)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  const total = clips.reduce((s, c) => s + clipLen(c), 0) || 1
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (disabled || !over || active.id === over.id) return
+    const from = clips.findIndex((c) => c.id === active.id)
+    const to = clips.findIndex((c) => c.id === over.id)
+    if (from >= 0 && to >= 0) onReorder(arrayMove(clips, from, to))
+  }
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={clips.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
+        <div className="flex gap-1 overflow-x-auto rounded-lg border bg-muted/40 p-1" role="listbox" aria-label="타임라인 클립">
+          {clips.map((c, i) => (
+            <TimelineClip
+              key={c.id}
+              clip={c}
+              index={i}
+              thumb={thumbOf(c)}
+              grow={clipLen(c) / total}
+              active={c.id === activeId}
+              disabled={disabled}
+              onSelect={() => onSelect(c.id)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+function TimelineClip({
+  clip,
+  index,
+  thumb,
+  grow,
+  active,
+  disabled,
+  onSelect,
+}: {
+  clip: Clip
+  index: number
+  thumb: string | null
+  grow: number
+  active: boolean
+  disabled?: boolean
+  onSelect: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: clip.id, disabled })
+  return (
+    <button
+      type="button"
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      role="option"
+      aria-selected={active}
+      aria-label={`${index + 1}번 클립 ${clip.source.file.name} ${fmt(clip.start)}–${fmt(clip.end)}`}
+      onClick={onSelect}
+      style={{ transform: CSS.Translate.toString(transform), transition, flexGrow: grow, flexBasis: 0 }}
+      className={`relative h-16 min-w-20 cursor-grab touch-none overflow-hidden rounded-md border-2 bg-black text-left active:cursor-grabbing ${
+        active ? "border-primary" : "border-transparent hover:border-primary/40"
+      } ${isDragging ? "z-10 opacity-80 shadow-lg" : ""}`}
+    >
+      {thumb ? (
+        <img src={thumb} alt="" draggable={false} className="absolute inset-0 size-full object-cover opacity-80" />
+      ) : (
+        <span className="absolute inset-0 animate-pulse bg-muted-foreground/20 motion-reduce:animate-none" />
+      )}
+      <span className="absolute top-1 left-1 rounded bg-black/70 px-1.5 text-[11px] font-semibold text-white tabular-nums">{index + 1}</span>
+      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1.5 pt-3 pb-0.5 text-[11px] text-white tabular-nums">
+        {fmt(clipLen(clip))} · {clip.source.file.name}
+      </span>
+    </button>
+  )
+}
+
 // 한 화면에서 위 토글로 GIF·WebP 를 고른다(고른 동영상·구간·크기는 그대로 둔다)
 export function VideoConvertTool() {
   const [format, setFormat] = useState<Format>("webp") // 기본은 WebP(같은 화질에 더 가벼움)
   const F = FORMATS[format]
-  const [source, setSource] = useState<Source | null>(null)
-  const [range, setRange] = useState<[number, number]>([0, 0])
+  // 타임라인: 클립을 순서대로 이어 붙인다. 고른 클립(activeId)의 동영상·구간이 미리보기·구간 칸·프레임 띠에 보인다
+  const [clips, setClips] = useState<Clip[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
+  const activeClip = clips.find((c) => c.id === activeId) ?? clips[0] ?? null
+  const source = activeClip?.source ?? null
+  const range: [number, number] = activeClip ? [activeClip.start, activeClip.end] : [0, 0]
+  const activeRef = useRef<number | null>(null)
+  activeRef.current = activeClip?.id ?? null
+  const setRange = (r: [number, number]) => {
+    const id = activeRef.current
+    setClips((cs) => cs.map((c) => (c.id === id ? { ...c, start: r[0], end: r[1] } : c)))
+  }
+  const first = clips[0]?.source ?? null // 출력 크기 기준(시퀀스 설정 = 첫 클립)
+  const multi = clips.length > 1
+  // 전체 재생(클립을 이어서): 지금 클립 끝에 닿으면 다음 클립으로 넘어간다
+  const [seqPlay, setSeqPlay] = useState(false)
+  const seqRef = useRef(false)
+  seqRef.current = seqPlay
+  const autoPlay = useRef(false) // 다음 클립으로 넘어간 뒤 동영상이 준비되면 그 클립 시작부터 재생
   const [width, setWidth] = useState("860")
   const [fps, setFps] = useState("25")
   // 화질: GIF 는 색 수, WebP 는 압축 품질
@@ -349,44 +549,119 @@ export function VideoConvertTool() {
   const topRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef<{ title: string; fileId: string; form: VideoForm } | null>(null)
 
-  // 화면을 닫으면 만든 주소·작업을 정리한다
-  useEffect(() => () => void (source && URL.revokeObjectURL(source.url)), [source])
+  // 화면을 닫으면 만든 주소·작업을 정리한다(동영상 주소는 어느 클립도 쓰지 않게 되면 푼다)
+  const urlsRef = useRef(new Set<string>())
+  useEffect(() => {
+    const used = new Set(clips.map((c) => c.source.url))
+    for (const u of urlsRef.current) if (!used.has(u)) URL.revokeObjectURL(u)
+    urlsRef.current = used
+  }, [clips])
+  useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
   useEffect(() => () => void (result && URL.revokeObjectURL(result.url)), [result])
   useEffect(() => () => cancelRef.current?.(), [])
 
-  const open = (file: File | undefined, savedId?: string) => {
-    if (!file) return
-    if (savedId) sourceIds.current.set(file, Promise.resolve(savedId))
-    if (!file.type.startsWith("video/") && !/\.(mp4|mov|webm|m4v|mkv)$/i.test(file.name)) {
+  const OPEN_FAIL = "이 동영상은 브라우저에서 열 수 없습니다. MP4(H.264)나 WebM 으로 저장해 다시 골라 주세요."
+  const isVideo = (file: File) => file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|mkv)$/i.test(file.name)
+  // 동영상 파일을 열어 크기·길이를 읽는다(못 열면 null)
+  const readSource = (file: File) =>
+    new Promise<Source | null>((resolve) => {
+      const url = URL.createObjectURL(file)
+      const v = document.createElement("video")
+      v.preload = "metadata"
+      v.muted = true
+      v.src = url
+      v.onloadedmetadata = () => {
+        if (!v.videoWidth || !Number.isFinite(v.duration)) {
+          URL.revokeObjectURL(url)
+          resolve(null)
+          return
+        }
+        resolve({ file, url, duration: v.duration, width: v.videoWidth, height: v.videoHeight })
+      }
+      v.onerror = () => {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      }
+    })
+
+  // 동영상 고르기: 처음이면 타임라인을 새로 만들고, 이미 있으면(영상 추가) 뒤에 클립으로 붙인다.
+  // 처음 한 개는 앞 5초(짧으면 전체), 뒤에 붙이는 영상은 전체 길이. 불러온 설정과 같은 동영상이면 그때 구간
+  const open = async (input: File | File[] | undefined, opts?: { savedId?: string; append?: boolean; ranges?: [number, number][] }) => {
+    const files = (Array.isArray(input) ? input : input ? [input] : []).filter(Boolean)
+    if (files.length === 0) return
+    if (files.some((f) => !isVideo(f))) {
       setError("동영상 파일(MP4·MOV·WebM)을 골라 주세요.")
       return
     }
+    if (opts?.savedId && files.length === 1) sourceIds.current.set(files[0], Promise.resolve(opts.savedId))
     setError(null)
     setResult(null)
-    const url = URL.createObjectURL(file)
-    const v = document.createElement("video")
-    v.preload = "metadata"
-    v.muted = true
-    v.src = url
-    v.onloadedmetadata = () => {
-      if (!v.videoWidth || !Number.isFinite(v.duration)) {
-        URL.revokeObjectURL(url)
-        setError("이 동영상은 브라우저에서 열 수 없습니다. MP4(H.264)나 WebM 으로 저장해 다시 골라 주세요.")
-        return
+    // 같은 파일이 여러 클립에 쓰이면(불러온 타임라인) 한 번만 연다
+    const uniq = [...new Set(files)]
+    const opened = await Promise.all(uniq.map(readSource))
+    if (opened.some((s) => !s)) {
+      opened.forEach((s) => s && URL.revokeObjectURL(s.url))
+      setError(OPEN_FAIL)
+      return
+    }
+    const byFile = new Map(uniq.map((f, i) => [f, opened[i] as Source]))
+    const sources = files.map((f) => byFile.get(f)!)
+    const append = opts?.append && clips.length > 0
+    const want = loadedRef.current ?? loaded
+    loadedRef.current = null
+    const made = sources.map((s, i) => {
+      const r = opts?.ranges?.[i]
+      if (r) return newClip(s, Math.min(r[0], s.duration), Math.min(r[1], s.duration))
+      if (!append && i === 0) {
+        const same = want && want.form.source === s.file.name
+        return same ? newClip(s, Math.min(want.form.start, s.duration), Math.min(want.form.end, s.duration)) : newClip(s, 0, Math.min(s.duration, 5))
       }
-      setSource({ file, url, duration: v.duration, width: v.videoWidth, height: v.videoHeight })
-      // 처음에는 앞 5초(짧으면 전체). 불러온 설정과 같은 동영상이면 그때 구간
-      const want = loadedRef.current ?? loaded
-      loadedRef.current = null
-      const same = want && want.form.source === file.name
-      setRange(same ? [Math.min(want.form.start, v.duration), Math.min(want.form.end, v.duration)] : [0, Math.min(v.duration, 5)])
-      setLoaded(null)
-      setPlaying(false)
+      return newClip(s, 0, s.duration)
+    })
+    setClips((cs) => (append ? [...cs, ...made] : made))
+    setActiveId(made[0].id)
+    setLoaded(null)
+    setPlaying(false)
+    setSeqPlay(false)
+  }
+
+  // ── 타임라인 편집(프리미어처럼): 자르기(면도칼) · 복제 · 삭제 · 순서 바꾸기 ──
+  const splitAtPlayhead = () => {
+    if (!activeClip) return
+    const t = preview.current?.currentTime ?? time
+    if (t <= activeClip.start + 0.1 || t >= activeClip.end - 0.1) {
+      setError("자를 위치를 고른 클립 구간 안(시작·끝에서 0.1초 이상 떨어진 곳)으로 옮겨 주세요.")
+      return
     }
-    v.onerror = () => {
-      URL.revokeObjectURL(url)
-      setError("이 동영상은 브라우저에서 열 수 없습니다. MP4(H.264)나 WebM 으로 저장해 다시 골라 주세요.")
-    }
+    setError(null)
+    const cut = Math.round(t * 10) / 10
+    const a = { ...activeClip, end: cut }
+    const b = newClip(activeClip.source, cut, activeClip.end)
+    setClips((cs) => cs.flatMap((c) => (c.id === activeClip.id ? [a, b] : [c])))
+    setActiveId(b.id)
+    setResult(null)
+  }
+  const duplicateClip = () => {
+    if (!activeClip) return
+    const copy = newClip(activeClip.source, activeClip.start, activeClip.end)
+    setClips((cs) => cs.flatMap((c) => (c.id === activeClip.id ? [c, copy] : [c])))
+    setActiveId(copy.id)
+    setResult(null)
+  }
+  const removeClip = () => {
+    if (!activeClip) return
+    const i = clips.findIndex((c) => c.id === activeClip.id)
+    const next = clips.filter((c) => c.id !== activeClip.id)
+    setClips(next)
+    setActiveId(next[Math.min(i, next.length - 1)]?.id ?? null)
+    setResult(null)
+    setSeqPlay(false)
+  }
+  const selectClip = (id: number) => {
+    if (id === activeClip?.id) return
+    preview.current?.pause()
+    setSeqPlay(false)
+    setActiveId(id)
   }
 
   // 미리보기는 고른 구간만 되풀이한다
@@ -394,8 +669,71 @@ export function VideoConvertTool() {
     const v = preview.current
     if (!v) return
     setTime(v.currentTime)
-    // 멈춰 있을 때는 프레임 띠에서 구간 밖을 눌러 봐도 그 자리에 둔다
-    if (!v.paused && (v.currentTime >= range[1] || v.currentTime < range[0] - 0.05)) v.currentTime = range[0]
+    if (v.paused) return // 멈춰 있을 때는 프레임 띠에서 구간 밖을 눌러 봐도 그 자리에 둔다
+    if (seqRef.current && v.currentTime >= range[1] - 0.04) {
+      nextClip()
+      return
+    }
+    if (v.currentTime >= range[1] || v.currentTime < range[0] - 0.05) v.currentTime = range[0]
+  }
+  // 전체 재생: 다음 클립(마지막이면 처음)으로 넘어가 그 클립 시작부터 이어서 재생한다
+  const nextClip = () => {
+    const v = preview.current
+    if (!v || !activeClip) return
+    const i = clips.findIndex((c) => c.id === activeClip.id)
+    const next = clips[(i + 1) % clips.length]
+    if (next.source.url === activeClip.source.url) {
+      // 같은 동영상이면 위치만 옮긴다
+      v.currentTime = next.start
+      setActiveId(next.id)
+      return
+    }
+    v.pause()
+    autoPlay.current = true
+    setActiveId(next.id)
+  }
+  // 구간 끝이 동영상 끝이면 위 검사 전에 재생이 멈춘다: 전체 재생이면 다음 클립, 아니면 구간 처음부터 다시
+  const onEnded = () => {
+    const v = preview.current
+    if (!v) return
+    if (seqRef.current) nextClip()
+    else {
+      v.currentTime = range[0]
+      void v.play().catch(() => {})
+    }
+  }
+  // 새 클립 동영상이 준비되면(전체 재생 중) 그 클립 시작부터 재생
+  const onPreviewReady = () => {
+    drawAdjusted()
+    if (!autoPlay.current) return
+    autoPlay.current = false
+    const v = preview.current
+    if (!v) return
+    v.currentTime = range[0]
+    void v.play().catch(() => {})
+  }
+  const playSequence = () => {
+    const v = preview.current
+    if (!v || clips.length === 0) return
+    if (seqPlay && !v.paused) {
+      v.pause()
+      setSeqPlay(false)
+      return
+    }
+    setSeqPlay(true)
+    const firstClip = clips[0]
+    if (activeClip?.id === firstClip.id) {
+      v.currentTime = firstClip.start
+      void v.play().catch(() => {})
+    } else if (firstClip.source.url === activeClip?.source.url) {
+      setActiveId(firstClip.id)
+      v.currentTime = firstClip.start
+      void v.play().catch(() => {})
+    } else {
+      v.pause()
+      autoPlay.current = true
+      setActiveId(firstClip.id)
+    }
   }
 
   // 재생 속도를 미리보기에도 반영한다(결과를 보다 돌아오면 영상이 새로 붙어 다시 맞춘다)
@@ -448,8 +786,15 @@ export function VideoConvertTool() {
 
   // 프레임 띠: 영상 전체에서 고르게 장면을 뽑아 작은 그림으로 늘어놓는다(하나씩 채워진다)
   const [thumbs, setThumbs] = useState<(string | null)[]>([])
+  // 클립을 오가도 같은 동영상 띠는 다시 뽑지 않는다
+  const thumbCache = useRef(new Map<string, (string | null)[]>())
   useEffect(() => {
     if (!source) return
+    const cached = thumbCache.current.get(source.url)
+    if (cached && cached.every(Boolean)) {
+      setThumbs(cached)
+      return
+    }
     let alive = true
     const video = document.createElement("video")
     video.muted = true
@@ -472,7 +817,11 @@ export function VideoConvertTool() {
         if (!alive) return
         ctx.drawImage(video, 0, 0, w, h)
         const url = canvas.toDataURL("image/jpeg", 0.7)
-        setThumbs((list) => list.map((v, j) => (j === i ? url : v)))
+        setThumbs((list) => {
+          const next = list.map((v, j) => (j === i ? url : v))
+          thumbCache.current.set(source.url, next)
+          return next
+        })
       }
       video.removeAttribute("src")
       video.load()
@@ -511,16 +860,20 @@ export function VideoConvertTool() {
   const togglePlay = () => {
     const v = preview.current
     if (!v) return
+    setSeqPlay(false)
     if (v.paused) {
       if (v.currentTime < range[0] || v.currentTime >= range[1]) v.currentTime = range[0]
       void v.play()
     } else v.pause()
   }
 
-  const outW = source ? Math.min(Number(width) || source.width, source.width) : 0
-  const outH = source ? Math.max(1, Math.round((source.height * outW) / source.width)) : 0
-  const length = Math.max(0, range[1] - range[0])
-  const frames = Math.max(1, Math.round(length * Number(fps)))
+  // 출력 크기는 첫 클립 기준(프리미어 시퀀스 설정처럼). 장수·길이는 모든 클립을 더한다
+  const outW = first ? Math.min(Number(width) || first.width, first.width) : 0
+  const outH = first ? Math.max(1, Math.round((first.height * outW) / first.width)) : 0
+  const length = Math.max(0, range[1] - range[0]) // 고른 클립 구간
+  const clipFrames = (c: Clip) => Math.max(1, Math.round(clipLen(c) * Number(fps)))
+  const totalLength = clips.reduce((s, c) => s + clipLen(c), 0)
+  const frames = clips.length ? clips.reduce((s, c) => s + clipFrames(c), 0) : 1
   const tooMany = frames > MAX_FRAMES
   const busy = progress !== null
 
@@ -550,26 +903,34 @@ export function VideoConvertTool() {
   const estimate = perFrame ? Math.round(perFrame.bytes * frames + 1024) : null
 
   const convert = async () => {
-    if (!source || tooMany || length <= 0) return
+    if (!first || tooMany || totalLength <= 0 || clips.some((c) => clipLen(c) <= 0)) return
     setError(null)
     setResult(null)
     preview.current?.pause()
+    setSeqPlay(false)
     let cancelled = false
     const worker = F.worker()
     const video = document.createElement("video")
     video.muted = true
     video.preload = "auto"
-    video.src = source.url
+    let loadedUrl = ""
+    // 클립마다 그 동영상을 연다(같은 동영상이면 다시 열지 않는다)
+    const load = (url: string) => {
+      if (url === loadedUrl) return Promise.resolve()
+      loadedUrl = url
+      return new Promise<void>((resolve, reject) => {
+        video.onloadeddata = () => resolve()
+        video.onerror = () => reject(new Error("load"))
+        video.src = url
+      })
+    }
+    const seqClips = clips
     cancelRef.current = () => {
       cancelled = true
       worker.terminate()
       setProgress(null)
     }
     try {
-      await new Promise<void>((resolve, reject) => {
-        video.onloadeddata = () => resolve()
-        video.onerror = () => reject(new Error("load"))
-      })
       const canvas = document.createElement("canvas")
       canvas.width = outW
       canvas.height = outH
@@ -587,35 +948,51 @@ export function VideoConvertTool() {
       })
       worker.postMessage(F.start(outW, outH, Number(repeat), colors, delay))
       setProgress({ step: "변환하는 중", ratio: 0, done: 0 })
-      for (let i = 0; i < frames; i++) {
+      const tmp: { canvas?: HTMLCanvasElement } = {}
+      // 클립을 순서대로 이어 붙인다(클립마다 시작부터 초당 장수만큼)
+      for (const c of seqClips) {
         if (cancelled) return
-        await seek(video, Math.min(range[0] + i / Number(fps), source.duration - 0.001))
-        drawWithMotion(ctx, video, source.width, source.height, outW, outH, motion)
-        const img = ctx.getImageData(0, 0, outW, outH)
-        applyAdjust(img.data, adjust)
-        const data = img.data.buffer
-        worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
+        await load(c.source.url)
+        const n = clipFrames(c)
+        for (let i = 0; i < n; i++) {
+          if (cancelled) return
+          await seek(video, Math.min(c.start + i / Number(fps), c.end - 0.001, c.source.duration - 0.001))
+          drawClipFrame(ctx, video, c.source, outW, outH, motion, tmp)
+          const img = ctx.getImageData(0, 0, outW, outH)
+          applyAdjust(img.data, adjust)
+          const data = img.data.buffer
+          worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
+        }
       }
       worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
       const bytes = await finished
       if (cancelled) return
       const blob = new Blob([bytes], { type: F.mime })
-      const base = source.file.name.replace(/\.[^.]+$/, "")
+      const base = first.file.name.replace(/\.[^.]+$/, "") + (seqClips.length > 1 ? `_편집${seqClips.length}컷` : "")
       const made = { url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.${format}` }
       setResult(made)
       // 만든 움짤과 설정을 히스토리에 남긴다(제목 = 만든 파일 이름. 같은 동영상도 WebP·GIF 는 따로 보인다)
       if (blob.size <= HISTORY_MAX) {
-        const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, motion, source: source.file.name, start: range[0], end: range[1], outW, outH, frames, size: blob.size }
+        const head = seqClips[0]
+        const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, motion, source: head.source.file.name, start: head.start, end: head.end, outW, outH, frames, size: blob.size }
         const safe = base.replace(/[^\w.\-가-힣 ]/g, "_").slice(0, 50) || "video"
-        const file = source.file
-        // 원본 동영상도 함께 남긴다(불러오면 그 동영상이 다시 열린다). 못 올리면 설정·움짤만 남긴다
-        const sourceId = file.size <= SOURCE_MAX ? uploadSource(file).catch(() => null) : Promise.resolve(null)
-        Promise.all([blobToDataUrl(blob), sourceId])
-          .then(([image, id]) =>
-            api("/tools/video/history", {
-              body: { title: made.name, fileName: `${safe}.${format}`, form: id ? { ...form, sourceFileId: id } : form, fileIds: id ? [id] : [], image },
-            }),
-          )
+        // 원본 동영상도 함께 남긴다(불러오면 그 동영상들이 다시 열린다). 못 올리면 설정·움짤만 남긴다
+        const files = [...new Set(seqClips.map((c) => c.source.file))]
+        const ids = Promise.all(files.map((f) => (f.size <= SOURCE_MAX ? uploadSource(f).catch(() => null) : Promise.resolve(null))))
+        Promise.all([blobToDataUrl(blob), ids])
+          .then(([image, idList]) => {
+            const idOf = new Map(files.map((f, i) => [f, idList[i]]))
+            const headId = idOf.get(head.source.file) ?? null
+            const full: VideoForm = {
+              ...form,
+              ...(headId ? { sourceFileId: headId } : {}),
+              ...(seqClips.length > 1
+                ? { clips: seqClips.map((c) => ({ source: c.source.file.name, sourceFileId: idOf.get(c.source.file) ?? undefined, start: c.start, end: c.end })) }
+                : {}),
+            }
+            const fileIds = [...new Set(idList.filter((x): x is string => !!x))]
+            return api("/tools/video/history", { body: { title: made.name, fileName: `${safe}.${format}`, form: full, fileIds, image } })
+          })
           .then(() => invalidate(), () => {})
       }
       // 변환이 끝나면 바로 내려받는다(결과 화면에서 다시 받을 수도 있다)
@@ -646,6 +1023,32 @@ export function VideoConvertTool() {
   const [fetching, setFetching] = useState<{ name: string; ratio: number } | null>(null)
   const loadForm = async (f: VideoForm, h: HistoryItem<VideoForm>) => {
     if (busy) return
+    // 여러 클립을 이어 붙인 기록: 원본 동영상들을 받아 타임라인(순서·구간)을 그대로 다시 만든다
+    if (f.clips && f.clips.length > 1 && f.clips.every((c) => c.sourceFileId)) {
+      requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+      try {
+        const ids = [...new Set(f.clips.map((c) => c.sourceFileId!))]
+        const files = new Map<string, File>()
+        for (const [n, fid] of ids.entries()) {
+          const name = f.clips.find((c) => c.sourceFileId === fid)!.source
+          setFetching({ name: `${name} (${n + 1}/${ids.length})`, ratio: 0 })
+          const blob = await fetchFileBlob(fid, (ratio) => setFetching({ name: `${name} (${n + 1}/${ids.length})`, ratio }))
+          const file = new File([blob], name, { type: blob.type || "video/mp4" })
+          sourceIds.current.set(file, Promise.resolve(fid))
+          files.set(fid, file)
+        }
+        applyForm(f)
+        await open(
+          f.clips.map((c) => files.get(c.sourceFileId!)!),
+          { ranges: f.clips.map((c) => [c.start, c.end] as [number, number]) },
+        )
+        return
+      } catch {
+        // 못 받으면 아래처럼 첫 클립 설정만 채운다
+      } finally {
+        setFetching(null)
+      }
+    }
     // 원본 동영상을 함께 남긴 기록: 받아서 그대로 연다(구간까지)
     if (f.sourceFileId && !(source && source.file.name === f.source)) {
       setFetching({ name: f.source, ratio: 0 })
@@ -655,7 +1058,7 @@ export function VideoConvertTool() {
         const file = new File([blob], f.source, { type: blob.type || "video/mp4" })
         loadedRef.current = { title: h.title, fileId: h.fileId, form: f }
         applyForm(f)
-        open(file, f.sourceFileId)
+        await open(file, { savedId: f.sourceFileId })
         return
       } catch {
         // 원본을 못 받으면(지워졌거나 연결 끊김) 설정만 채우고 다시 고르게 한다
@@ -686,12 +1089,20 @@ export function VideoConvertTool() {
 
   const reset = () => {
     cancelRef.current?.()
-    setSource(null)
+    setClips([])
+    setActiveId(null)
+    setSeqPlay(false)
     setResult(null)
     setError(null)
   }
 
   const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files")
+  // 파일 고르기 창: 처음 고르기(새 타임라인) / 영상 추가(뒤에 붙이기)
+  const appendPick = useRef(false)
+  const pickMore = () => {
+    appendPick.current = true
+    picker.current?.click()
+  }
 
   return (
     <div ref={topRef} className="mx-auto grid w-full max-w-6xl scroll-mt-4 grid-cols-12 gap-6 p-4 md:p-6">
@@ -699,9 +1110,11 @@ export function VideoConvertTool() {
         ref={picker}
         type="file"
         accept="video/*,.mov,.mkv"
+        multiple
         hidden
         onChange={(e) => {
-          open(e.target.files?.[0])
+          void open([...(e.target.files ?? [])], { append: appendPick.current })
+          appendPick.current = false
           e.target.value = ""
         }}
       />
@@ -769,19 +1182,39 @@ export function VideoConvertTool() {
           <Field>
             <FieldLabel>동영상</FieldLabel>
             {source ? (
-              <div className="flex items-center gap-3 rounded-lg border p-3">
+              <div
+                className={`flex items-center gap-3 rounded-lg border p-3 ${dragging ? "border-primary bg-primary/5" : ""}`}
+                onDragOver={(e) => {
+                  if (!hasFiles(e) || busy) return
+                  e.preventDefault()
+                  setDragging(true)
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragging(false)
+                  if (!busy) void open([...e.dataTransfer.files], { append: true })
+                }}
+              >
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Film className="size-5" />
+                  {multi ? <ListVideo className="size-5" /> : <Film className="size-5" />}
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Tip content={source.file.name}><span className="truncate text-sm font-medium">
+                    {multi ? `${clips.findIndex((c) => c.id === activeClip?.id) + 1}번 클립 · ` : ""}
                     {source.file.name}
                   </span></Tip>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {source.width}×{source.height} · {fmt(source.duration)} · {formatBytes(source.file.size)}
+                    {multi ? ` · 클립 ${clips.length}개, 전체 ${fmt(totalLength)}` : ""}
                   </span>
                 </div>
-                <Button variant="ghost" size="icon-sm" aria-label="다른 동영상 고르기" disabled={busy} onClick={reset}>
+                <Tip content="영상 추가(뒤에 이어 붙이기)">
+                  <Button variant="outline" size="icon-sm" aria-label="영상 추가" disabled={busy} onClick={pickMore}>
+                    <Plus />
+                  </Button>
+                </Tip>
+                <Button variant="ghost" size="icon-sm" aria-label="동영상 모두 빼기" disabled={busy} onClick={reset}>
                   <X />
                 </Button>
               </div>
@@ -798,7 +1231,7 @@ export function VideoConvertTool() {
                 onDrop={(e) => {
                   e.preventDefault()
                   setDragging(false)
-                  open(e.dataTransfer.files[0])
+                  void open([...e.dataTransfer.files])
                 }}
                 className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-10 text-center text-sm transition-colors ${
                   dragging ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground hover:bg-muted/40"
@@ -809,7 +1242,7 @@ export function VideoConvertTool() {
                 <span className="break-keep">
                   MP4·MOV·WebM 을 고르거나 여기에 끌어 놓으세요.
                   <br />
-                  파일은 서버에 올라가지 않습니다.
+                  여러 개를 고르면 순서대로 이어 붙입니다. 파일은 서버에 올라가지 않습니다.
                 </span>
               </button>
             )}
@@ -821,7 +1254,7 @@ export function VideoConvertTool() {
               <Field>
                 <FieldLabel>
                   <Scissors className="size-4" />
-                  구간
+                  {multi ? `구간 (${clips.findIndex((c) => c.id === activeClip?.id) + 1}번 클립)` : "구간"}
                   <span className="ml-auto text-xs font-normal text-muted-foreground tabular-nums">
                     {fmt(range[0])} – {fmt(range[1])} ({fmt(length)})
                   </span>
@@ -977,7 +1410,8 @@ export function VideoConvertTool() {
                   <span className="text-right text-xs text-muted-foreground tabular-nums">
                     {outW}×{outH}px
                     <br />
-                    {frames}장 · {fmt(length / Number(speed))}
+                    {frames}장 · {fmt(totalLength / Number(speed))}
+                    {multi ? ` · ${clips.length}컷` : ""}
                   </span>
                 </div>
                 {estimate !== null && estimate > 10 * 1024 * 1024 && (
@@ -1009,7 +1443,7 @@ export function VideoConvertTool() {
                   <span className="text-xs text-muted-foreground">끝나면 {F.label} 가 바로 내려받아집니다.</span>
                 </div>
               ) : (
-                <Button size="lg" className="w-full" disabled={tooMany || length <= 0} onClick={() => void convert()}>
+                <Button size="lg" className="w-full" disabled={tooMany || totalLength <= 0} onClick={() => void convert()}>
                   <Wand2 data-icon="inline-start" />
                   {F.label} 로 변환 후 내려받기
                 </Button>
@@ -1059,7 +1493,9 @@ export function VideoConvertTool() {
             <>
               <div className="flex items-center gap-2">
                 <h3 className="mr-auto font-semibold">미리보기</h3>
-                <span className="text-xs text-muted-foreground">고른 구간만 반복해서 보여 줍니다</span>
+                <span className="text-xs text-muted-foreground">
+                  {seqPlay ? "클립을 순서대로 이어서 보여 줍니다" : multi ? "고른 클립 구간만 반복합니다 · 전체 재생은 이어서" : "고른 구간만 반복해서 보여 줍니다"}
+                </span>
               </div>
               <div className="relative overflow-hidden rounded-xl border bg-black">
                 {progress && (
@@ -1083,7 +1519,8 @@ export function VideoConvertTool() {
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
                   onClick={togglePlay}
-                  onLoadedData={drawAdjusted}
+                  onLoadedData={onPreviewReady}
+                  onEnded={onEnded}
                   className="max-h-[60vh] w-full cursor-pointer object-contain"
                 />
                 {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
@@ -1093,11 +1530,17 @@ export function VideoConvertTool() {
                   className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted || moved ? "" : "hidden"}`}
                 />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
-                  {playing ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-                  {playing ? "멈춤" : "구간 재생"}
+                  {playing && !seqPlay ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+                  {playing && !seqPlay ? "멈춤" : multi ? "클립 재생" : "구간 재생"}
                 </Button>
+                {multi && (
+                  <Button variant={seqPlay ? "default" : "outline"} size="sm" onClick={playSequence} disabled={busy}>
+                    {seqPlay && playing ? <Pause data-icon="inline-start" /> : <ListVideo data-icon="inline-start" />}
+                    {seqPlay && playing ? "멈춤" : "전체 재생"}
+                  </Button>
+                )}
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {fmt(time)} / {fmt(source.duration)}
                 </span>
@@ -1119,6 +1562,46 @@ export function VideoConvertTool() {
                   seekPreview(t)
                 }}
               />
+              {/* 타임라인(프리미어 시퀀스처럼): 클립을 이어 붙인다. 누르면 그 클립 편집, 끌어서 순서 바꾸기 */}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
+                    <ListVideo className="size-4" />
+                    타임라인
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      클립 {clips.length}개 · {fmt(totalLength)}
+                    </span>
+                  </span>
+                  <Tip content="재생 위치에서 고른 클립을 둘로 자릅니다(면도칼)">
+                    <Button variant="outline" size="xs" disabled={busy} onClick={splitAtPlayhead}>
+                      <Scissors data-icon="inline-start" />
+                      자르기
+                    </Button>
+                  </Tip>
+                  <Tip content="고른 클립을 바로 뒤에 하나 더 붙입니다">
+                    <Button variant="outline" size="xs" disabled={busy} onClick={duplicateClip}>
+                      <CopyPlus data-icon="inline-start" />
+                      복제
+                    </Button>
+                  </Tip>
+                  <Tip content="다른 동영상을 뒤에 이어 붙입니다">
+                    <Button variant="outline" size="xs" disabled={busy} onClick={pickMore}>
+                      <Plus data-icon="inline-start" />
+                      영상 추가
+                    </Button>
+                  </Tip>
+                  <Tip content="고른 클립을 타임라인에서 뺍니다">
+                    <Button variant="ghost" size="xs" disabled={busy} onClick={removeClip} aria-label="고른 클립 삭제">
+                      <Trash2 data-icon="inline-start" />
+                      삭제
+                    </Button>
+                  </Tip>
+                </div>
+                <Timeline clips={clips} activeId={activeClip?.id ?? null} disabled={busy} onSelect={selectClip} onReorder={(next) => { setClips(next); setResult(null) }} />
+                <p className="text-xs break-keep text-muted-foreground">
+                  클립을 누르면 위 구간·프레임 띠로 그 클립의 시작·끝을 다듬고, 끌어서 순서를 바꿉니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
+                </p>
+              </div>
             </>
           ) : null}
         </div>
