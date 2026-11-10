@@ -632,9 +632,9 @@ function SequenceTimeline({
   }
 
   // 클립 끌기: 몸통 = 순서 바꾸기(5px 넘게 움직였을 때), 그냥 누르면 고르고 그 시점으로 재생 헤드 이동 / 양 끝 = 길이 다듬기
-  const drag = useRef<{ id: number; x: number; mode: "move" | "start" | "end"; start: number; end: number; moved: boolean; last?: [number, number]; offT?: number } | null>(null)
+  const drag = useRef<{ id: number; x: number; mode: "move" | "start" | "end"; start: number; end: number; moved: boolean; last?: [number, number]; offT?: number; y?: number } | null>(null)
   const [upTarget, setUpTarget] = useState<number | null>(null) // V1 클립을 위 트랙으로 끄는 중이면 그 트랙
-  const [moving, setMoving] = useState<{ id: number; dx: number } | null>(null)
+  const [moving, setMoving] = useState<{ id: number; dx: number; dy: number } | null>(null)
   const targetIndex = (id: number, dx: number) => {
     const i = clips.findIndex((c) => c.id === id)
     const center = (starts[i] + clipLen(clips[i]) / 2) * pps + dx
@@ -646,7 +646,7 @@ function SequenceTimeline({
       e.stopPropagation()
       capture(e)
       const i0 = clips.findIndex((x) => x.id === c.id)
-      drag.current = { id: c.id, x: e.clientX, mode, start: c.start, end: c.end, moved: false, offT: timeAtFree(e.clientX) - (starts[i0] ?? 0) }
+      drag.current = { id: c.id, x: e.clientX, y: e.clientY, mode, start: c.start, end: c.end, moved: false, offT: timeAtFree(e.clientX) - (starts[i0] ?? 0) }
       if (mode !== "move") setFrozenPps(pps)
       if (mode !== "move") onSelect(c.id)
     },
@@ -655,10 +655,11 @@ function SequenceTimeline({
       if (!d || d.id !== c.id || e.buttons !== 1) return
       e.stopPropagation()
       const dx = e.clientX - d.x
-      if (!d.moved && Math.abs(dx) < 5) return
+      if (!d.moved && Math.abs(dx) < 5 && Math.abs(e.clientY - (d.y ?? e.clientY)) < 5) return
       d.moved = true
       if (d.mode === "move") {
-        setMoving({ id: c.id, dx })
+        // 좌우·위아래 모두 마우스를 따라간다(위 트랙으로 올리는 것도 보이게)
+        setMoving({ id: c.id, dx, dy: e.clientY - (d.y ?? e.clientY) })
         const tr = rowAt(e.clientY)
         setUpTarget(tr && tr > 0 ? tr : null)
         if (tr && tr > 0) snap(Math.max(0, timeAtFree(e.clientX) - (d.offT ?? 0)), c.id, clipLen(c))
@@ -943,7 +944,7 @@ function SequenceTimeline({
                   className={`absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-[3px] border-2 bg-sky-900 active:cursor-grabbing ${
                     active ? "border-white" : "border-sky-700/80 hover:border-sky-300"
                   } ${isMoving ? "z-20 opacity-80 shadow-lg" : ""}`}
-                  style={{ left: starts[i] * pps, width: Math.max(4, clipLen(c) * pps), transform: isMoving ? `translateX(${moving.dx}px)` : undefined }}
+                  style={{ left: starts[i] * pps, width: Math.max(4, clipLen(c) * pps), transform: isMoving ? `translate(${moving.dx}px, ${moving.dy}px)` : undefined }}
                 >
                   {thumb && (
                     <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-70" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />
