@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 type HeadSubscribe = (fn: (t: number) => void) => () => void
 import { ChevronDown, CopyPlus, FileInput, History, Pipette, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, Settings2, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { OverlayScrollbar } from "@/components/overlay-scrollbar"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
 
@@ -3108,6 +3109,7 @@ export function VideoConvertTool() {
 // 편집 화면 칸(프리미어 패널처럼): 위 제목 줄 + 내용. scroll 이면 내용만 따로 스크롤(부드럽게)
 // bare: 안쪽 칸(모션·색 보정)이 제목·기본값 버튼을 가지고 있어 머리 줄을 그리지 않는다(제목은 화면 읽기용으로만)
 function Panel({ title, actions, trailing, scroll, bare, className, children }: { title: React.ReactNode; actions?: React.ReactNode; trailing?: React.ReactNode; scroll?: boolean; bare?: boolean; className?: string; children: React.ReactNode }) {
+  const scrollBox = useRef<HTMLDivElement>(null)
   return (
     <section className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card ${className ?? ""}`} aria-label={typeof title === "string" ? title : undefined}>
       {!bare && (
@@ -3118,9 +3120,13 @@ function Panel({ title, actions, trailing, scroll, bare, className, children }: 
         </div>
       )}
       {scroll ? (
-        <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="h-full">
-          {children}
-        </SmoothScrollArea>
+        // 넘치면 오른쪽에 세로 스크롤 막대가 늘 보인다(트랙을 늘려 칸을 넘을 때 등)
+        <div ref={scrollBox} className="relative flex min-h-0 flex-1 flex-col">
+          <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="h-full">
+            {children}
+          </SmoothScrollArea>
+          <OverlayScrollbar always target={() => scrollBox.current?.firstElementChild as HTMLElement | null} className="absolute top-1 right-0.5 bottom-1 w-1.5" />
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       )}

@@ -3,6 +3,7 @@ import { cn } from "cn"
 
 // 기본 스크롤바 대신 쓰는 겹침 스크롤바.
 // 처음에는 보이지 않고, 스크롤하면 서서히 나타났다가 스크롤이 멈추고 2초 뒤 서서히 사라진다.
+// always 면 넘칠 때 늘 보인다(편집 칸처럼 넘친 것을 바로 알아야 하는 곳).
 // 막대를 끌어서 스크롤할 수도 있다. 위치와 크기는 className(absolute/fixed 와 크기)으로 정한다.
 const HIDE_AFTER_MS = 2000
 const MIN_THUMB = 24
@@ -13,10 +14,12 @@ export function OverlayScrollbar({
   target,
   orientation = "vertical",
   className,
+  always = false,
 }: {
   target: () => Target | null | undefined
   orientation?: "vertical" | "horizontal"
   className?: string
+  always?: boolean
 }) {
   const vertical = orientation === "vertical"
   const trackRef = useRef<HTMLDivElement>(null)
@@ -90,7 +93,11 @@ export function OverlayScrollbar({
     thumb.addEventListener("pointerup", onPointerUp)
     const resize = new ResizeObserver(update)
     resize.observe(isWindow ? document.body : node)
-    if (!isWindow && node.firstElementChild) resize.observe(node.firstElementChild)
+    if (!isWindow && node.firstElementChild) {
+      resize.observe(node.firstElementChild)
+      // 안쪽 칸이 높이를 고정하고(h-full) 그 안이 늘어나는 경우도 잰다
+      if (node.firstElementChild.firstElementChild) resize.observe(node.firstElementChild.firstElementChild)
+    }
     update()
 
     return () => {
@@ -113,7 +120,7 @@ export function OverlayScrollbar({
       data-slot="overlay-scrollbar"
       className={cn(
         "pointer-events-none z-30 transition-opacity duration-300 ease-out",
-        visible && scrollable ? "opacity-100" : "opacity-0",
+        (visible || always) && scrollable ? "opacity-100" : "opacity-0",
         className,
       )}
     >
@@ -122,7 +129,7 @@ export function OverlayScrollbar({
         className={cn(
           "rounded-full bg-foreground/30 hover:bg-foreground/50",
           vertical ? "w-full" : "h-full",
-          visible && scrollable ? "pointer-events-auto" : "pointer-events-none",
+          (visible || always) && scrollable ? "pointer-events-auto" : "pointer-events-none",
         )}
       />
     </div>
