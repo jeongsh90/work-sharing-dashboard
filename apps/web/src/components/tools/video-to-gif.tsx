@@ -801,7 +801,7 @@ export function VideoConvertTool() {
   const [clips, setClips] = useState<Clip[]>([])
   // 미디어 칸(프리미어 프로젝트 패널): 가져온 동영상. 끌어 놓거나 ＋ 로 타임라인에 클립을 붙인다
   const [media, setMedia] = useState<Source[]>([])
-  const [mediaView, setMediaView] = useState<"list" | "grid">("grid")
+  const [mediaView, setMediaView] = useState<"list" | "grid">("list") // 기본 목록형
   const [historyOpen, setHistoryOpen] = useState(false) // 히스토리 칸(창 머리 버튼 → 오른쪽에서)
   const [activeId, setActiveId] = useState<number | null>(null)
   const activeClip = clips.find((c) => c.id === activeId) ?? clips[0] ?? null
