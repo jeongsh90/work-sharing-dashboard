@@ -6,7 +6,7 @@ import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -1744,7 +1744,7 @@ export function VideoConvertTool() {
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
           <SheetHeader className="border-b">
             <SheetTitle>히스토리</SheetTitle>
-            <SheetDescription className="break-keep">만든 움짤을 다시 내려받거나, 그때 타임라인·설정을 불러옵니다.</SheetDescription>
+            <SheetDescription className="sr-only">만든 움짤을 다시 내려받거나, 그때 타임라인·설정을 불러옵니다.</SheetDescription>
           </SheetHeader>
           <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="p-3">
             <ToolHistory<VideoForm>
@@ -1765,7 +1765,7 @@ export function VideoConvertTool() {
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
           <SheetHeader className="border-b">
             <SheetTitle>동영상 설정</SheetTitle>
-            <SheetDescription className="break-keep">만들 형식·화면 비율·초당 장수·화질·속도·반복. 바꾸면 미리보기와 예상 용량에 바로 들어갑니다.</SheetDescription>
+            <SheetDescription className="sr-only">만들 형식·화면 비율·초당 장수·화질·속도·반복. 바꾸면 미리보기와 예상 용량에 바로 들어갑니다.</SheetDescription>
           </SheetHeader>
           <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="flex flex-col gap-4 p-4">
             <div className="flex flex-col gap-1.5">
@@ -1790,9 +1790,6 @@ export function VideoConvertTool() {
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-              <span className="text-xs break-keep text-muted-foreground">
-                {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 .webp 그대로 올립니다."}
-              </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 flex flex-col gap-1">
@@ -1856,7 +1853,7 @@ export function VideoConvertTool() {
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
           <SheetHeader className="border-b">
             <SheetTitle>저장하기</SheetTitle>
-            <SheetDescription className="break-keep">지금 설정으로 변환하면 바로 내려받아지고 히스토리에 남습니다.</SheetDescription>
+            <SheetDescription className="sr-only">지금 설정으로 변환하면 바로 내려받아지고 히스토리에 남습니다.</SheetDescription>
           </SheetHeader>
           <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="flex flex-col gap-4 p-4">
             <div className="flex items-start gap-3 rounded-lg border p-3">
@@ -2522,7 +2519,6 @@ function AdjustPanel({
         )}
         {section("light", "조명", <>{LIGHT_ROWS.map(row)}</>)}
       </div>
-      <FieldDescription className="break-keep">프리미어 Lumetri 색상의 기본 교정과 같은 칸입니다. 막대를 두 번 누르면 기본값, 숫자는 좌우로 끌거나 눌러서 입력합니다.</FieldDescription>
     </Field>
   )
 }
@@ -2754,9 +2750,6 @@ function MotionPanel({
       <div className="flex flex-col gap-0.5 rounded-lg border p-3">
         {rows.map(line)}
       </div>
-      <FieldDescription className="break-keep">
-        프리미어 프로 효과 컨트롤과 같은 방식입니다. 파란 숫자를 좌우로 끌면 바뀌고(Shift 를 누르면 10배), 누르면 직접 입력합니다. 위치·기준점은 원본({srcW}×{srcH}) 픽셀 기준이고, 비는 곳은 검정으로 채웁니다.
-      </FieldDescription>
     </Field>
   )
 }
