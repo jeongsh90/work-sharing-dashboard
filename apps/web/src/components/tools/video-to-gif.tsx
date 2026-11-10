@@ -728,7 +728,7 @@ function SequenceTimeline({
     return best ? Math.max(0, best.t) : t
   }
   const ldrag = useRef<{ id: number; x: number; y: number; mode: "move" | "start" | "end"; start: number; end: number; at: number; track: number; offT: number; moved: boolean; last?: Partial<Clip> } | null>(null)
-  const [ghost, setGhost] = useState<{ id: number; at: number; track: number } | null>(null)
+  const [ghost, setGhost] = useState<{ id: number; at: number; track: number; dy: number } | null>(null)
   const layerHandlers = (c: Clip, mode: "move" | "start" | "end") => ({
     onPointerDown: (e: React.PointerEvent) => {
       if (disabled) return
@@ -747,7 +747,7 @@ function SequenceTimeline({
       d.moved = true
       const r2 = (v: number) => Math.round(v * 100) / 100
       if (d.mode === "move") {
-        setGhost({ id: c.id, at: r2(snap(Math.max(0, timeAtFree(e.clientX) - d.offT), c.id, clipLen(c))), track: rowAt(e.clientY) ?? d.track })
+        setGhost({ id: c.id, at: r2(snap(Math.max(0, timeAtFree(e.clientX) - d.offT), c.id, clipLen(c))), track: rowAt(e.clientY) ?? d.track, dy: e.clientY - d.y })
         return
       }
       const dt = dx / pps
@@ -874,10 +874,11 @@ function SequenceTimeline({
             >
               {trackLabel(`V${tr + 1}`)}
               {layers
-                .filter((c) => (ghost?.id === c.id ? ghost.track : c.track) === tr)
+                .filter((c) => c.track === tr)
                 .map((c) => {
                   const sel = c.id === activeId
-                  const at = ghost?.id === c.id ? ghost.at : (c.at ?? 0)
+                  const at = c.at ?? 0
+                  const g = ghost?.id === c.id ? ghost : null
                   const thumb = layerThumbOf(c)
                   return (
                     <div
@@ -891,7 +892,7 @@ function SequenceTimeline({
                         if (e.key === "Enter" || e.key === " ") onSelectLayer(c.id)
                       }}
                       className={`absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-[3px] border-2 bg-violet-900 active:cursor-grabbing ${sel ? "border-white" : "border-violet-600/80 hover:border-violet-300"} ${ghost?.id === c.id ? "z-20 opacity-80 shadow-lg" : ""}`}
-                      style={{ left: at * pps, width: Math.max(4, clipLen(c) * pps) }}
+                      style={{ left: at * pps, width: Math.max(4, clipLen(c) * pps), transform: g ? `translate(${(g.at - at) * pps}px, ${g.dy}px)` : undefined }}
                     >
                       {thumb && <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-60" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />}
                       <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-violet-950/80 px-1.5 text-[10px] leading-4 text-white">{c.source.file.name}</span>
