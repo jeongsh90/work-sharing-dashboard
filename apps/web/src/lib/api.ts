@@ -412,6 +412,35 @@ export async function ftpDownloadFile(serverId: string, dir: string, raw: string
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+// 올린 파일 내용을 받는다(사내망이면 사내망 주소에서, 진행률 0~1 을 알려 준다). 디자인 툴 히스토리의 원본 동영상 등
+export async function fetchFileBlob(id: string, onProgress?: (ratio: number) => void): Promise<Blob> {
+  const base = await fileBase()
+  const token = storedToken()
+  const get = (b: string) => fetch(`${b}/api/files/${id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  let res: Response
+  try {
+    res = await get(base)
+  } catch {
+    if (base === API_BASE) throw new ApiError(0, '파일을 받지 못했습니다.')
+    lanFailed(base)
+    res = await get(API_BASE)
+  }
+  if (!res.ok || !res.body) throw new ApiError(res.status, '파일을 받지 못했습니다.')
+  const total = Number(res.headers.get('Content-Length')) || 0
+  if (!onProgress || !total) return res.blob()
+  const reader = res.body.getReader()
+  const parts: Uint8Array[] = []
+  let got = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    got += value.length
+    onProgress(Math.min(1, got / total))
+  }
+  return new Blob(parts as BlobPart[], { type: res.headers.get('Content-Type') ?? '' })
+}
+
 // FTP 파일 내용(미리보기면 이미지 형식으로, 사용 기록에 남지 않음)
 export async function ftpFetchFile(serverId: string, dir: string, raw: string, preview: boolean): Promise<Blob> {
   const base = await fileBase()

@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api, formatBytes } from "@/lib/api"
+import { api, fetchFileBlob, formatBytes, uploadFileWithProgress } from "@/lib/api"
 import { invalidate } from "@/lib/store"
 import { ToolHistory, type HistoryItem } from "@/components/tools/tool-history"
 import { AuthImage } from "@/components/requests/file-list"
@@ -98,6 +98,7 @@ type VideoForm = {
   adjust: Adjust
   motion?: Motion // 모션·불투명도(프리미어 효과 컨트롤과 같은 칸)
   source: string // 원본 파일 이름
+  sourceFileId?: string // 원본 동영상(히스토리에 함께 남긴 파일). 불러오면 이 동영상을 다시 연다
   start: number // 구간(초)
   end: number
   outW: number
@@ -106,6 +107,7 @@ type VideoForm = {
   size: number // 만든 파일 크기(byte)
 }
 const HISTORY_MAX = 20 * 1024 * 1024 // 서버가 받는 크기. 더 크면 히스토리에 남기지 않는다
+const SOURCE_MAX = 1024 * 1024 * 1024 // 원본 동영상은 1GB 까지 함께 남긴다(더 크면 설정·움짤만)
 const blobToDataUrl = (b: Blob) =>
   new Promise<string>((ok, fail) => {
     const r = new FileReader()
@@ -325,15 +327,36 @@ export function VideoConvertTool() {
   const cancelRef = useRef<(() => void) | null>(null)
   // 히스토리에서 불러온 설정: 원본 동영상은 남기지 않아서, 만든 움짤과 원본 이름을 보여 주고 같은 동영상을 고르면 구간까지 채운다
   const [loaded, setLoaded] = useState<{ title: string; fileId: string; form: VideoForm } | null>(null)
+  // 원본 동영상을 히스토리에 올리는 중(진행률). 같은 동영상은 한 번만 올린다(파일 → 올린 id)
+  const [saving, setSaving] = useState<{ ratio: number } | null>(null)
+  const sourceIds = useRef(new WeakMap<File, Promise<string>>())
+  const uploadSource = (file: File) => {
+    let p = sourceIds.current.get(file)
+    if (!p) {
+      setSaving({ ratio: 0 })
+      p = uploadFileWithProgress(file, (ratio) => setSaving({ ratio })).then((f) => f.id)
+      p.then(
+        () => setSaving(null),
+        () => {
+          setSaving(null)
+          sourceIds.current.delete(file)
+        },
+      )
+      sourceIds.current.set(file, p)
+    }
+    return p
+  }
   const topRef = useRef<HTMLDivElement>(null)
+  const loadedRef = useRef<{ title: string; fileId: string; form: VideoForm } | null>(null)
 
   // 화면을 닫으면 만든 주소·작업을 정리한다
   useEffect(() => () => void (source && URL.revokeObjectURL(source.url)), [source])
   useEffect(() => () => void (result && URL.revokeObjectURL(result.url)), [result])
   useEffect(() => () => cancelRef.current?.(), [])
 
-  const open = (file: File | undefined) => {
+  const open = (file: File | undefined, savedId?: string) => {
     if (!file) return
+    if (savedId) sourceIds.current.set(file, Promise.resolve(savedId))
     if (!file.type.startsWith("video/") && !/\.(mp4|mov|webm|m4v|mkv)$/i.test(file.name)) {
       setError("동영상 파일(MP4·MOV·WebM)을 골라 주세요.")
       return
@@ -353,8 +376,10 @@ export function VideoConvertTool() {
       }
       setSource({ file, url, duration: v.duration, width: v.videoWidth, height: v.videoHeight })
       // 처음에는 앞 5초(짧으면 전체). 불러온 설정과 같은 동영상이면 그때 구간
-      const same = loaded && loaded.form.source === file.name
-      setRange(same ? [Math.min(loaded.form.start, v.duration), Math.min(loaded.form.end, v.duration)] : [0, Math.min(v.duration, 5)])
+      const want = loadedRef.current ?? loaded
+      loadedRef.current = null
+      const same = want && want.form.source === file.name
+      setRange(same ? [Math.min(want.form.start, v.duration), Math.min(want.form.end, v.duration)] : [0, Math.min(v.duration, 5)])
       setLoaded(null)
       setPlaying(false)
     }
@@ -582,8 +607,15 @@ export function VideoConvertTool() {
       if (blob.size <= HISTORY_MAX) {
         const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, motion, source: source.file.name, start: range[0], end: range[1], outW, outH, frames, size: blob.size }
         const safe = base.replace(/[^\w.\-가-힣 ]/g, "_").slice(0, 50) || "video"
-        blobToDataUrl(blob)
-          .then((image) => api("/tools/video/history", { body: { title: made.name, fileName: `${safe}.${format}`, form, image } }))
+        const file = source.file
+        // 원본 동영상도 함께 남긴다(불러오면 그 동영상이 다시 열린다). 못 올리면 설정·움짤만 남긴다
+        const sourceId = file.size <= SOURCE_MAX ? uploadSource(file).catch(() => null) : Promise.resolve(null)
+        Promise.all([blobToDataUrl(blob), sourceId])
+          .then(([image, id]) =>
+            api("/tools/video/history", {
+              body: { title: made.name, fileName: `${safe}.${format}`, form: id ? { ...form, sourceFileId: id } : form, fileIds: id ? [id] : [], image },
+            }),
+          )
           .then(() => invalidate(), () => {})
       }
       // 변환이 끝나면 바로 내려받는다(결과 화면에서 다시 받을 수도 있다)
@@ -611,13 +643,36 @@ export function VideoConvertTool() {
   }
 
   // 히스토리에서 불러오기: 그때 설정(형식·크기·화질·속도·반복·색 보정)을 채운다. 동영상은 다시 골라야 한다
-  const loadForm = (f: VideoForm, h: HistoryItem<VideoForm>) => {
+  const [fetching, setFetching] = useState<{ name: string; ratio: number } | null>(null)
+  const loadForm = async (f: VideoForm, h: HistoryItem<VideoForm>) => {
     if (busy) return
+    // 원본 동영상을 함께 남긴 기록: 받아서 그대로 연다(구간까지)
+    if (f.sourceFileId && !(source && source.file.name === f.source)) {
+      setFetching({ name: f.source, ratio: 0 })
+      requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+      try {
+        const blob = await fetchFileBlob(f.sourceFileId, (ratio) => setFetching({ name: f.source, ratio }))
+        const file = new File([blob], f.source, { type: blob.type || "video/mp4" })
+        loadedRef.current = { title: h.title, fileId: h.fileId, form: f }
+        applyForm(f)
+        open(file, f.sourceFileId)
+        return
+      } catch {
+        // 원본을 못 받으면(지워졌거나 연결 끊김) 설정만 채우고 다시 고르게 한다
+      } finally {
+        setFetching(null)
+      }
+    }
+    applyForm(f)
     // 지금 열린 동영상이 그때 원본과 같으면 구간도 채우고, 아니면 원본을 다시 고르라고 보여 준다
     if (source && source.file.name === f.source) {
       setRange([Math.min(f.start, source.duration), Math.min(f.end, source.duration)])
       setLoaded(null)
     } else setLoaded({ title: h.title, fileId: h.fileId, form: f })
+    // 도구 창 안에서 스크롤하므로 창의 맨 위 칸으로 옮긴다
+    requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
+  const applyForm = (f: VideoForm) => {
     setFormat(f.format)
     setWidth(f.width)
     setFps(f.fps)
@@ -627,8 +682,6 @@ export function VideoConvertTool() {
     setAdjust(f.adjust ?? NO_ADJUST)
     setMotion(f.motion ?? NO_MOTION)
     setResult(null)
-    // 도구 창 안에서 스크롤하므로 창의 맨 위 칸으로 옮긴다
-    requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
   }
 
   const reset = () => {
@@ -683,6 +736,16 @@ export function VideoConvertTool() {
               {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 .webp 그대로 올립니다."}
             </FieldDescription>
           </Field>
+          {fetching && (
+            <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+                원본 동영상 불러오는 중… <span className="tabular-nums">{Math.round(fetching.ratio * 100)}%</span>
+              </span>
+              <Progress value={fetching.ratio * 100} className="h-1.5" />
+              <span className="truncate text-xs text-muted-foreground">{fetching.name}</span>
+            </div>
+          )}
           {loaded && (
             <div className="flex gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
               <div className="size-20 shrink-0 overflow-hidden rounded-md bg-muted">
@@ -694,7 +757,7 @@ export function VideoConvertTool() {
                   "{loaded.title}" 설정을 불러왔습니다
                 </span>
                 <span className="text-xs break-keep text-muted-foreground">
-                  형식·크기·화질·속도·반복·모션·색 보정을 채웠습니다. 원본 동영상은 저장하지 않아서 다시 골라야 합니다
+                  형식·크기·화질·속도·반복·모션·색 보정을 채웠습니다. 이 기록에는 원본 동영상이 없어서 다시 골라야 합니다
                   {loaded.form.source ? ` — 원본: ${loaded.form.source} (같은 파일을 고르면 구간 ${fmt(loaded.form.start)}–${fmt(loaded.form.end)}도 채웁니다)` : ""}
                 </span>
               </div>
@@ -980,6 +1043,12 @@ export function VideoConvertTool() {
               <div className="flex justify-center overflow-hidden rounded-xl border bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-4">
                 <img src={result.url} alt={`${result.name} 미리보기`} className="max-h-[70vh] max-w-full object-contain" />
               </div>
+              {saving && (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                  <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+                  원본 동영상을 히스토리에 저장하는 중… <span className="tabular-nums">{Math.round(saving.ratio * 100)}%</span>
+                </p>
+              )}
               {result.size > 10 * 1024 * 1024 && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">
                   10MB 가 넘습니다. 쇼핑몰에 올리기 무거우면 가로 크기·초당 장수·화질을 낮추거나 구간을 줄여 보세요.
