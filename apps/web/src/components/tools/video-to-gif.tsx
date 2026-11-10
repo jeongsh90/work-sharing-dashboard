@@ -870,7 +870,7 @@ function SequenceTimeline({
               }}
               {...scrub}
               {...trackDrop(tr)}
-              className={`relative h-14 cursor-pointer touch-none border-b border-border/60 ${upTarget === tr || (ghost && ghost.track === tr) ? "bg-amber-400/10" : ""}`}
+              className={`relative h-10 cursor-pointer touch-none border-b border-border/60 ${upTarget === tr || (ghost && ghost.track === tr) ? "bg-amber-400/10" : ""}`}
             >
               {trackLabel(`V${tr + 1}`)}
               {layers
@@ -916,7 +916,7 @@ function SequenceTimeline({
               rowRefs.current[0] = el
             }}
             {...scrub}
-            className={`relative h-14 cursor-pointer touch-none ${ghost && ghost.track === 0 ? "bg-amber-400/10" : ""}`}
+            className={`relative h-10 cursor-pointer touch-none ${ghost && ghost.track === 0 ? "bg-amber-400/10" : ""}`}
           >
             {trackLabel("V1")}
             {clips.map((c, i) => {
