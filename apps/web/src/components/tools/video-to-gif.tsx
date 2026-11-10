@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, Download, FileInput, Film, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Upload, Wand2, X } from "lucide-react"
+import { CopyPlus, Download, FileInput, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Upload, Wand2, X } from "lucide-react"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,7 +16,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api, fetchFileBlob, formatBytes, uploadFileWithProgress } from "@/lib/api"
 import { invalidate } from "@/lib/store"
 import { ToolHistory, type HistoryItem } from "@/components/tools/tool-history"
-import { AuthImage } from "@/components/requests/file-list"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
@@ -489,6 +489,10 @@ export function VideoConvertTool() {
   const F = FORMATS[format]
   // 타임라인: 클립을 순서대로 이어 붙인다. 고른 클립(activeId)의 동영상·구간이 미리보기·구간 칸·프레임 띠에 보인다
   const [clips, setClips] = useState<Clip[]>([])
+  // 미디어 칸(프리미어 프로젝트 패널): 가져온 동영상. 끌어 놓거나 ＋ 로 타임라인에 클립을 붙인다
+  const [media, setMedia] = useState<Source[]>([])
+  const [mediaView, setMediaView] = useState<"list" | "grid">("grid")
+  const [mediaTab, setMediaTab] = useState<"media" | "history">("media")
   const [activeId, setActiveId] = useState<number | null>(null)
   const activeClip = clips.find((c) => c.id === activeId) ?? clips[0] ?? null
   const source = activeClip?.source ?? null
@@ -552,10 +556,10 @@ export function VideoConvertTool() {
   // 화면을 닫으면 만든 주소·작업을 정리한다(동영상 주소는 어느 클립도 쓰지 않게 되면 푼다)
   const urlsRef = useRef(new Set<string>())
   useEffect(() => {
-    const used = new Set(clips.map((c) => c.source.url))
+    const used = new Set([...clips.map((c) => c.source.url), ...media.map((s) => s.url)])
     for (const u of urlsRef.current) if (!used.has(u)) URL.revokeObjectURL(u)
     urlsRef.current = used
-  }, [clips])
+  }, [clips, media])
   useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
   useEffect(() => () => void (result && URL.revokeObjectURL(result.url)), [result])
   useEffect(() => () => cancelRef.current?.(), [])
@@ -586,7 +590,8 @@ export function VideoConvertTool() {
 
   // 동영상 고르기: 처음이면 타임라인을 새로 만들고, 이미 있으면(영상 추가) 뒤에 클립으로 붙인다.
   // 처음 한 개는 앞 5초(짧으면 전체), 뒤에 붙이는 영상은 전체 길이. 불러온 설정과 같은 동영상이면 그때 구간
-  const open = async (input: File | File[] | undefined, opts?: { savedId?: string; append?: boolean; ranges?: [number, number][] }) => {
+  // binOnly: 미디어 칸에만 가져온다(타임라인이 비어 있으면 타임라인에도 올린다 — 처음 가져온 영상은 바로 편집)
+  const open = async (input: File | File[] | undefined, opts?: { savedId?: string; append?: boolean; binOnly?: boolean; ranges?: [number, number][] }) => {
     const files = (Array.isArray(input) ? input : input ? [input] : []).filter(Boolean)
     if (files.length === 0) return
     if (files.some((f) => !isVideo(f))) {
@@ -606,7 +611,13 @@ export function VideoConvertTool() {
     }
     const byFile = new Map(uniq.map((f, i) => [f, opened[i] as Source]))
     const sources = files.map((f) => byFile.get(f)!)
-    const append = opts?.append && clips.length > 0
+    const replace = !opts?.append && !opts?.binOnly // 새로 시작(히스토리 불러오기 등): 미디어 칸도 새로
+    setMedia((m) => (replace ? [...byFile.values()] : [...m, ...byFile.values()]))
+    if (opts?.binOnly && clips.length > 0) {
+      setLoaded(null)
+      return
+    }
+    const append = (opts?.append || opts?.binOnly) && clips.length > 0
     const want = loadedRef.current ?? loaded
     loadedRef.current = null
     const made = sources.map((s, i) => {
@@ -654,6 +665,23 @@ export function VideoConvertTool() {
     const next = clips.filter((c) => c.id !== activeClip.id)
     setClips(next)
     setActiveId(next[Math.min(i, next.length - 1)]?.id ?? null)
+    setResult(null)
+    setSeqPlay(false)
+  }
+  // 미디어 칸 → 타임라인: 그 동영상 전체를 클립으로 뒤에 붙인다
+  const addToTimeline = (s: Source) => {
+    const c = newClip(s, 0, s.duration)
+    setClips((cs) => [...cs, c])
+    setActiveId(c.id)
+    setResult(null)
+    setSeqPlay(false)
+  }
+  // 미디어 칸에서 빼면 그 동영상으로 만든 클립도 타임라인에서 빠진다
+  const removeMedia = (s: Source) => {
+    setMedia((m) => m.filter((x) => x !== s))
+    const next = clips.filter((c) => c.source !== s)
+    setClips(next)
+    if (!next.some((c) => c.id === activeClip?.id)) setActiveId(next[0]?.id ?? null)
     setResult(null)
     setSeqPlay(false)
   }
@@ -1090,6 +1118,7 @@ export function VideoConvertTool() {
   const reset = () => {
     cancelRef.current?.()
     setClips([])
+    setMedia([])
     setActiveId(null)
     setSeqPlay(false)
     setResult(null)
@@ -1097,15 +1126,35 @@ export function VideoConvertTool() {
   }
 
   const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files")
-  // 파일 고르기 창: 처음 고르기(새 타임라인) / 영상 추가(뒤에 붙이기)
+  // 파일 고르기 창: 가져오기(미디어 칸. 타임라인이 비어 있으면 타임라인에도) / 영상 추가(타임라인 뒤에 붙이기)
   const appendPick = useRef(false)
   const pickMore = () => {
     appendPick.current = true
     picker.current?.click()
   }
+  const pickImport = () => {
+    appendPick.current = false
+    picker.current?.click()
+  }
+  const MEDIA_TYPE = "application/x-wsd-media" // 미디어 칸 → 타임라인 끌어 놓기
+  const onTimelineDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    if (busy) return
+    const idx = e.dataTransfer.getData(MEDIA_TYPE)
+    if (idx !== "") {
+      const s = media[Number(idx)]
+      if (s) addToTimeline(s)
+      return
+    }
+    if (e.dataTransfer.files.length) void open([...e.dataTransfer.files], { append: true })
+  }
+  const mediaThumb = useClipThumbs(media.map((s) => ({ id: -1, source: s, start: 0, end: s.duration })))
+  const clipNo = clips.findIndex((c) => c.id === activeClip?.id) + 1
 
   return (
-    <div ref={topRef} className="mx-auto grid w-full max-w-6xl scroll-mt-4 grid-cols-12 gap-6 p-4 md:p-6">
+    // 프리미어 편집 화면처럼 창 전체를 쓴다: 위 내보내기 막대 · ① 미리보기 · ② 모션 · ③ 색 보정 · ④ 미디어 · ⑤ 타임라인
+    <div ref={topRef} className="flex scroll-mt-4 flex-col gap-2 p-2 lg:h-full lg:min-h-0">
       <input
         ref={picker}
         type="file"
@@ -1113,509 +1162,680 @@ export function VideoConvertTool() {
         multiple
         hidden
         onChange={(e) => {
-          void open([...(e.target.files ?? [])], { append: appendPick.current })
+          void open([...(e.target.files ?? [])], appendPick.current ? { append: true } : { binOnly: true })
           appendPick.current = false
           e.target.value = ""
         }}
       />
 
-      {/* 오른쪽: 설정(넓은 화면에서는 미리보기 오른쪽) */}
-      {/* 동영상을 고르기 전에는 고르기 칸만 화면 가운데 */}
-      <div className={source ? "col-span-12 lg:order-2 lg:col-span-5" : "col-span-12 md:col-span-8 md:col-start-3 lg:col-span-6 lg:col-start-4"}>
-        <FieldGroup>
-          <Field>
-            <FieldLabel>만들 형식</FieldLabel>
-            <Tabs
-              value={format}
-              onValueChange={(v) => {
-                const next = v as Format
-                if (next === format || busy) return
-                setFormat(next)
-                // 화질 고르기는 형식마다 다르다(GIF 색 수 / WebP 압축 품질)
-                setColors(FORMATS[next].defaultOption)
-                setResult(null)
-              }}
-            >
-              <TabsList className="w-full">
-                <TabsTrigger value="webp" disabled={busy}>
-                  WebP
-                </TabsTrigger>
-                <TabsTrigger value="gif" disabled={busy}>
-                  GIF
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <FieldDescription>
-              {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 .webp 그대로 올립니다."}
-            </FieldDescription>
-          </Field>
-          {fetching && (
-            <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
-                원본 동영상 불러오는 중… <span className="tabular-nums">{Math.round(fetching.ratio * 100)}%</span>
-              </span>
-              <Progress value={fetching.ratio * 100} className="h-1.5" />
-              <span className="truncate text-xs text-muted-foreground">{fetching.name}</span>
-            </div>
-          )}
-          {loaded && (
-            <div className="flex gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
-              <div className="size-20 shrink-0 overflow-hidden rounded-md bg-muted">
-                <AuthImage fileId={loaded.fileId} alt={loaded.title} size="w640" className="size-full object-contain" />
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-                <span className="font-medium break-keep">
-                  <FileInput className="mr-1 inline size-4 align-[-2px]" />
-                  "{loaded.title}" 설정을 불러왔습니다
-                </span>
-                <span className="text-xs break-keep text-muted-foreground">
-                  형식·크기·화질·속도·반복·모션·색 보정을 채웠습니다. 이 기록에는 원본 동영상이 없어서 다시 골라야 합니다
-                  {loaded.form.source ? ` — 원본: ${loaded.form.source} (같은 파일을 고르면 구간 ${fmt(loaded.form.start)}–${fmt(loaded.form.end)}도 채웁니다)` : ""}
-                </span>
-              </div>
-              <Button variant="ghost" size="icon-sm" aria-label="불러온 설정 안내 닫기" onClick={() => setLoaded(null)}>
-                <X />
+      {/* 내보내기 막대: 형식 · 크기 · 장수 · 화질 · 속도 · 반복 · 예상 용량 · 변환 */}
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">만들 형식</span>
+          <Tabs
+            value={format}
+            onValueChange={(v) => {
+              const next = v as Format
+              if (next === format || busy) return
+              setFormat(next)
+              // 화질 고르기는 형식마다 다르다(GIF 색 수 / WebP 압축 품질)
+              setColors(FORMATS[next].defaultOption)
+              setResult(null)
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="webp" disabled={busy}>
+                WebP
+              </TabsTrigger>
+              <TabsTrigger value="gif" disabled={busy}>
+                GIF
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <BarSelect id="gif-width" label="가로 크기" value={width} onChange={setWidth} disabled={busy} options={WIDTHS} className="w-40" />
+        <BarSelect id="gif-fps" label="초당 장수" value={fps} onChange={setFps} disabled={busy} options={FPS.map((f) => ({ value: f, label: `${f}장` }))} className="w-24" />
+        <BarSelect id="gif-colors" label="화질" value={colors} onChange={setColors} disabled={busy} options={F.options} className="w-36" />
+        <BarSelect
+          id="gif-speed"
+          label="재생 속도"
+          value={speed}
+          onChange={setSpeed}
+          disabled={busy}
+          options={SPEEDS.map((s) => ({ value: s, label: `${s}배${s === "1" ? " (그대로)" : ""}` }))}
+          className="w-32"
+        />
+        <BarSelect
+          id="gif-repeat"
+          label="반복"
+          value={repeat}
+          onChange={setRepeat}
+          disabled={busy}
+          options={[
+            { value: "0", label: "계속 반복" },
+            { value: "-1", label: "한 번만 재생" },
+          ]}
+          className="w-32"
+        />
+        {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
+        {source && (
+          <div
+            className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm ${
+              estimate !== null && estimate > 10 * 1024 * 1024 ? "border-amber-500/50 bg-amber-500/8" : "bg-muted/40"
+            }`}
+            aria-live="polite"
+          >
+            <span className="text-xs text-muted-foreground">예상 {F.label}</span>
+            <span className="font-semibold tabular-nums">{estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}</span>
+            {estimating && estimate !== null && (
+              <LoaderCircle className="size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="다시 재는 중" />
+            )}
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {outW}×{outH} · {frames}장 · {fmt(totalLength / Number(speed))}
+              {multi ? ` · ${clips.length}컷` : ""}
+            </span>
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {busy ? (
+            <div className="flex h-9 min-w-64 items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 text-sm" aria-live="polite">
+              <span className="font-medium">{progress.step}…</span>
+              <span className="font-semibold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+              <Progress value={progress.ratio * 100} className="h-1.5 w-24" />
+              <Button variant="ghost" size="xs" onClick={() => cancelRef.current?.()}>
+                취소
               </Button>
             </div>
+          ) : (
+            <Button disabled={!source || tooMany || totalLength <= 0} onClick={() => void convert()}>
+              <Wand2 data-icon="inline-start" />
+              {F.label} 로 변환 후 내려받기
+            </Button>
           )}
-          <Field>
-            <FieldLabel>동영상</FieldLabel>
-            {source ? (
-              <div
-                className={`flex items-center gap-3 rounded-lg border p-3 ${dragging ? "border-primary bg-primary/5" : ""}`}
-                onDragOver={(e) => {
-                  if (!hasFiles(e) || busy) return
-                  e.preventDefault()
-                  setDragging(true)
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setDragging(false)
-                  if (!busy) void open([...e.dataTransfer.files], { append: true })
-                }}
-              >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  {multi ? <ListVideo className="size-5" /> : <Film className="size-5" />}
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <Tip content={source.file.name}><span className="truncate text-sm font-medium">
-                    {multi ? `${clips.findIndex((c) => c.id === activeClip?.id) + 1}번 클립 · ` : ""}
-                    {source.file.name}
-                  </span></Tip>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {source.width}×{source.height} · {fmt(source.duration)} · {formatBytes(source.file.size)}
-                    {multi ? ` · 클립 ${clips.length}개, 전체 ${fmt(totalLength)}` : ""}
-                  </span>
-                </div>
-                <Tip content="영상 추가(뒤에 이어 붙이기)">
-                  <Button variant="outline" size="icon-sm" aria-label="영상 추가" disabled={busy} onClick={pickMore}>
-                    <Plus />
-                  </Button>
-                </Tip>
-                <Button variant="ghost" size="icon-sm" aria-label="동영상 모두 빼기" disabled={busy} onClick={reset}>
-                  <X />
-                </Button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => picker.current?.click()}
-                onDragOver={(e) => {
-                  if (!hasFiles(e)) return
-                  e.preventDefault()
-                  setDragging(true)
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setDragging(false)
-                  void open([...e.dataTransfer.files])
-                }}
-                className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-10 text-center text-sm transition-colors ${
-                  dragging ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground hover:bg-muted/40"
-                }`}
-              >
-                <Upload className="size-7" />
-                <span className="font-medium text-foreground">동영상 파일 고르기</span>
-                <span className="break-keep">
-                  MP4·MOV·WebM 을 고르거나 여기에 끌어 놓으세요.
-                  <br />
-                  여러 개를 고르면 순서대로 이어 붙입니다. 파일은 서버에 올라가지 않습니다.
-                </span>
-              </button>
+        </div>
+        {(error || tooMany || (estimate !== null && estimate > 10 * 1024 * 1024) || (first && outW < (Number(width) || 0))) && (
+          <div className="flex w-full flex-col gap-0.5 text-xs" aria-live="polite">
+            {error && <span className="text-destructive">{error}</span>}
+            {tooMany && (
+              <span className="text-destructive">
+                장수가 너무 많습니다({frames}장, 최대 {MAX_FRAMES}장). 구간을 줄이거나 초당 장수를 낮춰 주세요.
+              </span>
             )}
-            {error && <FieldError>{error}</FieldError>}
-          </Field>
+            {!tooMany && estimate !== null && estimate > 10 * 1024 * 1024 && (
+              <span className="text-amber-700 dark:text-amber-300">10MB 가 넘습니다. 가로 크기·초당 장수·화질을 낮추거나 구간을 줄이면 가벼워집니다.</span>
+            )}
+            {first && outW < (Number(width) || 0) && <span className="text-muted-foreground">원본보다 크게는 만들지 않습니다.</span>}
+          </div>
+        )}
+        {fetching && (
+          <div className="flex w-full items-center gap-2 text-xs" aria-live="polite">
+            <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+            원본 동영상 불러오는 중… <span className="tabular-nums">{Math.round(fetching.ratio * 100)}%</span>
+            <Progress value={fetching.ratio * 100} className="h-1.5 w-40" />
+            <span className="truncate text-muted-foreground">{fetching.name}</span>
+          </div>
+        )}
+        {loaded && (
+          <div className="flex w-full items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-xs" aria-live="polite">
+            <FileInput className="size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 break-keep">
+              "{loaded.title}" 설정을 불러왔습니다. 이 기록에는 원본 동영상이 없어서 다시 골라야 합니다
+              {loaded.form.source ? ` — 원본: ${loaded.form.source} (같은 파일을 고르면 구간 ${fmt(loaded.form.start)}–${fmt(loaded.form.end)}도 채웁니다)` : ""}
+            </span>
+            <Button variant="ghost" size="icon-xs" aria-label="불러온 설정 안내 닫기" onClick={() => setLoaded(null)}>
+              <X />
+            </Button>
+          </div>
+        )}
+      </div>
 
-          {source && (
-            <>
-              <Field>
-                <FieldLabel>
-                  <Scissors className="size-4" />
-                  {multi ? `구간 (${clips.findIndex((c) => c.id === activeClip?.id) + 1}번 클립)` : "구간"}
-                  <span className="ml-auto text-xs font-normal text-muted-foreground tabular-nums">
-                    {fmt(range[0])} – {fmt(range[1])} ({fmt(length)})
-                  </span>
-                </FieldLabel>
-                <Slider
-                  min={0}
-                  max={source.duration}
-                  step={0.1}
-                  minStepsBetweenThumbs={1}
-                  value={range}
-                  disabled={busy}
-                  onValueChange={(v) => {
-                    const next: [number, number] = [v[0], v[1]]
-                    setSliding(true)
-                    // 움직인 손잡이 위치를 미리보기로 보여 준다
-                    seekPreview(next[0] !== range[0] ? next[0] : next[1])
-                    setRange(next)
-                  }}
-                  onValueCommit={(v) => {
-                    setSliding(false)
-                    playRange(v[0])
-                  }}
-                  aria-label={`${F.label} 로 만들 구간`}
-                  className="py-2"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => {
-                      const t = preview.current?.currentTime ?? 0
-                      setRange([Math.min(t, range[1] - 0.1), range[1]])
-                    }}
-                  >
-                    지금 위치를 시작으로
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => {
-                      const t = preview.current?.currentTime ?? source.duration
-                      setRange([range[0], Math.max(t, range[0] + 0.1)])
-                    }}
-                  >
-                    지금 위치를 끝으로
-                  </Button>
-                  <Button type="button" variant="ghost" size="xs" disabled={busy} onClick={() => setRange([0, source.duration])}>
-                    전체
-                  </Button>
-                </div>
-              </Field>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field>
-                  <FieldLabel htmlFor="gif-width">가로 크기</FieldLabel>
-                  <Select value={width} onValueChange={setWidth} disabled={busy}>
-                    <SelectTrigger id="gif-width" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WIDTHS.map((w) => (
-                        <SelectItem key={w.value} value={w.value}>
-                          {w.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gif-fps">초당 장수</FieldLabel>
-                  <Select value={fps} onValueChange={setFps} disabled={busy}>
-                    <SelectTrigger id="gif-fps" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FPS.map((f) => (
-                        <SelectItem key={f} value={f}>
-                          {f}장{f === "15" ? " (기본)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gif-colors">화질</FieldLabel>
-                  <Select value={colors} onValueChange={setColors} disabled={busy}>
-                    <SelectTrigger id="gif-colors" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {F.options.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gif-speed">재생 속도</FieldLabel>
-                  <Select value={speed} onValueChange={setSpeed} disabled={busy}>
-                    <SelectTrigger id="gif-speed" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SPEEDS.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}배{s === "1" ? " (그대로)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field className="col-span-2">
-                  <FieldLabel htmlFor="gif-repeat">반복</FieldLabel>
-                  <Select value={repeat} onValueChange={setRepeat} disabled={busy}>
-                    <SelectTrigger id="gif-repeat" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">계속 반복</SelectItem>
-                      <SelectItem value="-1">한 번만 재생</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </div>
-
-              <MotionPanel value={motion} onChange={setMotion} srcW={source.width} srcH={source.height} disabled={busy} />
-
-              <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} />
-
-              <Field data-invalid={tooMany}>
-                {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
-                <div
-                  className={`flex items-center gap-3 rounded-lg border p-3 ${
-                    estimate !== null && estimate > 10 * 1024 * 1024 ? "border-amber-500/50 bg-amber-500/8" : "bg-muted/40"
-                  }`}
-                  aria-live="polite"
-                >
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-xs text-muted-foreground">예상 {F.label} 용량</span>
-                    <span className="flex items-center gap-2 text-lg font-semibold tabular-nums">
-                      {estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}
-                      {estimating && estimate !== null && (
-                        <LoaderCircle className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="다시 재는 중" />
-                      )}
-                    </span>
-                  </div>
-                  <span className="text-right text-xs text-muted-foreground tabular-nums">
-                    {outW}×{outH}px
-                    <br />
-                    {frames}장 · {fmt(totalLength / Number(speed))}
-                    {multi ? ` · ${clips.length}컷` : ""}
-                  </span>
-                </div>
-                {estimate !== null && estimate > 10 * 1024 * 1024 && (
-                  <FieldDescription className="text-amber-700 dark:text-amber-300">
-                    10MB 가 넘습니다. 가로 크기·초당 장수·화질을 낮추거나 구간을 줄이면 가벼워집니다.
-                  </FieldDescription>
-                )}
-                {outW < (Number(width) || 0) && <FieldDescription>원본보다 크게는 만들지 않습니다.</FieldDescription>}
-                {tooMany && (
-                  <FieldError>
-                    장수가 너무 많습니다({frames}장, 최대 {MAX_FRAMES}장). 구간을 줄이거나 초당 장수를 낮춰 주세요.
-                  </FieldError>
-                )}
-              </Field>
-
-              {busy ? (
-                <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium">{progress.step}…</span>
-                    <span className="text-lg font-semibold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+      <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,24vw,420px)]">
+        <div className="grid min-h-0 gap-2 lg:grid-rows-[minmax(0,62fr)_minmax(0,38fr)]">
+          <div className="grid min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,22vw,400px)]">
+            {/* ① 미리보기(결과가 있으면 결과) */}
+            <Panel
+              title={result ? `결과 ${F.label}` : "미리보기"}
+              actions={
+                result ? (
+                  <>
                     <span className="text-xs text-muted-foreground tabular-nums">
-                      {progress.done} / {frames}장
+                      {result.width}×{result.height} · {result.frames}장 · {formatBytes(result.size)}
                     </span>
-                    <Button variant="ghost" size="xs" className="ml-auto" onClick={() => cancelRef.current?.()}>
-                      취소
+                    <Button variant="outline" size="xs" onClick={() => setResult(null)}>
+                      <RotateCcw data-icon="inline-start" />
+                      다시 설정
                     </Button>
+                    <Button size="xs" onClick={download}>
+                      <Download data-icon="inline-start" />
+                      내려받기
+                    </Button>
+                  </>
+                ) : source ? (
+                  <span className="text-xs text-muted-foreground">
+                    {seqPlay ? "클립을 순서대로 이어서 보여 줍니다" : multi ? "고른 클립 구간만 반복합니다 · 전체 재생은 이어서" : "고른 구간만 반복해서 보여 줍니다"}
+                  </span>
+                ) : null
+              }
+            >
+              {result ? (
+                <div className="flex min-h-64 flex-1 flex-col gap-2 p-2">
+                  <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px]">
+                    <img src={result.url} alt={`${result.name} 미리보기`} className="max-h-full max-w-full object-contain" />
                   </div>
-                  <Progress value={progress.ratio * 100} className="h-2" />
-                  <span className="text-xs text-muted-foreground">끝나면 {F.label} 가 바로 내려받아집니다.</span>
+                  {saving && (
+                    <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                      <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+                      원본 동영상을 히스토리에 저장하는 중… <span className="tabular-nums">{Math.round(saving.ratio * 100)}%</span>
+                    </p>
+                  )}
+                  {result.size > 10 * 1024 * 1024 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">10MB 가 넘습니다. 쇼핑몰에 올리기 무거우면 가로 크기·초당 장수·화질을 낮추거나 구간을 줄여 보세요.</p>
+                  )}
+                </div>
+              ) : source ? (
+                <div className="flex min-h-64 flex-1 flex-col gap-2 p-2">
+                  <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-black">
+                    {progress && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
+                        <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+                        <span className="text-sm text-white/80">
+                          {progress.step}… {progress.done} / {frames}장
+                        </span>
+                        <Progress value={progress.ratio * 100} className="h-2 w-2/3 bg-white/20" />
+                      </div>
+                    )}
+                    <video
+                      ref={preview}
+                      src={source.url}
+                      preload="auto"
+                      muted
+                      playsInline
+                      onTimeUpdate={onTime}
+                      onSeeked={onSeeked}
+                      onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
+                      onPlay={() => setPlaying(true)}
+                      onPause={() => setPlaying(false)}
+                      onClick={togglePlay}
+                      onLoadedData={onPreviewReady}
+                      onEnded={onEnded}
+                      className="absolute inset-0 size-full cursor-pointer object-contain"
+                    />
+                    {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
+                    <canvas
+                      ref={adjustCanvas}
+                      aria-hidden
+                      className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted || moved ? "" : "hidden"}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
+                      {playing && !seqPlay ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+                      {playing && !seqPlay ? "멈춤" : multi ? "클립 재생" : "구간 재생"}
+                    </Button>
+                    {multi && (
+                      <Button variant={seqPlay ? "default" : "outline"} size="sm" onClick={playSequence} disabled={busy}>
+                        {seqPlay && playing ? <Pause data-icon="inline-start" /> : <ListVideo data-icon="inline-start" />}
+                        {seqPlay && playing ? "멈춤" : "전체 재생"}
+                      </Button>
+                    )}
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {multi ? `${clipNo}번 클립 · ` : ""}
+                      {fmt(time)} / {fmt(source.duration)}
+                    </span>
+                    <span className="ml-auto truncate text-xs text-muted-foreground tabular-nums">
+                      {source.file.name} · {source.width}×{source.height}
+                    </span>
+                  </div>
                 </div>
               ) : (
-                <Button size="lg" className="w-full" disabled={tooMany || totalLength <= 0} onClick={() => void convert()}>
-                  <Wand2 data-icon="inline-start" />
-                  {F.label} 로 변환 후 내려받기
-                </Button>
-              )}
-            </>
-          )}
-        </FieldGroup>
-      </div>
-
-      {/* 왼쪽: 미리보기(동영상) → 결과(GIF) */}
-      {source && (
-        <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:order-1 lg:col-span-7 lg:self-start">
-          {result ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="mr-auto font-semibold">
-                  결과 {F.label}
-                  <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
-                    {result.width}×{result.height} · {result.frames}장 · {formatBytes(result.size)}
-                  </span>
-                </h3>
-                <Button variant="outline" size="sm" onClick={() => setResult(null)}>
-                  <RotateCcw data-icon="inline-start" />
-                  다시 설정
-                </Button>
-                <Button size="sm" onClick={download}>
-                  <Download data-icon="inline-start" />
-                  {F.label} 내려받기
-                </Button>
-              </div>
-              <div className="flex justify-center overflow-hidden rounded-xl border bg-[repeating-conic-gradient(var(--color-muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-4">
-                <img src={result.url} alt={`${result.name} 미리보기`} className="max-h-[70vh] max-w-full object-contain" />
-              </div>
-              {saving && (
-                <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-                  <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
-                  원본 동영상을 히스토리에 저장하는 중… <span className="tabular-nums">{Math.round(saving.ratio * 100)}%</span>
-                </p>
-              )}
-              {result.size > 10 * 1024 * 1024 && (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  10MB 가 넘습니다. 쇼핑몰에 올리기 무거우면 가로 크기·초당 장수·화질을 낮추거나 구간을 줄여 보세요.
-                </p>
-              )}
-            </>
-          ) : source ? (
-            <>
-              <div className="flex items-center gap-2">
-                <h3 className="mr-auto font-semibold">미리보기</h3>
-                <span className="text-xs text-muted-foreground">
-                  {seqPlay ? "클립을 순서대로 이어서 보여 줍니다" : multi ? "고른 클립 구간만 반복합니다 · 전체 재생은 이어서" : "고른 구간만 반복해서 보여 줍니다"}
-                </span>
-              </div>
-              <div className="relative overflow-hidden rounded-xl border bg-black">
-                {progress && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white backdrop-blur-[2px]">
-                    <span className="text-3xl font-bold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
-                    <span className="text-sm text-white/80">
-                      {progress.step}… {progress.done} / {frames}장
-                    </span>
-                    <Progress value={progress.ratio * 100} className="h-2 w-2/3 bg-white/20" />
-                  </div>
-                )}
-                <video
-                  ref={preview}
-                  src={source.url}
-                  preload="auto"
-                  muted
-                  playsInline
-                  onTimeUpdate={onTime}
-                  onSeeked={onSeeked}
-                  onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onClick={togglePlay}
-                  onLoadedData={onPreviewReady}
-                  onEnded={onEnded}
-                  className="max-h-[60vh] w-full cursor-pointer object-contain"
-                />
-                {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
-                <canvas
-                  ref={adjustCanvas}
-                  aria-hidden
-                  className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted || moved ? "" : "hidden"}`}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={togglePlay} disabled={busy}>
-                  {playing && !seqPlay ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-                  {playing && !seqPlay ? "멈춤" : multi ? "클립 재생" : "구간 재생"}
-                </Button>
-                {multi && (
-                  <Button variant={seqPlay ? "default" : "outline"} size="sm" onClick={playSequence} disabled={busy}>
-                    {seqPlay && playing ? <Pause data-icon="inline-start" /> : <ListVideo data-icon="inline-start" />}
-                    {seqPlay && playing ? "멈춤" : "전체 재생"}
-                  </Button>
-                )}
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {fmt(time)} / {fmt(source.duration)}
-                </span>
-              </div>
-              <FrameStrip
-                thumbs={thumbs}
-                duration={source.duration}
-                range={range}
-                time={time}
-                disabled={busy}
-                onRange={(next, commit) => {
-                  setSliding(!commit)
-                  setRange(next)
-                  if (commit) playRange(next[0])
-                  else seekPreview(next[0] !== range[0] ? next[0] : next[1])
-                }}
-                onSeek={(t) => {
-                  setTime(t)
-                  seekPreview(t)
-                }}
-              />
-              {/* 타임라인(프리미어 시퀀스처럼): 클립을 이어 붙인다. 누르면 그 클립 편집, 끌어서 순서 바꾸기 */}
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-auto flex items-center gap-1.5 text-sm font-semibold">
-                    <ListVideo className="size-4" />
-                    타임라인
-                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                      클립 {clips.length}개 · {fmt(totalLength)}
-                    </span>
-                  </span>
-                  <Tip content="재생 위치에서 고른 클립을 둘로 자릅니다(면도칼)">
-                    <Button variant="outline" size="xs" disabled={busy} onClick={splitAtPlayhead}>
-                      <Scissors data-icon="inline-start" />
-                      자르기
-                    </Button>
-                  </Tip>
-                  <Tip content="고른 클립을 바로 뒤에 하나 더 붙입니다">
-                    <Button variant="outline" size="xs" disabled={busy} onClick={duplicateClip}>
-                      <CopyPlus data-icon="inline-start" />
-                      복제
-                    </Button>
-                  </Tip>
-                  <Tip content="다른 동영상을 뒤에 이어 붙입니다">
-                    <Button variant="outline" size="xs" disabled={busy} onClick={pickMore}>
-                      <Plus data-icon="inline-start" />
-                      영상 추가
-                    </Button>
-                  </Tip>
-                  <Tip content="고른 클립을 타임라인에서 뺍니다">
-                    <Button variant="ghost" size="xs" disabled={busy} onClick={removeClip} aria-label="고른 클립 삭제">
-                      <Trash2 data-icon="inline-start" />
-                      삭제
-                    </Button>
-                  </Tip>
+                <div className="flex min-h-64 flex-1 p-2">
+                  <DropZone dragging={dragging} setDragging={setDragging} onPick={pickImport} onFiles={(f) => void open(f, { binOnly: true })} hasFiles={hasFiles} />
                 </div>
-                <Timeline clips={clips} activeId={activeClip?.id ?? null} disabled={busy} onSelect={selectClip} onReorder={(next) => { setClips(next); setResult(null) }} />
-                <p className="text-xs break-keep text-muted-foreground">
-                  클립을 누르면 위 구간·프레임 띠로 그 클립의 시작·끝을 다듬고, 끌어서 순서를 바꿉니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
-                </p>
+              )}
+            </Panel>
+
+            {/* ② 모션 */}
+            <Panel title="모션" bare scroll>
+              {source ? (
+                <div className="p-3">
+                  <MotionPanel value={motion} onChange={setMotion} srcW={source.width} srcH={source.height} disabled={busy} />
+                </div>
+              ) : (
+                <EmptyNote>동영상을 가져오면 위치·비율·회전·자르기·불투명도를 조절합니다.</EmptyNote>
+              )}
+            </Panel>
+          </div>
+
+          <div className="grid min-h-0 gap-2 lg:grid-cols-[clamp(260px,20vw,360px)_minmax(0,1fr)]">
+            {/* ④ 미디어(가져온 동영상) · 히스토리 */}
+            <Panel
+              title={
+                <Tabs value={mediaTab} onValueChange={(v) => setMediaTab(v as "media" | "history")}>
+                  <TabsList className="h-7">
+                    <TabsTrigger value="media" className="text-xs">
+                      미디어 {media.length > 0 && <span className="tabular-nums">{media.length}</span>}
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className="text-xs">
+                      히스토리
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              }
+              actions={
+                mediaTab === "media" ? (
+                  <>
+                    <Tip content="목록형">
+                      <Button variant={mediaView === "list" ? "secondary" : "ghost"} size="icon-xs" aria-label="목록형으로 보기" aria-pressed={mediaView === "list"} onClick={() => setMediaView("list")}>
+                        <List />
+                      </Button>
+                    </Tip>
+                    <Tip content="썸네일형">
+                      <Button variant={mediaView === "grid" ? "secondary" : "ghost"} size="icon-xs" aria-label="썸네일형으로 보기" aria-pressed={mediaView === "grid"} onClick={() => setMediaView("grid")}>
+                        <LayoutGrid />
+                      </Button>
+                    </Tip>
+                    <Tip content="동영상 가져오기">
+                      <Button variant="outline" size="icon-xs" aria-label="동영상 가져오기" disabled={busy} onClick={pickImport}>
+                        <Upload />
+                      </Button>
+                    </Tip>
+                    {media.length > 0 && (
+                      <Tip content="모두 빼기(미디어·타임라인)">
+                        <Button variant="ghost" size="icon-xs" aria-label="동영상 모두 빼기" disabled={busy} onClick={reset}>
+                          <X />
+                        </Button>
+                      </Tip>
+                    )}
+                  </>
+                ) : null
+              }
+              scroll
+            >
+              {mediaTab === "history" ? (
+                <div className="p-2">
+                  <ToolHistory<VideoForm>
+                    tool="video"
+                    onLoad={(f, h) => {
+                      setMediaTab("media")
+                      return loadForm(f, h)
+                    }}
+                    contain
+                    fileName={(t, h) => (t.endsWith(`.${h.form.format}`) ? t : `${t}.${h.form.format ?? "webp"}`)}
+                  />
+                </div>
+              ) : media.length === 0 ? (
+                <div
+                  className="flex h-full min-h-40 p-2"
+                  onDragOver={(e) => {
+                    if (!hasFiles(e)) return
+                    e.preventDefault()
+                    setDragging(true)
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setDragging(false)
+                    void open([...e.dataTransfer.files], { binOnly: true })
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={pickImport}
+                    className={`flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 text-center text-xs transition-colors ${
+                      dragging ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground hover:bg-muted/40"
+                    }`}
+                  >
+                    <Upload className="size-5" />
+                    <span className="font-medium text-foreground">동영상 가져오기</span>
+                    <span className="break-keep">고르거나 여기에 끌어 놓으세요(여러 개 가능)</span>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className={`p-2 ${dragging ? "bg-primary/5" : ""}`}
+                  onDragOver={(e) => {
+                    if (!hasFiles(e) || busy) return
+                    e.preventDefault()
+                    setDragging(true)
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setDragging(false)
+                    if (!busy) void open([...e.dataTransfer.files], { binOnly: true })
+                  }}
+                >
+                  <ul className={mediaView === "grid" ? "grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2" : "flex flex-col gap-1"}>
+                    {media.map((s, i) => {
+                      const uses = clips.filter((c) => c.source === s).length
+                      const thumb = mediaThumb({ id: -1, source: s, start: 0, end: s.duration })
+                      return (
+                        <li
+                          key={s.url}
+                          draggable={!busy}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(MEDIA_TYPE, String(i))
+                            e.dataTransfer.effectAllowed = "copy"
+                          }}
+                          onDoubleClick={() => !busy && addToTimeline(s)}
+                          className={`group relative cursor-grab rounded-md border bg-background active:cursor-grabbing ${
+                            source === s ? "border-primary" : "hover:border-primary/40"
+                          } ${mediaView === "grid" ? "flex flex-col overflow-hidden" : "flex items-center gap-2 p-1.5"}`}
+                        >
+                          <div className={mediaView === "grid" ? "relative aspect-video bg-black" : "relative h-9 w-16 shrink-0 overflow-hidden rounded bg-black"}>
+                            {thumb ? (
+                              <img src={thumb} alt="" draggable={false} className="size-full object-cover" />
+                            ) : (
+                              <span className="absolute inset-0 animate-pulse bg-muted-foreground/20 motion-reduce:animate-none" />
+                            )}
+                            {mediaView === "grid" && (
+                              <span className="absolute right-1 bottom-1 rounded bg-black/70 px-1 text-[10px] text-white tabular-nums">{fmt(s.duration)}</span>
+                            )}
+                          </div>
+                          <div className={`flex min-w-0 flex-1 flex-col ${mediaView === "grid" ? "px-1.5 py-1" : ""}`}>
+                            <Tip content={s.file.name}>
+                              <span className="truncate text-xs font-medium">{s.file.name}</span>
+                            </Tip>
+                            <span className="truncate text-[11px] text-muted-foreground tabular-nums">
+                              {s.width}×{s.height}
+                              {mediaView === "list" ? ` · ${fmt(s.duration)}` : ""} · {formatBytes(s.file.size)}
+                              {uses > 0 ? ` · 클립 ${uses}` : ""}
+                            </span>
+                          </div>
+                          <div className={`flex gap-0.5 ${mediaView === "grid" ? "absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100" : ""}`}>
+                            <Tip content="타임라인 뒤에 붙이기(더블클릭·끌어 놓기도 됨)">
+                              <Button variant="secondary" size="icon-xs" aria-label={`${s.file.name} 타임라인에 붙이기`} disabled={busy} onClick={() => addToTimeline(s)}>
+                                <Plus />
+                              </Button>
+                            </Tip>
+                            <Tip content="미디어에서 빼기(이 동영상 클립도 빠짐)">
+                              <Button variant="secondary" size="icon-xs" aria-label={`${s.file.name} 빼기`} disabled={busy} onClick={() => removeMedia(s)}>
+                                <Trash2 />
+                              </Button>
+                            </Tip>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+            </Panel>
+
+            {/* ⑤ 타임라인: 고른 클립 구간 다듬기(프레임 띠) + 클립 줄(끌어 놓아 붙이기) */}
+            <Panel
+              title={
+                <span className="flex items-center gap-1.5">
+                  <ListVideo className="size-4" />
+                  타임라인
+                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                    클립 {clips.length}개 · {fmt(totalLength)}
+                  </span>
+                </span>
+              }
+              actions={
+                source ? (
+                  <>
+                    <Tip content="재생 위치에서 고른 클립을 둘로 자릅니다(면도칼)">
+                      <Button variant="outline" size="xs" disabled={busy} onClick={splitAtPlayhead}>
+                        <Scissors data-icon="inline-start" />
+                        자르기
+                      </Button>
+                    </Tip>
+                    <Tip content="고른 클립을 바로 뒤에 하나 더 붙입니다">
+                      <Button variant="outline" size="xs" disabled={busy} onClick={duplicateClip}>
+                        <CopyPlus data-icon="inline-start" />
+                        복제
+                      </Button>
+                    </Tip>
+                    <Tip content="다른 동영상을 가져와 뒤에 이어 붙입니다">
+                      <Button variant="outline" size="xs" disabled={busy} onClick={pickMore}>
+                        <Plus data-icon="inline-start" />
+                        영상 추가
+                      </Button>
+                    </Tip>
+                    <Tip content="고른 클립을 타임라인에서 뺍니다">
+                      <Button variant="ghost" size="xs" disabled={busy} onClick={removeClip} aria-label="고른 클립 삭제">
+                        <Trash2 data-icon="inline-start" />
+                        삭제
+                      </Button>
+                    </Tip>
+                  </>
+                ) : null
+              }
+              scroll
+            >
+              <div
+                className={`flex min-h-full flex-col gap-2 p-2 ${dragging ? "bg-primary/5" : ""}`}
+                onDragOver={(e) => {
+                  if (busy || (!hasFiles(e) && !e.dataTransfer.types.includes(MEDIA_TYPE))) return
+                  e.preventDefault()
+                  setDragging(true)
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={onTimelineDrop}
+              >
+                {source ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex items-center gap-1.5 text-xs font-medium">
+                        <Scissors className="size-3.5" />
+                        {multi ? `${clipNo}번 클립 구간` : "구간"}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {fmt(range[0])} – {fmt(range[1])} ({fmt(length)})
+                      </span>
+                      <div className="ml-auto flex flex-wrap gap-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => {
+                            const t = preview.current?.currentTime ?? 0
+                            setRange([Math.min(t, range[1] - 0.1), range[1]])
+                          }}
+                        >
+                          지금 위치를 시작으로
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => {
+                            const t = preview.current?.currentTime ?? source.duration
+                            setRange([range[0], Math.max(t, range[0] + 0.1)])
+                          }}
+                        >
+                          지금 위치를 끝으로
+                        </Button>
+                        <Button type="button" variant="ghost" size="xs" disabled={busy} onClick={() => setRange([0, source.duration])}>
+                          전체
+                        </Button>
+                      </div>
+                    </div>
+                    <Slider
+                      min={0}
+                      max={source.duration}
+                      step={0.1}
+                      minStepsBetweenThumbs={1}
+                      value={range}
+                      disabled={busy}
+                      onValueChange={(v) => {
+                        const next: [number, number] = [v[0], v[1]]
+                        setSliding(true)
+                        // 움직인 손잡이 위치를 미리보기로 보여 준다
+                        seekPreview(next[0] !== range[0] ? next[0] : next[1])
+                        setRange(next)
+                      }}
+                      onValueCommit={(v) => {
+                        setSliding(false)
+                        playRange(v[0])
+                      }}
+                      aria-label={`${F.label} 로 만들 구간`}
+                      className="py-1"
+                    />
+                    <FrameStrip
+                      thumbs={thumbs}
+                      duration={source.duration}
+                      range={range}
+                      time={time}
+                      disabled={busy}
+                      onRange={(next, commit) => {
+                        setSliding(!commit)
+                        setRange(next)
+                        if (commit) playRange(next[0])
+                        else seekPreview(next[0] !== range[0] ? next[0] : next[1])
+                      }}
+                      onSeek={(t) => {
+                        setTime(t)
+                        seekPreview(t)
+                      }}
+                    />
+                    <Timeline
+                      clips={clips}
+                      activeId={activeClip?.id ?? null}
+                      disabled={busy}
+                      onSelect={selectClip}
+                      onReorder={(next) => {
+                        setClips(next)
+                        setResult(null)
+                      }}
+                    />
+                    <p className="text-xs break-keep text-muted-foreground">
+                      클립을 누르면 그 클립 구간을 다듬고, 끌어서 순서를 바꿉니다. 미디어의 동영상을 여기로 끌어 놓으면 뒤에 붙습니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
+                    </p>
+                  </>
+                ) : (
+                  <EmptyNote>미디어의 동영상을 여기로 끌어 놓거나 ＋ 를 누르면 타임라인을 만듭니다.</EmptyNote>
+                )}
               </div>
-            </>
-          ) : null}
+            </Panel>
+          </div>
         </div>
-      )}
-      {/* 만든 움짤 히스토리(다시 내려받기 · 설정 불러오기) */}
-      <div className="col-span-12 lg:order-3">
-        <ToolHistory<VideoForm>
-          tool="video"
-          onLoad={loadForm}
-          contain
-          fileName={(t, h) => (t.endsWith(`.${h.form.format}`) ? t : `${t}.${h.form.format ?? "webp"}`)}
-        />
+
+        {/* ③ 색 보정 */}
+        <Panel title="색 보정" bare scroll>
+          {source ? (
+            <div className="p-3">
+              <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} />
+            </div>
+          ) : (
+            <EmptyNote>동영상을 가져오면 노출·감마·색조·채도·명도를 보정합니다.</EmptyNote>
+          )}
+        </Panel>
       </div>
     </div>
+  )
+}
+
+// 편집 화면 칸(프리미어 패널처럼): 위 제목 줄 + 내용. scroll 이면 내용만 따로 스크롤(부드럽게)
+// bare: 안쪽 칸(모션·색 보정)이 제목·기본값 버튼을 가지고 있어 머리 줄을 그리지 않는다(제목은 화면 읽기용으로만)
+function Panel({ title, actions, scroll, bare, children }: { title: React.ReactNode; actions?: React.ReactNode; scroll?: boolean; bare?: boolean; children: React.ReactNode }) {
+  return (
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label={typeof title === "string" ? title : undefined}>
+      {!bare && (
+        <div className="flex min-h-10 flex-wrap items-center gap-1.5 border-b px-2 py-1">
+          <h3 className="mr-auto text-sm font-semibold">{title}</h3>
+          {actions}
+        </div>
+      )}
+      {scroll ? (
+        <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="h-full">
+          {children}
+        </SmoothScrollArea>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      )}
+    </section>
+  )
+}
+
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return <p className="flex h-full min-h-24 items-center justify-center p-4 text-center text-xs break-keep text-muted-foreground">{children}</p>
+}
+
+// 내보내기 막대의 작은 고르기 칸(이름 위 · 칸 아래)
+function BarSelect({
+  id,
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+  className,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  disabled?: boolean
+  className?: string
+}) {
+  return (
+    <div className={`flex flex-col gap-1 ${className ?? ""}`}>
+      <label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </label>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger id={id} size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+// 처음 화면(① 미리보기 자리): 동영상 가져오기
+function DropZone({
+  dragging,
+  setDragging,
+  onPick,
+  onFiles,
+  hasFiles,
+}: {
+  dragging: boolean
+  setDragging: (v: boolean) => void
+  onPick: () => void
+  onFiles: (files: File[]) => void
+  hasFiles: (e: React.DragEvent) => boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragging(false)
+        onFiles([...e.dataTransfer.files])
+      }}
+      className={`flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-10 text-center text-sm transition-colors ${
+        dragging ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground hover:bg-muted/40"
+      }`}
+    >
+      <Upload className="size-7" />
+      <span className="font-medium text-foreground">동영상 가져오기</span>
+      <span className="break-keep">
+        MP4·MOV·WebM 을 고르거나 여기에 끌어 놓으세요.
+        <br />
+        여러 개를 고르면 미디어에 들어가고, 처음 고른 영상들은 타임라인에 순서대로 올라갑니다.
+      </span>
+    </button>
   )
 }
 

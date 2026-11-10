@@ -30,6 +30,7 @@ type Tool = {
   icon: LucideIcon
   color: string // 아이콘 바탕(그라데이션)
   body?: React.ReactNode // 도구 화면. 없으면 준비 중
+  fill?: boolean // 창 높이를 꽉 채우는 작업 화면(칸마다 따로 스크롤. 넓은 화면에서만)
 }
 
 const TOOLS: Tool[] = [
@@ -137,6 +138,7 @@ const TOOLS: Tool[] = [
     icon: Clapperboard,
     color: "from-fuchsia-400 to-purple-600",
     body: <VideoConvertTool />,
+    fill: true,
   },
   {
     id: "mail-signature",
@@ -281,7 +283,7 @@ function ToolDialog({ tool: open, onClose }: { tool: Tool | null; onClose: () =>
                 </DialogClose>
               </div>
               {/* 도구 화면 스크롤도 부드럽게 */}
-              <SmoothScrollArea className="min-h-0 flex-1 overflow-auto">
+              <SmoothScrollArea className={`min-h-0 flex-1 overflow-auto ${open.fill ? "lg:overflow-hidden" : ""}`} contentClassName={open.fill ? "lg:h-full" : undefined}>
                 <ToolBody tool={open} />
               </SmoothScrollArea>
             </>
