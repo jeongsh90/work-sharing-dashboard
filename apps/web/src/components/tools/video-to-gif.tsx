@@ -2286,9 +2286,6 @@ export function VideoConvertTool() {
                         setResult(null)
                       }}
                     />
-                    <p className="text-xs break-keep text-muted-foreground">
-                      눈금·트랙을 누르거나 파란 재생 헤드를 끌면 그 장면이 미리보기에 나오고, 클립 양 끝을 끌면(또는 미리보기 아래 {"{ }"} 버튼·I/O 키) 길이가 바뀌며 뒤 클립이 따라 붙습니다. 클립 몸통을 끌면 순서가 바뀌고(Alt+←→ 도 됨), 미디어의 동영상을 끌어 놓으면 뒤에 붙습니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
-                    </p>
                   </>
                 ) : (
                   <EmptyNote>미디어의 동영상을 여기로 끌어 놓거나 ＋ 를 누르면 타임라인을 만듭니다.</EmptyNote>
