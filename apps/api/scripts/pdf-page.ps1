@@ -1,6 +1,7 @@
 ﻿# PDF 첫 장 → JPG(가로 2480px = A4 300dpi) + 한국어 OCR 낱말 위치(JSON). 윈도우 내장 기능만 쓴다(Windows.Data.Pdf, Windows.Media.Ocr).
 # 사용: .\pdf-page.ps1 -Pdf "C:\...\수매확인서.pdf" -OutJpg "...\page.jpg" -OutOcr "...\ocr.json" [-Width 2480]
-param([Parameter(Mandatory = $true)][string]$Pdf, [Parameter(Mandatory = $true)][string]$OutJpg, [string]$OutOcr, [int]$Width = 2480)
+#       .\pdf-page.ps1 -Img "...\page.png" -OutOcr "...\ocr.json"   (스캔 이미지: 서버가 크기를 맞춘 이미지에서 OCR 만)
+param([string]$Pdf, [string]$Img, [string]$OutJpg, [string]$OutOcr, [int]$Width = 2480)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime, PresentationCore
 [void][Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
@@ -13,6 +14,24 @@ $asTaskG = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object 
 $asTaskA = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' })[0]
 function Await($op, [Type]$t) { $task = $asTaskG.MakeGenericMethod($t).Invoke($null, @($op)); $task.Wait(-1) | Out-Null; return $task.Result }
 function AwaitA($op) { $task = $asTaskA.Invoke($null, @($op)); $task.Wait(-1) | Out-Null }
+
+if ($Img) {
+  # 이미지 파일을 그대로 OCR 한다
+  $ifile = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync((Resolve-Path $Img).Path)) ([Windows.Storage.StorageFile])
+  $ist = Await ($ifile.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+  $wdec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($ist)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $sb = Await ($wdec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage((New-Object Windows.Globalization.Language 'ko'))
+  if (-not $eng) { throw '한국어 OCR 을 쓸 수 없음(윈도우 설정 > 언어 > 한국어 기본 입력 기능 설치)' }
+  $res = Await ($eng.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
+  $lines = foreach ($l in $res.Lines) {
+    [ordered]@{ text = $l.Text; words = @(foreach ($w in $l.Words) { [ordered]@{ t = $w.Text; x = [int]$w.BoundingRect.X; y = [int]$w.BoundingRect.Y; w = [int]$w.BoundingRect.Width; h = [int]$w.BoundingRect.Height } }) }
+  }
+  $o = [ordered]@{ width = [int]$wdec.PixelWidth; height = [int]$wdec.PixelHeight; lines = @($lines) }
+  [IO.File]::WriteAllText($OutOcr, ($o | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding $false))
+  "ocr: $(@($lines).Count) 줄"
+  exit 0
+}
 
 $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync((Resolve-Path $Pdf).Path)) ([Windows.Storage.StorageFile])
 $doc = Await ([Windows.Data.Pdf.PdfDocument]::LoadFromFileAsync($file)) ([Windows.Data.Pdf.PdfDocument])

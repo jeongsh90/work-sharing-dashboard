@@ -11,6 +11,7 @@ import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 
 // 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
 // 사양: docs/tools/수매확인서_툴_사양.md (Figma 셰프애찬 461:212). 고칠 수 있는 건 생산일자뿐이다.
+// 디자인 툴 > 노로 비검출해역 확인서도 같은 틀(Figma 720:352)에 글·강조만 다르다(CERTS.noro, 사양 docs/tools/노로비검출_툴_사양.md).
 // 말풍선은 '생산일자' + PDF 표 첫 칸(생산일자)에 적힌 값 그대로(예 10.22). 서버가 OCR 로 읽어 채운다.
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다. PDF 분석(이미지·OCR·위치)은 서버가 한다(apps/api/src/purchase-cert.ts).
 
@@ -34,11 +35,74 @@ const INK = "#111111"
 const SUB = "#555555"
 const PAPER = { x: 120, y: 392 + 80, w: 620, h: 877 } // 이미지 영역(392부터 1037) 가운데, 위아래 80
 
-// 표를 못 찾았을 때 생산일자 말풍선 기본 위치(사양 7-6 기준값)
-const DEFAULT_LAYOUT: Pick<Layout, "highlight" | "tag" | "dateBox"> = {
-  highlight: { l: 79, t: 422, r: 146, b: 441 },
-  tag: { left: 31, top: 455 },
-  dateBox: { left: 11, top: 527 },
+type Seg = { text: string; weight: 500 | 700; color: string }
+
+// 확인서 종류마다 다른 것: 서버 주소 · 제목·설명 글 · 강조 말풍선 글과 폭 · 날짜 말풍선 머리 · 받는 파일 · 내려받는 이름
+type CertConfig = {
+  endpoint: string
+  name: string // 화면에 쓰는 이름(수매확인서)
+  title: Seg[]
+  desc: [Seg[], Seg[]]
+  tagLabel: string
+  tagWidth: number
+  dateLabel: string
+  acceptImage: boolean // 스캔 이미지(JPG·PNG)도 받는다
+  fileName: string
+  defaultDateBox: { left: number; top: number } // 표를 못 찾았을 때 날짜 말풍선 기본 위치
+  findText: string // 첨부 칸 안내: 무엇을 찾는지
+}
+const CERTS: Record<"purchase" | "noro", CertConfig> = {
+  purchase: {
+    endpoint: "/tools/purchase-cert",
+    name: "수매확인서",
+    title: [
+      { text: "안심", weight: 700, color: ORANGE },
+      { text: "하고 드세요!", weight: 700, color: INK },
+    ],
+    desc: [
+      [
+        { text: "유통과정 없이 통영 산지직송", weight: 700, color: ORANGE },
+        { text: "으로", weight: 500, color: SUB },
+      ],
+      [
+        { text: "생식용 굴", weight: 700, color: ORANGE },
+        { text: "을 수매하였다는 사실을 확인 받았습니다.", weight: 500, color: SUB },
+      ],
+    ],
+    tagLabel: "생식용 굴",
+    tagWidth: 164,
+    dateLabel: "생산일자",
+    acceptImage: false,
+    fileName: "2026.jpg", // 다운로드 파일 이름은 늘 2026.jpg
+    defaultDateBox: { left: 11, top: 527 }, // 사양 7-6 기준값
+    findText: "'생식용 굴'·생산일자",
+  },
+  // 노로 비검출해역 확인서(Figma 720:352): 표 채취해역 칸의 '노로 비검출해역' + 수매일자
+  noro: {
+    endpoint: "/tools/noro-cert",
+    name: "노로 비검출해역 확인서",
+    title: [
+      { text: "노로 비검출", weight: 700, color: ORANGE },
+      { text: " 해역 굴", weight: 700, color: INK },
+    ],
+    desc: [
+      [
+        { text: "노로바이러스 비검출 해역", weight: 700, color: ORANGE },
+        { text: "에서 채취한", weight: 500, color: SUB },
+      ],
+      [
+        { text: "생식용 굴", weight: 700, color: ORANGE },
+        { text: "만 수매하였음을 확인 받았습니다.", weight: 500, color: SUB },
+      ],
+    ],
+    tagLabel: "노로 비검출해역",
+    tagWidth: 220,
+    dateLabel: "수매일자",
+    acceptImage: true,
+    fileName: "noro.jpg",
+    defaultDateBox: { left: 58, top: 385 },
+    findText: "'노로 비검출해역'·수매일자",
+  },
 }
 
 // PDF 를 올리기 전에는 강조(형광펜·말풍선)를 그리지 않는다
@@ -51,8 +115,6 @@ const loadImage = (src: string) =>
     img.onerror = reject
     img.src = src
   })
-
-type Seg = { text: string; weight: 500 | 700; color: string }
 
 // 여러 글꼴·색이 섞인 한 줄을 가운데 맞춰 그린다(자간은 글자 크기 대비 %)
 function drawLine(ctx: CanvasRenderingContext2D, segs: Seg[], size: number, spacing: number, centerY: number) {
@@ -105,7 +167,13 @@ function bubbleBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   ctx.restore()
 }
 
-async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, layout: Pick<Layout, "highlight" | "tag" | "dateBox">, value: string) {
+async function draw(
+  canvas: HTMLCanvasElement,
+  cfg: CertConfig,
+  page: HTMLImageElement | null,
+  layout: Pick<Layout, "highlight" | "tag" | "dateBox">,
+  value: string,
+) {
   await loadFonts()
   const pattern = await loadImage(patternUrl)
   const ctx = canvas.getContext("2d")!
@@ -119,27 +187,9 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
   ctx.fillRect(0, 0, W, H)
 
   // 제목(72 Bold, '안심' 주황) · 설명(30 Medium, 강조 Bold 주황) — 제목 줄 y120~206, 설명 y234 부터 줄높이 49
-  drawLine(ctx, [{ text: "안심", weight: 700, color: ORANGE }, { text: "하고 드세요!", weight: 700, color: INK }], 72, -0.02, 120 + 43)
-  drawLine(
-    ctx,
-    [
-      { text: "유통과정 없이 통영 산지직송", weight: 700, color: ORANGE },
-      { text: "으로", weight: 500, color: SUB },
-    ],
-    30,
-    -0.02,
-    234 + 24.5,
-  )
-  drawLine(
-    ctx,
-    [
-      { text: "생식용 굴", weight: 700, color: ORANGE },
-      { text: "을 수매하였다는 사실을 확인 받았습니다.", weight: 500, color: SUB },
-    ],
-    30,
-    -0.02,
-    234 + 49 + 24.5,
-  )
+  drawLine(ctx, cfg.title, 72, -0.02, 120 + 43)
+  drawLine(ctx, cfg.desc[0], 30, -0.02, 234 + 24.5)
+  drawLine(ctx, cfg.desc[1], 30, -0.02, 234 + 49 + 24.5)
 
   // 이미지 영역: 패턴(248 원본을 124 로 반복)
   const tile = document.createElement("canvas")
@@ -166,7 +216,7 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
     ctx.letterSpacing = "0px"
     ctx.textAlign = "center"
     ctx.fillStyle = "#9ca3af"
-    ctx.fillText("PDF 를 첨부하면 이곳에 들어갑니다", PAPER.x + PAPER.w / 2, PAPER.y + PAPER.h / 2)
+    ctx.fillText(cfg.acceptImage ? "확인서를 첨부하면 이곳에 들어갑니다" : "PDF 를 첨부하면 이곳에 들어갑니다", PAPER.x + PAPER.w / 2, PAPER.y + PAPER.h / 2)
     ctx.textAlign = "start"
   }
 
@@ -185,7 +235,7 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
       ctx.beginPath()
       ctx.moveTo(hl.l, hl.b)
       ctx.lineTo(hl.r, hl.b)
-      ctx.lineTo(tag.left + 157, tag.top)
+      ctx.lineTo(tag.left + cfg.tagWidth - 7, tag.top)
       ctx.lineTo(tag.left + 7, tag.top)
       ctx.closePath()
       ctx.fill()
@@ -193,11 +243,11 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
     ctx.restore()
   }
 
-  // '생식용 굴' 말풍선 164×50
+  // 강조 말풍선('생식용 굴' 164×50 / '노로 비검출해역' 220×50)
   if (tag) {
-    bubble(ctx, tag.left, tag.top, 164, 50)
-    bubbleBorder(ctx, tag.left, tag.top, 164, 50)
-    centerText(ctx, "생식용 굴", 24, -0.02, tag.left + 82, tag.top + 2 + 23)
+    bubble(ctx, tag.left, tag.top, cfg.tagWidth, 50)
+    bubbleBorder(ctx, tag.left, tag.top, cfg.tagWidth, 50)
+    centerText(ctx, cfg.tagLabel, 24, -0.02, tag.left + cfg.tagWidth / 2, tag.top + 2 + 23)
   }
 
   // '생산일자' 말풍선 164×112: 머리 칸 160×50(#f5f5f5, 아래 선 2px 주황) + 날짜 칸 160×58
@@ -214,47 +264,57 @@ async function draw(canvas: HTMLCanvasElement, page: HTMLImageElement | null, la
     ctx.fillRect(x + 2, y + 2 + 48, 160, 2)
     ctx.restore()
     bubbleBorder(ctx, x, y, 164, 112)
-    centerText(ctx, "생산일자", 24, -0.013, x + 82, y + 2 + 24)
+    centerText(ctx, cfg.dateLabel, 24, -0.013, x + 82, y + 2 + 24)
     centerText(ctx, value, 31, -0.01, x + 82, y + 52 + 29)
   }
   ctx.restore()
 }
 
 export function PurchaseCertTool() {
+  return <CertTool cfg={CERTS.purchase} />
+}
+
+export function NoroCertTool() {
+  return <CertTool cfg={CERTS.noro} />
+}
+
+function CertTool({ cfg }: { cfg: CertConfig }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [pdfName, setPdfName] = useState<string | null>(null)
   const [layout, setLayout] = useState<Layout | null>(null)
   const [page, setPage] = useState<HTMLImageElement | null>(null)
-  const [date, setDate] = useState("") // 생산일자: PDF 에 적힌 그대로(이것만 고칠 수 있다)
+  const [date, setDate] = useState("") // 생산일자(수매일자): 확인서에 적힌 그대로(이것만 고칠 수 있다)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { boxRef, zoom, setZoom, scale } = useZoom() // 보기 배율(처음 70%)
 
   // 입력이 바뀔 때마다 다시 그린다
   useEffect(() => {
-    if (canvasRef.current) void draw(canvasRef.current, page, layout ?? NO_MARKS, date.trim() || "MM.DD")
-  }, [page, layout, date])
+    if (canvasRef.current) void draw(canvasRef.current, cfg, page, layout ?? NO_MARKS, date.trim() || "MM.DD")
+  }, [cfg, page, layout, date])
 
   const attach = async (file: File | undefined) => {
     if (!file) return
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setError("PDF 파일만 올릴 수 있습니다.")
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+    const isImage = /^image\/(jpeg|png|webp)$/.test(file.type) || /\.(jpe?g|png|webp)$/i.test(file.name)
+    if (!isPdf && !(cfg.acceptImage && isImage)) {
+      setError(cfg.acceptImage ? "PDF 나 이미지(JPG·PNG) 파일만 올릴 수 있습니다." : "PDF 파일만 올릴 수 있습니다.")
       return
     }
     setBusy(true)
     setError(null)
     setPdfName(file.name)
     try {
-      const res = await apiFetch("/tools/purchase-cert", { method: "POST", body: file, headers: { "Content-Type": "application/pdf" } })
+      const res = await apiFetch(cfg.endpoint, { method: "POST", body: file, headers: { "Content-Type": isPdf ? "application/pdf" : file.type || "image/jpeg" } })
       const body = await res.json()
-      if (!res.ok) throw new ApiError(res.status, body.error ?? "PDF 를 읽지 못했습니다.")
+      if (!res.ok) throw new ApiError(res.status, body.error ?? "파일을 읽지 못했습니다.")
       const next = body as Layout
       setPage(await loadImage(next.pageImage))
-      setLayout({ ...next, dateBox: next.dateBox ?? DEFAULT_LAYOUT.dateBox })
+      setLayout({ ...next, dateBox: next.dateBox ?? cfg.defaultDateBox })
       setDate(next.produced ?? "")
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "PDF 를 읽지 못했습니다.")
+      setError(e instanceof ApiError ? e.message : "파일을 읽지 못했습니다.")
       setPdfName(null)
     } finally {
       setBusy(false)
@@ -262,7 +322,7 @@ export function PurchaseCertTool() {
   }
 
   const ready = !!page && !!date.trim()
-  const fileName = "2026.jpg" // 다운로드 파일 이름은 늘 2026.jpg
+  const fileName = cfg.fileName
 
   const download = () => {
     canvasRef.current?.toBlob(
@@ -289,14 +349,14 @@ export function PurchaseCertTool() {
           ref={canvasRef}
           style={{ width: 860 * scale }}
           className="h-auto max-w-full rounded-lg border bg-white shadow-sm"
-          aria-label="수매확인서 미리보기"
+          aria-label={`${cfg.name} 미리보기`}
         />
       </div>
 
       {/* 오른쪽: 파일 첨부 · 생산일자 · 다운로드(넓은 화면에서는 스크롤해도 따라온다) */}
       <div className="col-span-12 flex flex-col gap-5 lg:sticky lg:top-6 lg:col-span-4 lg:self-start">
         <Field>
-          <FieldLabel>수매확인서 PDF</FieldLabel>
+          <FieldLabel>{cfg.acceptImage ? `${cfg.name} (PDF·이미지)` : `${cfg.name} PDF`}</FieldLabel>
           <button
             type="button"
             className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-6 text-sm text-muted-foreground transition-colors hover:bg-accent/40"
@@ -309,13 +369,15 @@ export function PurchaseCertTool() {
             disabled={busy}
           >
             {busy ? <LoaderCircle className="size-6 animate-spin" aria-hidden /> : <FileUp className="size-6" aria-hidden />}
-            <span className="font-medium text-foreground">{busy ? "PDF 를 읽는 중… (20~30초)" : pdfName ?? "PDF 를 끌어 놓거나 눌러서 고르세요"}</span>
-            <span className="text-xs">첫 장을 이미지로 바꿔 왼쪽 종이에 넣고, '생식용 굴'·생산일자를 찾습니다.</span>
+            <span className="font-medium text-foreground">
+              {busy ? "확인서를 읽는 중… (20~30초)" : (pdfName ?? (cfg.acceptImage ? "PDF·JPG 를 끌어 놓거나 눌러서 고르세요" : "PDF 를 끌어 놓거나 눌러서 고르세요"))}
+            </span>
+            <span className="text-xs break-keep">첫 장을 이미지로 바꿔 왼쪽 종이에 넣고, {cfg.findText}를 찾습니다.</span>
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept="application/pdf,.pdf"
+            accept={cfg.acceptImage ? "application/pdf,.pdf,image/jpeg,image/png,image/webp" : "application/pdf,.pdf"}
             className="hidden"
             onChange={(e) => {
               void attach(e.target.files?.[0])
@@ -333,14 +395,18 @@ export function PurchaseCertTool() {
         ))}
 
         <Field>
-          <FieldLabel htmlFor="cert-date">생산일자</FieldLabel>
-          <Input id="cert-date" value={date} onChange={(e) => setDate(e.target.value)} maxLength={20} placeholder="PDF 를 올리면 표의 생산일자로 채워집니다" className="tabular-nums" />
-          <FieldDescription className="break-keep">PDF 표의 생산일자 칸에 적힌 그대로 들어갑니다(예 10.22). 잘못 읽혔을 때만 고쳐 주세요.</FieldDescription>
+          <FieldLabel htmlFor="cert-date">{cfg.dateLabel}</FieldLabel>
+          <Input id="cert-date" value={date} onChange={(e) => setDate(e.target.value)} maxLength={20} placeholder={`확인서를 올리면 표의 ${cfg.dateLabel}로 채워집니다`} className="tabular-nums" />
+          <FieldDescription className="break-keep">
+            {cfg.acceptImage
+              ? `표의 ${cfg.dateLabel} 칸 날짜를 월.일로 넣습니다(예 2026.11.06 → 11.06). 잘못 읽혔을 때만 고쳐 주세요.`
+              : `PDF 표의 ${cfg.dateLabel} 칸에 적힌 그대로 들어갑니다(예 10.22). 잘못 읽혔을 때만 고쳐 주세요.`}
+          </FieldDescription>
         </Field>
 
         <Button size="lg" disabled={!ready || busy} onClick={download}>
           <Download data-icon="inline-start" />
-          {ready ? `${fileName} 다운로드` : "PDF 를 올리면 다운로드할 수 있습니다"}
+          {ready ? `${fileName} 다운로드` : "확인서를 올리면 다운로드할 수 있습니다"}
         </Button>
         <p className="text-xs text-muted-foreground">이미지 860×1429 JPG(Figma 프레임 크기). 상세페이지 업로드는 알드라이브로 직접 합니다.</p>
       </div>

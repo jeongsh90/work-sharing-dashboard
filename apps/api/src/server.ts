@@ -49,7 +49,7 @@ import { deleteIndexReport, getIndexReport, indexReportPdf, listIndexReports, sa
 import { addChecklistItem, clearDoneChecklist, createChecklist, deleteChecklist, deleteChecklistItem, listChecklists, reorderChecklistItems, reorderChecklists, resetChecklist, updateChecklist, updateChecklistItem } from './checklists.ts'
 import { startBackupSchedule } from './backup.ts'
 import { startStorageSweep } from './storage-sweep.ts'
-import { analyzePurchaseCert } from './purchase-cert.ts'
+import { analyzeNoroCert, analyzePurchaseCert } from './purchase-cert.ts'
 import { holidays } from './holidays.ts'
 import { addPlanLine, deletePlanLine, importSchedulePlans, saveOwners, schedulePlans, updatePlanLine } from './schedule-plans.ts'
 import { addToolHistory, canSeeToolFile, deleteToolHistory, listToolHistory } from './tool-history.ts'
@@ -698,6 +698,17 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       chunks.push(chunk as Buffer)
     }
     return sendJson(res, 200, await analyzePurchaseCert(Buffer.concat(chunks)))
+  }
+  // ── 디자인 툴 > 노로 비검출해역 확인서: PDF 또는 스캔 이미지(JPG·PNG)를 받아 첫 장 이미지·강조 위치를 돌려준다 ──
+  if (path === '/api/tools/noro-cert' && method === 'POST') {
+    const chunks: Buffer[] = []
+    let size = 0
+    for await (const chunk of req) {
+      size += (chunk as Buffer).length
+      if (size > 30 * 1024 * 1024) throw new HttpError(413, '확인서 파일은 30MB 까지 올릴 수 있습니다.')
+      chunks.push(chunk as Buffer)
+    }
+    return sendJson(res, 200, await analyzeNoroCert(Buffer.concat(chunks)))
   }
 
   // ── 디자인 툴 > 상세페이지: 섹션 HTML 을 Edge 로 찍어 860 폭 JPG 로 돌려준다(detail-render.ts). 그림이 data: 로 들어 있어 크다 ──

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react"
-import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, ShieldCheck, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -12,6 +12,7 @@ import { Tip } from "@/components/tip"
 const DeskNameplateTool = lazy(() => import("@/components/tools/desk-nameplate").then((m) => ({ default: m.DeskNameplateTool })))
 const MailSignatureTool = lazy(() => import("@/components/tools/mail-signature").then((m) => ({ default: m.MailSignatureTool })))
 const PurchaseCertTool = lazy(() => import("@/components/tools/purchase-cert").then((m) => ({ default: m.PurchaseCertTool })))
+const NoroCertTool = lazy(() => import("@/components/tools/purchase-cert").then((m) => ({ default: m.NoroCertTool })))
 const ProductNoticeTool = lazy(() => import("@/components/tools/product-notice").then((m) => ({ default: m.ProductNoticeTool })))
 const VideoConvertTool = lazy(() => import("@/components/tools/video-to-gif").then((m) => ({ default: m.VideoConvertTool })))
 const DetailPageTool = lazy(() => import("@/components/tools/detail-page/detail-page-tool").then((m) => ({ default: m.DetailPageTool })))
@@ -39,6 +40,14 @@ const TOOLS: Tool[] = [
     icon: FileCheck2,
     color: "from-emerald-400 to-teal-600",
     body: <PurchaseCertTool />,
+  },
+  {
+    id: "noro-cert",
+    name: "노로 비검출해역 확인서",
+    description: "노로바이러스 비검출해역 확인서(PDF·스캔 JPG)로 상세페이지 최상단 강조 이미지를 만드는 도구",
+    icon: ShieldCheck,
+    color: "from-sky-400 to-blue-600",
+    body: <NoroCertTool />,
   },
   {
     id: "product-notice",
