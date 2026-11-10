@@ -470,8 +470,9 @@ function TimelineClip({
         active ? "border-primary" : "border-transparent hover:border-primary/40"
       } ${isDragging ? "z-10 opacity-80 shadow-lg" : ""}`}
     >
+      {/* 프리미어 비디오 트랙처럼 첫 장면을 원래 비율로 옆으로 이어 붙인다(한 장을 늘리면 뭉개져 보인다) */}
       {thumb ? (
-        <img src={thumb} alt="" draggable={false} className="absolute inset-0 size-full object-cover opacity-80" />
+        <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-85" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />
       ) : (
         <span className="absolute inset-0 animate-pulse bg-muted-foreground/20 motion-reduce:animate-none" />
       )}
