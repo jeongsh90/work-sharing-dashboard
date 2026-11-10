@@ -213,11 +213,14 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
       <Tool icon={Underline} label="밑줄 (Ctrl+U)" active={s.underline} onClick={() => c().toggleUnderline().run()} />
       <Tool icon={Strikethrough} label="취소선" active={s.strike} onClick={() => c().toggleStrike().run()} />
       <Popover open={colorOpen} onOpenChange={setColorOpen}>
-        <PopoverTrigger asChild>
-          <Tip content={"글자 색"}><Button type="button" variant="ghost" size="icon-sm" aria-label="글자 색" onMouseDown={(e) => e.preventDefault()}>
-            <Palette style={s.color ? { color: s.color } : undefined} />
-          </Button></Tip>
-        </PopoverTrigger>
+        {/* 툴팁은 바깥에: Tip 이 안쪽이면 PopoverTrigger 가 누름을 버튼에 전하지 못해 창이 안 열린다 */}
+        <Tip content={"글자 색"}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="글자 색" onMouseDown={(e) => e.preventDefault()}>
+              <Palette style={s.color ? { color: s.color } : undefined} />
+            </Button>
+          </PopoverTrigger>
+        </Tip>
         <PopoverContent className="flex w-auto flex-row gap-1 p-2" onOpenAutoFocus={(e) => e.preventDefault()}>
           {COLORS.map((col) => (
             <Tip key={col.label} content={col.label}><button
@@ -248,17 +251,13 @@ function Toolbar({ editor, busy, setBusy, onError }: { editor: Editor; busy: boo
           if (o) setHref((editor.getAttributes("link").href as string | undefined) ?? "")
         }}
       >
-        <PopoverTrigger asChild>
-          <Tip content={"링크"}><Button
-            type="button"
-            variant={s.link ? "secondary" : "ghost"}
-            size="icon-sm"
-            aria-label="링크"
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            <Link2 />
-          </Button></Tip>
-        </PopoverTrigger>
+        <Tip content={"링크"}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant={s.link ? "secondary" : "ghost"} size="icon-sm" aria-label="링크" onMouseDown={(e) => e.preventDefault()}>
+              <Link2 />
+            </Button>
+          </PopoverTrigger>
+        </Tip>
         <PopoverContent className="w-80 p-2">
           <form
             className="flex gap-2"
