@@ -15,6 +15,7 @@ import {
   PORT,
   UPLOAD_DIR,
   WEB_DIR,
+  personalGroup,
 } from './config.ts'
 import {
   addComment,
@@ -255,8 +256,10 @@ async function handleFile(
   // 디자인 툴 히스토리 이미지(kind 'tool')는 디자인팀 누구나 본다
   const toolFile = file?.kind === 'tool' && canSeeToolFile(user)
   // 디자인팀 자료실 파일(kind 'library')은 디자인팀·관리자가 본다
+  // 메모 첨부(kind 'memo')는 올린 사람과 같은 계정 묶음(계정 전환)만 본다
+  const memoFile = file?.kind === 'memo' && (JSON.parse(personalGroup(user.id)) as string[]).includes(file.uploader_id)
   const libraryFile = (file?.kind === 'library' && canUseLibrary(user)) || (file?.kind === 'notice' && canSeeNoticeFile(user)) || (file?.kind === 'share' && canSeeShareFile(user))
-  if (!file || (file.request_id === null && file.kind !== 'avatar' && !toolFile && !libraryFile && file.uploader_id !== user.id)) {
+  if (!file || (file.request_id === null && file.kind !== 'avatar' && !toolFile && !libraryFile && !memoFile && file.uploader_id !== user.id)) {
     throw new HttpError(404, '파일을 찾을 수 없습니다.')
   }
   // 화면용 줄인 이미지(썸네일·크게 보기). 내려받기는 늘 원본
@@ -790,8 +793,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (method === 'POST') return sendJson(res, 201, createMemo(user, await readJson(req)))
   }
   if ((m = path.match(/^\/api\/memos\/(\d+)$/))) {
-    if (method === 'PATCH') return sendJson(res, 200, updateMemo(user, Number(m[1]), await readJson(req)))
-    if (method === 'DELETE') return sendJson(res, 200, deleteMemo(user, Number(m[1])))
+    if (method === 'PATCH') return sendJson(res, 200, await updateMemo(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, await deleteMemo(user, Number(m[1])))
   }
 
   // ── 체크리스트(checklists.ts): 계정마다 내 것만 ──
