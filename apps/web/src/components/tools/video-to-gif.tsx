@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, Download, FileInput, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
+import { CopyPlus, Download, FileInput, History, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
@@ -541,6 +541,7 @@ function SequenceTimeline({
     if (!el) return
     const ro = new ResizeObserver(() => setBoxW(el.clientWidth))
     ro.observe(el)
+    measured.current = true
     setBoxW(el.clientWidth)
     return () => ro.disconnect()
   }, [])
@@ -548,10 +549,19 @@ function SequenceTimeline({
   const [scrollX, setScrollX] = useState(0)
   const total = clips.reduce((s, c) => s + clipLen(c), 0)
   // 확대: 1 = 전체가 칸 너비에 맞게(오른쪽에 조금 여유)
-  const [zoom, setZoom] = useState(1)
   // 끄는 동안에는 배율을 고정한다(길이가 바뀌어 맞추기 배율이 변하면 손잡이가 마우스를 못 따라온다)
   const [frozenPps, setFrozenPps] = useState<number | null>(null)
-  const pps = frozenPps ?? (boxW / Math.max(total * 1.08, 4)) * zoom // 1초당 픽셀
+  // 1초당 픽셀: 처음 클립이 올라오면 칸에 맞추고(맞추기), 그다음은 사람이 −/＋/맞추기 를 눌렀을 때만 바뀐다
+  const fit = boxW / Math.max(total * 1.08, 4)
+  const [scale, setScale] = useState<number | null>(null)
+  const measured = useRef(false)
+  useEffect(() => {
+    if (total <= 0) setScale(null)
+    else if (scale === null && measured.current) setScale((boxRef.current?.clientWidth || boxW) / Math.max(total * 1.08, 4))
+  }, [total > 0, boxW])
+  const pps = frozenPps ?? scale ?? fit
+  const MIN_PPS = 2
+  const MAX_PPS = 2000
   const width = Math.max(boxW, total * pps + 40)
   const starts = clips.reduce<number[]>((a, _c, i) => [...a, i === 0 ? 0 : a[i - 1] + clipLen(clips[i - 1])], [])
   const step = RULER_STEPS.find((s) => s * pps >= 80) ?? 600
@@ -649,13 +659,13 @@ function SequenceTimeline({
         <span className="font-semibold text-primary">{timecode(now, fps)}</span>
         <span className="text-muted-foreground">/ {timecode(total, fps)}</span>
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="icon-xs" aria-label="타임라인 축소" disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z / 1.5))}>
+          <Button variant="ghost" size="icon-xs" aria-label="타임라인 축소" disabled={pps <= MIN_PPS} onClick={() => setScale(Math.max(MIN_PPS, pps / 1.5))}>
             <ZoomOut />
           </Button>
-          <Button variant="ghost" size="xs" disabled={zoom === 1} onClick={() => setZoom(1)}>
+          <Button variant="ghost" size="xs" disabled={Math.abs(pps - fit) < 0.5} onClick={() => setScale(fit)}>
             맞추기
           </Button>
-          <Button variant="ghost" size="icon-xs" aria-label="타임라인 확대" disabled={zoom >= 20} onClick={() => setZoom((z) => Math.min(20, z * 1.5))}>
+          <Button variant="ghost" size="icon-xs" aria-label="타임라인 확대" disabled={pps >= MAX_PPS} onClick={() => setScale(Math.min(MAX_PPS, pps * 1.5))}>
             <ZoomIn />
           </Button>
         </div>
@@ -790,7 +800,7 @@ export function VideoConvertTool() {
   // 미디어 칸(프리미어 프로젝트 패널): 가져온 동영상. 끌어 놓거나 ＋ 로 타임라인에 클립을 붙인다
   const [media, setMedia] = useState<Source[]>([])
   const [mediaView, setMediaView] = useState<"list" | "grid">("grid")
-  const [mediaTab, setMediaTab] = useState<"media" | "history">("media")
+  const [historyOpen, setHistoryOpen] = useState(false) // 히스토리 칸(창 머리 버튼 → 오른쪽에서)
   const [activeId, setActiveId] = useState<number | null>(null)
   const activeClip = clips.find((c) => c.id === activeId) ?? clips[0] ?? null
   const source = activeClip?.source ?? null
@@ -1606,6 +1616,10 @@ export function VideoConvertTool() {
             {progress.step}… {Math.round(progress.ratio * 100)}%
           </span>
         )}
+        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+          <History data-icon="inline-start" />
+          히스토리
+        </Button>
         {/* 지금 설정으로 만들 때의 예상 용량(설정·클립을 바꾸면 다시 잰다) */}
         {source && !busy && (
           <Tip content={`${F.label} · ${outW}×${outH}px · ${frames}장 · ${fmt(totalLength / Number(speed))}${estimate !== null && estimate > 10 * 1024 * 1024 ? " — 10MB 가 넘습니다" : ""}`}>
@@ -1629,6 +1643,27 @@ export function VideoConvertTool() {
           저장하기
         </Button>
       </ToolHeaderActions>
+
+      {/* 히스토리 칸: 만든 움짤(다시 내려받기 · 불러오기). 불러오면 닫는다 */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
+          <SheetHeader className="border-b">
+            <SheetTitle>히스토리</SheetTitle>
+            <SheetDescription className="break-keep">만든 움짤을 다시 내려받거나, 그때 타임라인·설정을 불러옵니다.</SheetDescription>
+          </SheetHeader>
+          <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="p-3">
+            <ToolHistory<VideoForm>
+              tool="video"
+              onLoad={(f, h) => {
+                setHistoryOpen(false)
+                return loadForm(f, h)
+              }}
+              contain
+              fileName={(t, h) => (t.endsWith(`.${h.form.format}`) ? t : `${t}.${h.form.format ?? "webp"}`)}
+            />
+          </SmoothScrollArea>
+        </SheetContent>
+      </Sheet>
 
       {/* 저장 칸: 형식 · 크기 · 장수 · 화질 · 속도 · 반복 · 예상 용량 · 변환 */}
       <Sheet open={saveOpen} onOpenChange={setSaveOpen}>
@@ -1916,22 +1951,14 @@ export function VideoConvertTool() {
           </div>
 
           <div className="grid min-h-0 gap-2 lg:grid-cols-[clamp(260px,20vw,360px)_minmax(0,1fr)]">
-            {/* ④ 미디어(가져온 동영상) · 히스토리 */}
+            {/* ④ 미디어(가져온 동영상) */}
             <Panel
               title={
-                <Tabs value={mediaTab} onValueChange={(v) => setMediaTab(v as "media" | "history")}>
-                  <TabsList className="h-7">
-                    <TabsTrigger value="media" className="text-xs">
-                      미디어 {media.length > 0 && <span className="tabular-nums">{media.length}</span>}
-                    </TabsTrigger>
-                    <TabsTrigger value="history" className="text-xs">
-                      히스토리
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                <span>
+                  미디어 {media.length > 0 && <span className="text-xs font-normal text-muted-foreground tabular-nums">{media.length}</span>}
+                </span>
               }
               actions={
-                mediaTab === "media" ? (
                   <>
                     <Tip content="목록형">
                       <Button variant={mediaView === "list" ? "secondary" : "ghost"} size="icon-xs" aria-label="목록형으로 보기" aria-pressed={mediaView === "list"} onClick={() => setMediaView("list")}>
@@ -1956,23 +1983,10 @@ export function VideoConvertTool() {
                       </Tip>
                     )}
                   </>
-                ) : null
               }
               scroll
             >
-              {mediaTab === "history" ? (
-                <div className="p-2">
-                  <ToolHistory<VideoForm>
-                    tool="video"
-                    onLoad={(f, h) => {
-                      setMediaTab("media")
-                      return loadForm(f, h)
-                    }}
-                    contain
-                    fileName={(t, h) => (t.endsWith(`.${h.form.format}`) ? t : `${t}.${h.form.format ?? "webp"}`)}
-                  />
-                </div>
-              ) : media.length === 0 ? (
+              {media.length === 0 ? (
                 <div
                   className="flex h-full min-h-40 p-2"
                   onDragOver={(e) => {
