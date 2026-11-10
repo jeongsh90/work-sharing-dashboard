@@ -112,11 +112,13 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
 
     // 7-3. 강조 형광펜
     let highlight: Box | null = null
+    let noroWord: Word | null = null // 노로 확인서: 표 값 줄의 '노로' 낱말(같은 줄 맨 앞이 수매일자)
     let tag: CertLayout['tag'] = null
     if (kind === 'noro') {
       // 표 채취해역 칸의 '노로 비검출해역'(아래 '노로검출지역' 줄은 빼고). 말풍선 220×50 은 형광펜 가운데 아래, 종이 밖으로 나가지 않게
       const n1 = words.find((w) => /^노로/.test(w.t) && /비검출/.test(w.line) && !/검출지역/.test(w.line))
       if (n1) {
+        noroWord = n1
         const rest = words.filter((w) => w.line === n1.line && w.x > n1.x && Math.abs(w.y - n1.y) < 40).sort((a, b) => a.x - b.x)
         const end = rest.find((w) => /해역/.test(w.t)) ?? rest[rest.length - 1] ?? n1
         const top = Math.min(n1.y, end.y)
@@ -185,6 +187,24 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
       if (ymd) produced = `${ymd[1].padStart(2, '0')}.${ymd[2].padStart(2, '0')}`
     } else {
       warnings.push(kind === 'noro' ? '확인서에서 표(수매일자 칸)를 찾지 못해 수매일자 말풍선을 기본 위치에 넣었습니다.' : 'PDF 에서 표(생산일자 칸)를 찾지 못해 생산일자 말풍선을 기본 위치에 넣었습니다.')
+    }
+    if (kind === 'noro') {
+      // 수매일자: 표 칸을 못 찾거나 칸에서 못 읽어도, '노로 비검출해역'과 같은 줄 왼쪽 글자에서 날짜(2026.11.06)를 찾는다
+      if (noroWord && !(produced && /^\d{2}\.\d{2}$/.test(produced))) {
+        const nw = noroWord
+        const cy = nw.y + nw.h / 2
+        const row = words
+          .filter((w) => w.x < nw.x && Math.abs(w.y + w.h / 2 - cy) < 45)
+          .sort((a, b) => a.x - b.x)
+          .map((w) => w.t)
+          .join('')
+        const m = /(20\d{2})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})/.exec(row)
+        if (m) produced = `${m[2].padStart(2, '0')}.${m[3].padStart(2, '0')}`
+        // 표를 못 찾았으면 말풍선을 그 줄 높이에 둔다
+        if (!dateBox) dateBox = { left: 58, top: cy * s - 56 }
+      }
+      // 말풍선을 조금 아래로(표 머리보다 값 줄 쪽으로)
+      if (dateBox) dateBox = { ...dateBox, top: dateBox.top + 24 }
     }
     if (dateBox && !produced) warnings.push(kind === 'noro' ? '확인서에서 수매일자 값을 읽지 못했습니다. 직접 입력해 주세요.' : 'PDF 에서 생산일자 값을 읽지 못했습니다. 직접 입력해 주세요.')
 
