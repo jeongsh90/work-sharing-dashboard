@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, FileInput, History, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
+import { ChevronDown, CopyPlus, FileInput, History, Pipette, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
@@ -17,7 +17,7 @@ import { invalidate } from "@/lib/store"
 import { ToolHistory, type HistoryItem } from "@/components/tools/tool-history"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
-import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
+import { applyAdjust, isNoAdjust, neutralize, normalizeAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
 import { isNoMotion, NO_MOTION, type Motion } from "@/components/tools/video-motion"
 import { Tip } from "@/components/tip"
 
@@ -1425,7 +1425,7 @@ export function VideoConvertTool() {
     setColors(f.colors)
     setSpeed(f.speed)
     setRepeat(f.repeat)
-    setAdjust(f.adjust ?? NO_ADJUST)
+    setAdjust(normalizeAdjust(f.adjust))
     setMotion(f.motion ?? NO_MOTION)
     setResult(null)
   }
@@ -1505,6 +1505,34 @@ export function VideoConvertTool() {
   }
   // 프로그램 모니터 막대: 재생 헤드부터 이어서 재생(끝이면 처음부터) · 1프레임 이동 · 처음/끝 · 시작/끝 표시 · 클립 반복
   const [previewZoom, setPreviewZoom] = useState("fit")
+  // 흰색 균형 스포이트: 켜면 미리보기를 눌러 그 자리(보정 전 원본 색, 5×5 평균)를 회색으로 맞춘다
+  const [wbPick, setWbPick] = useState(false)
+  const pickWhite = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = preview.current
+    const c = adjustCanvas.current
+    if (!v || !c || !v.videoWidth) return
+    const r = c.getBoundingClientRect()
+    const k = Math.min(r.width / c.width, r.height / c.height)
+    const x = Math.round((e.clientX - (r.left + (r.width - c.width * k) / 2)) / k)
+    const y = Math.round((e.clientY - (r.top + (r.height - c.height * k) / 2)) / k)
+    setWbPick(false)
+    if (x < 0 || y < 0 || x >= c.width || y >= c.height) return
+    const tmp = document.createElement("canvas")
+    tmp.width = c.width
+    tmp.height = c.height
+    const tctx = tmp.getContext("2d", { willReadFrequently: true })!
+    drawFramed(tctx, v, v.videoWidth, v.videoHeight, c.width, c.height, motion)
+    const d = tctx.getImageData(Math.max(0, x - 2), Math.max(0, y - 2), 5, 5).data
+    let sr = 0, sg = 0, sb = 0, n = 0
+    for (let i = 0; i < d.length; i += 4) {
+      sr += d[i]
+      sg += d[i + 1]
+      sb += d[i + 2]
+      n++
+    }
+    if (!n) return
+    setAdjust((a) => ({ ...a, ...neutralize(sr / n, sg / n, sb / n) }))
+  }
   const [saveOpen, setSaveOpen] = useState(false)
   // 저장 안 한 작업: 마지막으로 저장(변환)한 뒤 클립·설정이 바뀌었으면 닫을 때 묻는다
   const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end]), format, ratio, fps, colors, speed, repeat, adjust, motion])
@@ -1956,6 +1984,9 @@ export function VideoConvertTool() {
                         />
                       )
                     })}
+                    {wbPick && (
+                      <div className="absolute inset-0 z-20 cursor-crosshair" onClick={pickWhite} role="button" aria-label="흰색 균형으로 맞출 곳 누르기" />
+                    )}
                     {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
                     <canvas
                       ref={adjustCanvas}
@@ -2229,7 +2260,7 @@ export function VideoConvertTool() {
         <Panel title="색 보정" bare scroll>
           {source ? (
             <div className="p-3">
-              <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} />
+              <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} picking={wbPick} onPick={() => setWbPick((p) => !p)} />
             </div>
           ) : (
             <EmptyNote>동영상을 가져오면 노출·감마·색조·채도·명도를 보정합니다.</EmptyNote>
@@ -2349,102 +2380,109 @@ function DropZone({
   )
 }
 
-// ── 색 보정 칸: 포토샵 노출 창(노출·오프셋·감마 교정) + 색조/채도(색조·채도·명도) ──
+// ── 색 보정 칸: 프리미어 프로 Lumetri 색상 "기본 교정"처럼 — 색상(흰색 균형·온도·색조·채도) · 조명(노출·대비·밝은/어두운 영역·흰색·검정) ──
 type AdjustKey = keyof Adjust
-type AdjustRow = { key: AdjustKey; label: string; min: number; max: number; step: number; digits: number; group: string }
-const ADJUST_ROWS: AdjustRow[] = [
-  { key: "exposure", label: "노출", min: -5, max: 5, step: 0.01, digits: 2, group: "노출" },
-  { key: "offset", label: "오프셋", min: -0.5, max: 0.5, step: 0.001, digits: 3, group: "노출" },
-  { key: "gamma", label: "감마 교정", min: 0.1, max: 9.99, step: 0.01, digits: 2, group: "노출" },
-  { key: "hue", label: "색조", min: -180, max: 180, step: 1, digits: 0, group: "색조/채도" },
-  { key: "saturation", label: "채도", min: -100, max: 100, step: 1, digits: 0, group: "색조/채도" },
-  { key: "lightness", label: "명도", min: -100, max: 100, step: 1, digits: 0, group: "색조/채도" },
+type AdjustRow = { key: AdjustKey; label: string; min: number; max: number; step: number; digits: number; track?: string }
+const COLOR_ROWS: AdjustRow[] = [
+  { key: "temperature", label: "온도", min: -100, max: 100, step: 0.1, digits: 1, track: "linear-gradient(90deg,#2f7bff,#9a9a9a 50%,#ff8a1f)" },
+  { key: "tint", label: "색조", min: -100, max: 100, step: 0.1, digits: 1, track: "linear-gradient(90deg,#27d63a,#9a9a9a 50%,#e23ae8)" },
+  { key: "saturation", label: "채도", min: 0, max: 200, step: 0.1, digits: 1 },
 ]
-// 감마 슬라이더는 가운데가 1 이 되게 로그 눈금(0.1 ~ 1 ~ 9.99)
-const gammaToPos = (g: number) => Math.log10(g)
-const posToGamma = (p: number) => Math.round(10 ** p * 100) / 100
-const showNum = (row: AdjustRow, v: number) => (row.key === "gamma" ? v.toFixed(2) : (v > 0 ? "+" : "") + v.toFixed(row.digits))
+const LIGHT_ROWS: AdjustRow[] = [
+  { key: "exposure", label: "노출", min: -4, max: 4, step: 0.01, digits: 1 },
+  { key: "contrast", label: "대비", min: -100, max: 100, step: 0.1, digits: 1 },
+  { key: "highlights", label: "밝은 영역", min: -100, max: 100, step: 0.1, digits: 1 },
+  { key: "shadows", label: "어두운 영역", min: -100, max: 100, step: 0.1, digits: 1 },
+  { key: "whites", label: "흰색", min: -100, max: 100, step: 0.1, digits: 1 },
+  { key: "blacks", label: "검정", min: -100, max: 100, step: 0.1, digits: 1 },
+]
 
-function AdjustPanel({ value, onChange, disabled }: { value: Adjust; onChange: (a: Adjust) => void; disabled?: boolean }) {
-  // 입력 칸에 치는 중인 글자(다 치기 전 "-" "0." 같은 것도 그대로 보이게)
-  const [drafts, setDrafts] = useState<Partial<Record<AdjustKey, string>>>({})
+function AdjustPanel({
+  value,
+  onChange,
+  disabled,
+  picking,
+  onPick,
+}: {
+  value: Adjust
+  onChange: (a: Adjust) => void
+  disabled?: boolean
+  picking?: boolean
+  onPick?: () => void
+}) {
+  const [open, setOpen] = useState({ color: true, light: true })
   const set = (key: AdjustKey, v: number) => onChange({ ...value, [key]: v })
-  const clearDraft = (key: AdjustKey) =>
-    setDrafts((d) => {
-      const next = { ...d }
-      delete next[key]
-      return next
-    })
+  const row = (r: AdjustRow) => (
+    <div key={r.key} className="flex items-center gap-3">
+      <span className="w-20 shrink-0 text-sm">{r.label}</span>
+      {/* 막대(온도·색조는 색 띠). 두 번 누르면 기본값 */}
+      <div className="relative flex flex-1 items-center" onDoubleClick={() => !disabled && set(r.key, NO_ADJUST[r.key])}>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+          style={{ background: r.track ?? "var(--color-muted-foreground)", opacity: r.track ? 1 : 0.45 }}
+        />
+        <Slider
+          min={r.min}
+          max={r.max}
+          step={r.step}
+          value={[value[r.key]]}
+          disabled={disabled}
+          onValueChange={([x]) => set(r.key, Number(x.toFixed(r.digits === 1 && r.key === "exposure" ? 2 : r.digits)))}
+          aria-label={r.label}
+          className="flex-1 [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:size-3.5 [&_[data-slot=slider-thumb]]:border-2 [&_[data-slot=slider-thumb]]:border-neutral-300 [&_[data-slot=slider-thumb]]:bg-neutral-900 [&_[data-slot=slider-track]]:bg-transparent"
+        />
+      </div>
+      {/* 값: 파란 숫자(좌우로 끌거나 눌러서 입력) */}
+      <div className="w-16 shrink-0 text-right">
+        <Scrub value={value[r.key]} onChange={(v) => set(r.key, v)} step={r.step} digits={r.digits} min={r.min} max={r.max} label={r.label} disabled={disabled} />
+      </div>
+    </div>
+  )
+  const section = (id: "color" | "light", title: string, children: React.ReactNode) => (
+    <div className="flex flex-col gap-2.5">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-sm font-medium"
+        aria-expanded={open[id]}
+        onClick={() => setOpen((o) => ({ ...o, [id]: !o[id] }))}
+      >
+        <ChevronDown className={`size-4 transition-transform ${open[id] ? "" : "-rotate-90"}`} />
+        {title}
+      </button>
+      {open[id] && <div className="flex flex-col gap-2.5 pl-5">{children}</div>}
+    </div>
+  )
   return (
     <Field>
       <FieldLabel>
         <SlidersHorizontal className="size-4" />
         색 보정
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          className="ml-auto"
-          disabled={disabled || isNoAdjust(value)}
-          onClick={() => {
-            setDrafts({})
-            onChange(NO_ADJUST)
-          }}
-        >
+        <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={disabled || isNoAdjust(value)} onClick={() => onChange(NO_ADJUST)}>
           <RotateCcw data-icon="inline-start" />
           기본값
         </Button>
       </FieldLabel>
-      <div className="flex flex-col gap-3 rounded-lg border p-3">
-        {ADJUST_ROWS.map((row, i) => {
-          const v = value[row.key]
-          const gamma = row.key === "gamma"
-          return (
-            <div key={row.key} className="flex flex-col gap-1.5">
-              {(i === 0 || ADJUST_ROWS[i - 1].group !== row.group) && (
-                <span className={`text-xs font-medium text-muted-foreground ${i > 0 ? "mt-1 border-t pt-3" : ""}`}>{row.group}</span>
-              )}
-              <div className="flex items-center gap-3">
-                <label htmlFor={`adj-${row.key}`} className="w-16 shrink-0 text-sm">
-                  {row.label}
-                </label>
-                <Slider
-                  min={gamma ? gammaToPos(row.min) : row.min}
-                  max={gamma ? gammaToPos(row.max) : row.max}
-                  step={gamma ? 0.001 : row.step}
-                  value={[gamma ? gammaToPos(v) : v]}
-                  disabled={disabled}
-                  onValueChange={([x]) => {
-                    clearDraft(row.key)
-                    set(row.key, gamma ? posToGamma(x) : Number(x.toFixed(row.digits)))
-                  }}
-                  aria-label={row.label}
-                  className="flex-1"
-                />
-                <Tip content={"두 번 누르면 기본값"} wrap><Input
-                  id={`adj-${row.key}`}
-                  value={drafts[row.key] ?? showNum(row, v)}
-                  disabled={disabled}
-                  inputMode="decimal"
-                  className="h-8 w-20 text-right tabular-nums"
-                  onChange={(e) => {
-                    const text = e.target.value
-                    setDrafts((d) => ({ ...d, [row.key]: text }))
-                    const n = Number(text)
-                    if (text.trim() !== "" && Number.isFinite(n)) set(row.key, Math.min(row.max, Math.max(row.min, n)))
-                  }}
-                  onBlur={() => clearDraft(row.key)}
-                  onDoubleClick={() => {
-                    clearDraft(row.key)
-                    set(row.key, NO_ADJUST[row.key])
-                  }}
-                /></Tip>
-              </div>
+      <div className="flex flex-col gap-4 rounded-lg border p-3">
+        {section(
+          "color",
+          "색상",
+          <>
+            <div className="flex items-center gap-3">
+              <span className="w-20 shrink-0 text-sm">흰색 균형</span>
+              <Tip content="스포이트: 미리보기에서 흰색·회색이어야 할 곳을 누르면 온도·색조를 맞춥니다">
+                <Button variant={picking ? "default" : "ghost"} size="icon-xs" aria-label="흰색 균형 스포이트" aria-pressed={picking} disabled={disabled} onClick={onPick}>
+                  <Pipette />
+                </Button>
+              </Tip>
+              {picking && <span className="text-xs text-sky-500">미리보기에서 흰색·회색 부분을 누르세요</span>}
             </div>
-          )
-        })}
+            {COLOR_ROWS.map(row)}
+          </>,
+        )}
+        {section("light", "조명", <>{LIGHT_ROWS.map(row)}</>)}
       </div>
-      <FieldDescription className="break-keep">포토샵 노출·색조/채도와 같은 방식입니다. 미리보기와 만드는 파일에 그대로 들어갑니다.</FieldDescription>
+      <FieldDescription className="break-keep">프리미어 Lumetri 색상의 기본 교정과 같은 칸입니다. 막대를 두 번 누르면 기본값, 숫자는 좌우로 끌거나 눌러서 입력합니다.</FieldDescription>
     </Field>
   )
 }
