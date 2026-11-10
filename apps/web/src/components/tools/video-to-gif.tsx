@@ -870,7 +870,7 @@ function SequenceTimeline({
               }}
               {...scrub}
               {...trackDrop(tr)}
-              className={`relative h-10 cursor-pointer touch-none border-b border-border/60 ${upTarget === tr || (ghost && ghost.track === tr) ? "bg-amber-400/10" : ""}`}
+              className={`relative h-14 cursor-pointer touch-none border-b border-border/60 ${upTarget === tr || (ghost && ghost.track === tr) ? "bg-amber-400/10" : ""}`}
             >
               {trackLabel(`V${tr + 1}`)}
               {layers
@@ -895,7 +895,7 @@ function SequenceTimeline({
                       style={{ left: at * pps, width: Math.max(4, clipLen(c) * pps), transform: g ? `translate(${(g.at - at) * pps}px, ${g.dy}px)` : undefined }}
                     >
                       {thumb && <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-60" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />}
-                      <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-violet-950/80 px-1.5 text-[10px] leading-4 text-white">{c.source.file.name}</span>
+                      <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-violet-950/80 px-1.5 text-[11px] leading-4 text-white">{c.source.file.name}</span>
                       <span className="pointer-events-none absolute right-1 bottom-0.5 rounded bg-black/60 px-1 text-[10px] text-white tabular-nums">{fmt(clipLen(c))}</span>
                       {(["start", "end"] as const).map((edge) => (
                         <span
@@ -916,7 +916,7 @@ function SequenceTimeline({
               rowRefs.current[0] = el
             }}
             {...scrub}
-            className={`relative h-16 cursor-pointer touch-none ${ghost && ghost.track === 0 ? "bg-amber-400/10" : ""}`}
+            className={`relative h-14 cursor-pointer touch-none ${ghost && ghost.track === 0 ? "bg-amber-400/10" : ""}`}
           >
             {trackLabel("V1")}
             {clips.map((c, i) => {
