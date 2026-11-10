@@ -233,114 +233,6 @@ async function measurePerFrame(
   }
 }
 
-// 프레임 띠 칸 수
-const STRIP = 12
-
-// 미리보기 아래 프레임 띠: 고른 구간 밖은 어둡게, 구간은 테두리, 재생 위치는 세로선. 누르거나 끌면 그 장면으로 옮긴다.
-function FrameStrip({
-  thumbs,
-  duration,
-  range,
-  time,
-  disabled,
-  onRange,
-  onSeek,
-}: {
-  thumbs: (string | null)[]
-  duration: number
-  range: [number, number]
-  time: number
-  disabled?: boolean
-  onRange: (range: [number, number], commit: boolean) => void
-  onSeek: (t: number) => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const pct = (t: number) => `${(Math.min(Math.max(t / duration, 0), 1) * 100).toFixed(3)}%`
-  const timeAt = (e: React.PointerEvent) => {
-    const r = ref.current!.getBoundingClientRect()
-    return Math.round(Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * duration * 10) / 10
-  }
-  const at = (e: React.PointerEvent) => onSeek(timeAt(e))
-  // 구간 테두리 왼쪽·오른쪽 손잡이를 끌어 구간을 바꾼다(최소 0.1초)
-  const edge = (side: 0 | 1) => {
-    const next = (e: React.PointerEvent): [number, number] => {
-      const t = timeAt(e)
-      return side === 0 ? [Math.min(t, range[1] - 0.1), range[1]] : [range[0], Math.max(t, range[0] + 0.1)]
-    }
-    return {
-      onPointerDown: (e: React.PointerEvent) => {
-        e.stopPropagation()
-        if (disabled) return
-        e.currentTarget.setPointerCapture(e.pointerId)
-      },
-      onPointerMove: (e: React.PointerEvent) => {
-        e.stopPropagation()
-        if (!disabled && e.buttons === 1) onRange(next(e), false)
-      },
-      onPointerUp: (e: React.PointerEvent) => {
-        e.stopPropagation()
-        if (!disabled) onRange(next(e), true)
-      },
-    }
-  }
-  return (
-    <div
-      ref={ref}
-      className="relative h-16 cursor-pointer touch-none overflow-hidden rounded-lg border bg-muted select-none"
-      onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId)
-        at(e)
-      }}
-      onPointerMove={(e) => e.buttons === 1 && at(e)}
-      role="slider"
-      aria-label="재생 위치"
-      aria-valuemin={0}
-      aria-valuemax={Math.round(duration * 10) / 10}
-      aria-valuenow={Math.round(time * 10) / 10}
-      aria-valuetext={fmt(time)}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "ArrowLeft") onSeek(Math.max(0, time - 0.1))
-        if (e.key === "ArrowRight") onSeek(Math.min(duration, time + 0.1))
-      }}
-    >
-      <div className="flex h-full">
-        {thumbs.map((url, i) =>
-          url ? (
-            <img key={i} src={url} alt="" draggable={false} className="h-full min-w-0 flex-1 object-cover" />
-          ) : (
-            <div key={i} className="h-full min-w-0 flex-1 animate-pulse border-r border-background/40 bg-muted-foreground/15 motion-reduce:animate-none" />
-          ),
-        )}
-      </div>
-      {/* 구간 밖은 어둡게 */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 bg-black/60" style={{ width: pct(range[0]) }} />
-      <div className="pointer-events-none absolute inset-y-0 right-0 bg-black/60" style={{ left: pct(range[1]) }} />
-      <div
-        className="pointer-events-none absolute inset-y-0 rounded-sm border-y-2 border-primary"
-        style={{ left: pct(range[0]), width: `calc(${pct(range[1])} - ${pct(range[0])})` }}
-      />
-      {([0, 1] as const).map((side) => (
-        <div
-          key={side}
-          {...edge(side)}
-          role="slider"
-          aria-label={side === 0 ? "구간 시작" : "구간 끝"}
-          aria-valuemin={0}
-          aria-valuemax={Math.round(duration * 10) / 10}
-          aria-valuenow={range[side]}
-          className={`absolute inset-y-0 z-10 flex w-3 cursor-ew-resize items-center justify-center bg-primary ${side === 0 ? "rounded-l-md" : "-translate-x-full rounded-r-md"}`}
-          style={{ left: pct(range[side]) }}
-        >
-          <span className="h-5 w-0.5 rounded-full bg-primary-foreground/70" />
-        </div>
-      ))}
-      {/* 재생 위치 */}
-      <div className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.5)]" style={{ left: pct(time) }} />
-    </div>
-  )
-}
-
 // 클립 첫 장면 작은 그림(타임라인 칸). 클립 시작 위치가 바뀌면 다시 뽑는다
 function useClipThumbs(clips: Clip[]) {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -1151,54 +1043,6 @@ export function VideoConvertTool() {
     return () => cancelAnimationFrame(raf)
   }, [playing])
 
-  // 프레임 띠: 영상 전체에서 고르게 장면을 뽑아 작은 그림으로 늘어놓는다(하나씩 채워진다)
-  const [thumbs, setThumbs] = useState<(string | null)[]>([])
-  // 클립을 오가도 같은 동영상 띠는 다시 뽑지 않는다
-  const thumbCache = useRef(new Map<string, (string | null)[]>())
-  useEffect(() => {
-    if (!source) return
-    const cached = thumbCache.current.get(source.url)
-    if (cached && cached.every(Boolean)) {
-      setThumbs(cached)
-      return
-    }
-    let alive = true
-    const video = document.createElement("video")
-    video.muted = true
-    video.preload = "auto"
-    video.src = source.url
-    const h = 72
-    const w = Math.round((source.width * h) / source.height)
-    const canvas = document.createElement("canvas")
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext("2d")!
-    setThumbs(Array(STRIP).fill(null))
-    video.onloadeddata = async () => {
-      for (let i = 0; i < STRIP && alive; i++) {
-        try {
-          await seek(video, Math.min(((i + 0.5) * source.duration) / STRIP, source.duration - 0.001))
-        } catch {
-          return
-        }
-        if (!alive) return
-        ctx.drawImage(video, 0, 0, w, h)
-        const url = canvas.toDataURL("image/jpeg", 0.7)
-        setThumbs((list) => {
-          const next = list.map((v, j) => (j === i ? url : v))
-          thumbCache.current.set(source.url, next)
-          return next
-        })
-      }
-      video.removeAttribute("src")
-      video.load()
-    }
-    return () => {
-      alive = false
-      video.removeAttribute("src")
-      video.load()
-    }
-  }, [source])
   // 손잡이를 끄는 동안: 4K 처럼 큰 영상은 한 번 옮기는 데 오래 걸려, 옮기는 중이면 마지막 위치만 기억했다가 끝나면 옮긴다
   const pendingSeek = useRef<number | null>(null)
   const [sliding, setSliding] = useState(false)
@@ -1215,14 +1059,6 @@ export function VideoConvertTool() {
     if (t === null || !preview.current) return
     pendingSeek.current = null
     preview.current.currentTime = t
-  }
-  // 손을 떼면 고른 구간을 처음부터 바로 재생한다
-  const playRange = (start: number) => {
-    const v = preview.current
-    if (!v) return
-    pendingSeek.current = null
-    v.currentTime = start
-    void v.play().catch(() => {})
   }
   const togglePlay = () => {
     const v = preview.current
@@ -2127,61 +1963,6 @@ export function VideoConvertTool() {
               >
                 {source ? (
                   <>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="flex items-center gap-1.5 text-xs font-medium">
-                        <Scissors className="size-3.5" />
-                        {multi ? `${clipNo}번 클립 구간` : "구간"}
-                      </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {fmt(range[0])} – {fmt(range[1])} ({fmt(length)})
-                      </span>
-                      <div className="ml-auto flex flex-wrap gap-1.5">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="xs"
-                          disabled={busy}
-                          onClick={() => {
-                            const t = preview.current?.currentTime ?? 0
-                            setRange([Math.min(t, range[1] - 0.1), range[1]])
-                          }}
-                        >
-                          지금 위치를 시작으로
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="xs"
-                          disabled={busy}
-                          onClick={() => {
-                            const t = preview.current?.currentTime ?? source.duration
-                            setRange([range[0], Math.max(t, range[0] + 0.1)])
-                          }}
-                        >
-                          지금 위치를 끝으로
-                        </Button>
-                        <Button type="button" variant="ghost" size="xs" disabled={busy} onClick={() => setRange([0, source.duration])}>
-                          전체
-                        </Button>
-                      </div>
-                    </div>
-                    <FrameStrip
-                      thumbs={thumbs}
-                      duration={source.duration}
-                      range={range}
-                      time={time}
-                      disabled={busy}
-                      onRange={(next, commit) => {
-                        setSliding(!commit)
-                        setRange(next)
-                        if (commit) playRange(next[0])
-                        else seekPreview(next[0] !== range[0] ? next[0] : next[1])
-                      }}
-                      onSeek={(t) => {
-                        setTime(t)
-                        seekPreview(t)
-                      }}
-                    />
                     <SequenceTimeline
                       clips={clips}
                       activeId={activeClip?.id ?? null}
@@ -2197,7 +1978,7 @@ export function VideoConvertTool() {
                       }}
                     />
                     <p className="text-xs break-keep text-muted-foreground">
-                      위 띠는 고른 클립의 원본(손잡이로 구간 조절), 아래는 이어 붙인 시퀀스입니다. 눈금·트랙을 누르거나 파란 재생 헤드를 끌면 그 장면이 미리보기에 나오고, 클립 양 끝을 끌면 길이가 바뀌며 뒤 클립이 따라 붙습니다. 클립 몸통을 끌면 순서가 바뀌고(Alt+←→ 도 됨), 미디어의 동영상을 끌어 놓으면 뒤에 붙습니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
+                      눈금·트랙을 누르거나 파란 재생 헤드를 끌면 그 장면이 미리보기에 나오고, 클립 양 끝을 끌면(또는 미리보기 아래 {"{ }"} 버튼·I/O 키) 길이가 바뀌며 뒤 클립이 따라 붙습니다. 클립 몸통을 끌면 순서가 바뀌고(Alt+←→ 도 됨), 미디어의 동영상을 끌어 놓으면 뒤에 붙습니다. 크기는 1번 클립 기준이고, 화면 비율이 다른 클립은 검은 여백을 두고 맞춥니다.
                     </p>
                   </>
                 ) : (
