@@ -2592,7 +2592,7 @@ export function VideoConvertTool() {
       )}
       <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,24vw,420px)]">
         <div className="grid min-h-0 gap-2 lg:grid-rows-[minmax(0,62fr)_minmax(0,38fr)]">
-          <div className="grid min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,22vw,400px)]">
+          <div className="grid min-h-0 gap-2 lg:grid-cols-[clamp(300px,22vw,400px)_minmax(0,1fr)]">
             {/* ① 미리보기(저장할 틀 모양 그대로) */}
             <Panel
               title="미리보기"
@@ -2716,7 +2716,7 @@ export function VideoConvertTool() {
             </Panel>
 
             {/* ② 모션 */}
-            <Panel title="모션" bare scroll>
+            <Panel title="모션" bare scroll className="lg:order-first">
               {source ? (
                 <div className="p-3">
                   <MotionPanel value={motion} onChange={setMotion} srcW={(selClip ?? activeClip)?.source.width ?? source.width} srcH={(selClip ?? activeClip)?.source.height ?? source.height} disabled={busy} />
@@ -2969,9 +2969,9 @@ export function VideoConvertTool() {
 
 // 편집 화면 칸(프리미어 패널처럼): 위 제목 줄 + 내용. scroll 이면 내용만 따로 스크롤(부드럽게)
 // bare: 안쪽 칸(모션·색 보정)이 제목·기본값 버튼을 가지고 있어 머리 줄을 그리지 않는다(제목은 화면 읽기용으로만)
-function Panel({ title, actions, trailing, scroll, bare, children }: { title: React.ReactNode; actions?: React.ReactNode; trailing?: React.ReactNode; scroll?: boolean; bare?: boolean; children: React.ReactNode }) {
+function Panel({ title, actions, trailing, scroll, bare, className, children }: { title: React.ReactNode; actions?: React.ReactNode; trailing?: React.ReactNode; scroll?: boolean; bare?: boolean; className?: string; children: React.ReactNode }) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label={typeof title === "string" ? title : undefined}>
+    <section className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card ${className ?? ""}`} aria-label={typeof title === "string" ? title : undefined}>
       {!bare && (
         <div className="flex min-h-10 flex-wrap items-center gap-1.5 border-b px-2 py-1">
           <h3 className="mr-auto shrink-0 text-sm font-semibold">{title}</h3>

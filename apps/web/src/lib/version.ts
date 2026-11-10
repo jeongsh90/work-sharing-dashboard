@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.13',
+    date: '2026-11-11',
+    changes: [
+      '디자인 툴 > 동영상 → WebP·GIF: 모션 칸을 미리보기 왼쪽으로 옮김',
+    ],
+  },
+  {
     version: '0.6.12',
     date: '2026-11-10',
     changes: [
