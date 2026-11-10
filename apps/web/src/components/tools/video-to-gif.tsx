@@ -99,7 +99,12 @@ const newClip = (source: Source, start: number, end: number, fx?: { motion?: Mot
 })
 // 위 트랙(V2=1·V3=2)에서 시퀀스 시간 t 에 걸린 클립
 const layerAt = (ls: Clip[], track: number, t: number) => ls.find((c) => c.track === track && t >= (c.at ?? 0) && t < (c.at ?? 0) + Math.max(0, c.end - c.start))
-const UPPER_TRACKS = [1, 2] as const
+// 위 트랙 수: 처음엔 V2·V3 두 개. "트랙 추가" 로 V4, V5 … 를 늘린다(클립이 쓰는 트랙이 있으면 그만큼은 늘 보인다)
+const MIN_UPPER = 2
+const MAX_UPPER = 9
+const upperCountOf = (ls: Clip[], want: number) => Math.min(MAX_UPPER, Math.max(MIN_UPPER, want, ...ls.map((c) => c.track ?? 1)))
+// 클립이 있는 위 트랙(아래 → 위 순서로 겹친다)
+const usedTracks = (ls: Clip[]) => [...new Set(ls.map((c) => c.track ?? 1))].sort((a, b) => a - b)
 const clipLen = (c: Clip) => Math.max(0, c.end - c.start)
 // 화면 비율(출력 틀). 가로는 860 기준
 const RATIOS = [
@@ -565,9 +570,13 @@ function SequenceTimeline({
   onLayerChange,
   onMoveClip,
   onDropMedia,
+  upperCount,
+  onAddTrack,
   playingHead,
   subscribeHead,
 }: {
+  upperCount: number
+  onAddTrack?: () => void
   playingHead?: boolean
   subscribeHead?: HeadSubscribe
   clips: Clip[]
@@ -600,7 +609,9 @@ function SequenceTimeline({
   }, [])
   // 가로 스크롤 위치(확대해서 칸을 넘으면 아래 스크롤 막대로 옮긴다)
   const [scrollX, setScrollX] = useState(0)
-  const total = clips.reduce((s, c) => s + clipLen(c), 0)
+  // 시퀀스 길이 = 모든 트랙에서 가장 늦게 끝나는 곳(V1 이 먼저 끝나도 위 트랙 끝까지)
+  const v1Total = clips.reduce((s, c) => s + clipLen(c), 0)
+  const total = Math.max(v1Total, layers.reduce((m, c) => Math.max(m, (c.at ?? 0) + clipLen(c)), 0))
   // 확대: 1 = 전체가 칸 너비에 맞게(오른쪽에 조금 여유)
   // 끄는 동안에는 배율을 고정한다(길이가 바뀌어 맞추기 배율이 변하면 손잡이가 마우스를 못 따라온다)
   const [frozenPps, setFrozenPps] = useState<number | null>(null)
@@ -633,9 +644,10 @@ function SequenceTimeline({
     return Math.max((clientX - r.left + boxRef.current!.scrollLeft) / pps, 0)
   }
   // 트랙 줄(0 = V1, 1 = V2, 2 = V3): 끌어서 놓을 트랙을 포인터 높이로 찾는다
-  const rowRefs = useRef<(HTMLDivElement | null)[]>([null, null, null])
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([])
+  const upperRows = Array.from({ length: upperCount }, (_, i) => upperCount - i) // 위에서 아래로: V(n+1) … V2
   const rowAt = (y: number) => {
-    for (const tr of [2, 1, 0]) {
+    for (const tr of [...upperRows, 0]) {
       const r = rowRefs.current[tr]?.getBoundingClientRect()
       if (r && y >= r.top && y <= r.bottom) return tr
     }
@@ -751,7 +763,7 @@ function SequenceTimeline({
   // 자석: 시퀀스 처음·끝, 재생 헤드, V1 클립 경계, 다른 위 트랙 클립의 시작·끝(화면에서 8px 안이면 붙는다)
   const [snapLine, setSnapLine] = useState<number | null>(null)
   const snapPoints = (excludeId: number) => {
-    const pts = [0, total, now, ...starts, ...starts.map((st, i) => st + clipLen(clips[i]))]
+    const pts = [0, total, v1Total, now, ...starts, ...starts.map((st, i) => st + clipLen(clips[i]))]
     for (const c of layers) if (c.id !== excludeId) pts.push(c.at ?? 0, (c.at ?? 0) + clipLen(c))
     return pts
   }
@@ -856,6 +868,12 @@ function SequenceTimeline({
         <span className="font-semibold text-primary">{timecode(now, fps)}</span>
         <span className="text-muted-foreground">/ {timecode(total, fps)}</span>
         <div className="ml-auto flex items-center gap-1">
+          <Tip content={onAddTrack ? `맨 위에 V${upperCount + 2} 트랙을 더합니다` : `트랙은 V${MAX_UPPER + 1} 까지입니다`}>
+            <Button variant="ghost" size="xs" disabled={disabled || !onAddTrack} onClick={onAddTrack}>
+              <Plus data-icon="inline-start" />
+              트랙 추가
+            </Button>
+          </Tip>
           <Button variant="ghost" size="icon-xs" aria-label="타임라인 축소" disabled={pps <= MIN_PPS} onClick={() => setScale(Math.max(MIN_PPS, pps / 1.5))}>
             <ZoomOut />
           </Button>
@@ -904,8 +922,8 @@ function SequenceTimeline({
             {/* 시퀀스 끝 */}
             <div className="pointer-events-none absolute inset-y-0 border-l border-dashed border-amber-400/70" style={{ left: total * pps }} />
           </div>
-          {/* 위 트랙 V3 · V2: 아무 시점에나 놓고, 위 트랙이 아래를 덮는다 */}
-          {([2, 1] as const).map((tr) => (
+          {/* 위 트랙 … V3 · V2: 아무 시점에나 놓고, 위 트랙이 아래를 덮는다 */}
+          {upperRows.map((tr) => (
             <div
               key={tr}
               ref={(el) => {
@@ -1082,6 +1100,9 @@ export function VideoConvertTool() {
   const adjustCanvas = useRef<HTMLCanvasElement>(null)
   // 위 트랙(V2·V3) 클립과 고른 클립. 모션·색 보정 칸은 고른 클립의 값을 보이고 바꾼다
   const [layers, setLayers] = useState<Clip[]>([])
+  // 위 트랙 수(V2 부터 몇 줄). 불러온 기록이 더 높은 트랙을 쓰면 그만큼 보인다
+  const [upperWant, setUpperWant] = useState(MIN_UPPER)
+  const upperCount = upperCountOf(layers, upperWant)
   const [selId, setSelId] = useState<number | null>(null)
   const selClip = layers.find((c) => c.id === selId) ?? clips.find((c) => c.id === selId) ?? activeClip
   const selIsLayer = !!selClip && layers.some((c) => c.id === selClip.id)
@@ -1104,9 +1125,8 @@ export function VideoConvertTool() {
   // 히스토리에서 불러온 한 클립짜리 기록의 모션·색 보정(그 동영상을 열 때 넣는다)
   const pendingFx = useRef<{ motion: Motion; adjust: Adjust } | null>(null)
   // 위 트랙 미리보기 동영상(V2·V3): 재생 헤드에 맞춰 따라 재생하고, 미리보기 캔버스에 겹쳐 그린다
-  const layerVidA = useRef<HTMLVideoElement | null>(null)
-  const layerVidB = useRef<HTMLVideoElement | null>(null)
-  const layerVid = (track: number) => (track === 1 ? layerVidA.current : layerVidB.current)
+  const layerVids = useRef(new Map<number, HTMLVideoElement>())
+  const layerVid = (track: number) => layerVids.current.get(track) ?? null
   const fxRef = useRef<{ v1: Clip | null; layers: Clip[]; now: number }>({ v1: null, layers: [], now: 0 })
   const layerTmp = useRef<HTMLCanvasElement | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1348,6 +1368,7 @@ export function VideoConvertTool() {
   }
   const selectClip = (id: number) => {
     setSelId(id)
+    if (tail !== null) stopTail()
     if (id === activeClip?.id) return
     preview.current?.pause()
     setSeqPlay(false)
@@ -1373,6 +1394,7 @@ export function VideoConvertTool() {
     const v = preview.current
     if (!seqRef.current || !v || !activeClip || v.paused) return
     if (range[1] - v.currentTime > 1.2) return
+    if (hasTail && clips[clips.length - 1]?.id === activeClip.id) return // 다음은 위 트랙만 남은 구간
     const next = nextOf(activeClip)
     if (prepared.current?.id === next.id) return
     const back = vids[1 - frontRef.current].current
@@ -1391,6 +1413,12 @@ export function VideoConvertTool() {
     const v = preview.current
     if (!v || !activeClip) return
     lastSwitch.current = performance.now()
+    // 마지막 V1 클립이 끝났는데 위 트랙이 더 이어지면: 그 뒤는 위 트랙만 이어서 재생
+    if (hasTail && clips[clips.length - 1]?.id === activeClip.id) {
+      prepared.current = null
+      enterTail(v1Total, true)
+      return
+    }
     const next = nextOf(activeClip)
     const back = vids[1 - frontRef.current].current
     // 뒤 영상이 다음 클립 시작에 준비돼 있으면 바꿔 끼우고 바로 이어 재생(끊김 없음)
@@ -1483,21 +1511,27 @@ export function VideoConvertTool() {
   const drawAdjusted = () => {
     const v = preview.current
     const c = adjustCanvas.current
-    if (!v || !c || !v.videoWidth) return
+    const { v1, layers: ls, now: T } = fxRef.current
+    // V1 뒤 구간(v1 없음)은 검은 바탕에 위 트랙만
+    if (!c || (v1 && (!v || !v.videoWidth))) return
     const [w, h] = outSizeRef.current
     if (c.width !== w || c.height !== h) {
       c.width = w
       c.height = h
     }
     const ctx = c.getContext("2d", { willReadFrequently: true })!
-    const { v1, layers: ls, now: T } = fxRef.current
-    drawFramed(ctx, v, v.videoWidth, v.videoHeight, w, h, v1?.motion ?? NO_MOTION)
+    if (v1 && v) drawFramed(ctx, v, v.videoWidth, v.videoHeight, w, h, v1.motion)
+    else {
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.fillStyle = "#000"
+      ctx.fillRect(0, 0, w, h)
+    }
     if (v1 && !isNoAdjust(v1.adjust)) {
       const img = ctx.getImageData(0, 0, w, h)
       applyAdjust(img.data, v1.adjust)
       ctx.putImageData(img, 0, 0)
     }
-    for (const tr of UPPER_TRACKS) {
+    for (const tr of usedTracks(ls)) {
       const c = layerAt(ls, tr, T)
       const el = layerVid(tr)
       if (!c || !el || el.readyState < 2 || !el.videoWidth || el.dataset.clip !== String(c.id)) continue
@@ -1522,9 +1556,7 @@ export function VideoConvertTool() {
   // 위 트랙 동영상을 재생 헤드에 맞춘다(재생 중이면 같이 재생, 멈춰 있으면 그 장면으로)
   const syncLayers = (playingNow: boolean) => {
     const { layers: ls, now: T } = fxRef.current
-    for (const tr of UPPER_TRACKS) {
-      const el = layerVid(tr)
-      if (!el) continue
+    for (const [tr, el] of layerVids.current) {
       const c = layerAt(ls, tr, T)
       if (!c) {
         if (!el.paused) el.pause()
@@ -1558,6 +1590,11 @@ export function VideoConvertTool() {
 
   // 재생 위치(재생 헤드). 재생 중에는 화면 그릴 때마다 따라가고, 전체 재생이면 다음 클립을 준비하고 경계에서 바로 넘긴다
   const [time, setTime] = useState(0)
+  // V1 뒤 구간(위 트랙만): 재생 헤드 위치(null = V1 위) · 재생 중이면 시계로 흐른다
+  const [tail, setTail] = useState<number | null>(null)
+  const [tailPlaying, setTailPlaying] = useState(false)
+  const tailClock = useRef<{ t0: number; T0: number } | null>(null)
+  const isPlaying = playing || tailPlaying
   const tickRef = useRef<() => void>(() => {})
   const headSubs = useRef(new Set<(t: number) => void>())
   const subscribeHead = useRef<HeadSubscribe>((fn) => {
@@ -1569,6 +1606,26 @@ export function VideoConvertTool() {
   const lastLocal = useRef({ v: -1, at: 0 })
   const lastStateAt = useRef(0)
   tickRef.current = () => {
+    const tc = tailClock.current
+    if (tc) {
+      const ms = performance.now()
+      const T = tc.T0 + ((ms - tc.t0) / 1000) * Number(speed)
+      if (T >= totalLengthRef.current) {
+        // 시퀀스 끝: 처음부터 다시(V1 만 있을 때 전체 재생이 되풀이되는 것과 같게)
+        stopTail()
+        playSequenceRef.current()
+        return
+      }
+      fxRef.current.now = T
+      headSubs.current.forEach((fn) => fn(T))
+      if (ms - lastStateAt.current > 140) {
+        lastStateAt.current = ms
+        setTail(T)
+      }
+      syncLayers(true)
+      drawAdjusted()
+      return
+    }
     const v = preview.current
     if (!v) return
     // 영상 시각은 장면 단위로만 바뀐다: 마지막 값에서 흐른 시간만큼 이어서 계산해 막대가 매끄럽게 움직이게
@@ -1593,7 +1650,7 @@ export function VideoConvertTool() {
     if (seqRef.current && !v.paused && v.currentTime >= range[1] - 0.03 && performance.now() - lastSwitch.current > 200) nextClip()
   }
   useEffect(() => {
-    if (!playing) return
+    if (!isPlaying) return
     let raf = 0
     const tick = () => {
       tickRef.current()
@@ -1601,7 +1658,40 @@ export function VideoConvertTool() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [playing])
+  }, [isPlaying])
+  // V1 뒤 구간 들어가기(멈춤 / 재생) · 나오기
+  const totalLengthRef = useRef(0)
+  const playSequenceRef = useRef<() => void>(() => {})
+  const enterTail = (T: number, play: boolean) => {
+    preview.current?.pause()
+    setTail(T)
+    fxRef.current = { ...fxRef.current, v1: null, now: T }
+    tailClock.current = play ? { t0: performance.now(), T0: T } : null
+    setTailPlaying(play)
+    if (!play) {
+      syncLayers(false)
+      drawAdjusted()
+    }
+  }
+  const pauseTail = () => {
+    const tc = tailClock.current
+    if (!tc) return
+    const T = Math.min(tc.T0 + ((performance.now() - tc.t0) / 1000) * Number(speed), Math.max(0, totalLengthRef.current - 0.001))
+    tailClock.current = null
+    setTailPlaying(false)
+    setTail(T)
+    fxRef.current.now = T
+    syncLayers(false)
+  }
+  const stopTail = () => {
+    tailClock.current = null
+    setTailPlaying(false)
+    setTail(null)
+  }
+  playSequenceRef.current = () => {
+    stopTail()
+    playSequence()
+  }
 
   // 손잡이를 끄는 동안: 4K 처럼 큰 영상은 한 번 옮기는 데 오래 걸려, 옮기는 중이면 마지막 위치만 기억했다가 끝나면 옮긴다
   const pendingSeek = useRef<number | null>(null)
@@ -1623,6 +1713,7 @@ export function VideoConvertTool() {
   const togglePlay = () => {
     const v = preview.current
     if (!v) return
+    if (tail !== null) return playFromHead()
     setSeqPlay(false)
     if (v.paused) {
       if (v.currentTime < range[0] || v.currentTime >= range[1]) v.currentTime = range[0]
@@ -1641,8 +1732,14 @@ export function VideoConvertTool() {
   }, [ratio])
   const length = Math.max(0, range[1] - range[0]) // 고른 클립 구간
   const clipFrames = (c: Clip) => Math.max(1, Math.round(clipLen(c) * Number(fps)))
-  const totalLength = clips.reduce((s, c) => s + clipLen(c), 0)
-  const frames = clips.length ? clips.reduce((s, c) => s + clipFrames(c), 0) : 1
+  // 시퀀스 길이 = 모든 트랙에서 가장 늦게 끝나는 클립까지(프리미어처럼). V1 이 먼저 끝나면 그 뒤는 검은 바탕에 위 트랙만
+  const v1Total = clips.reduce((s, c) => s + clipLen(c), 0)
+  const layerEnd = layers.reduce((m, c) => Math.max(m, (c.at ?? 0) + clipLen(c)), 0)
+  const totalLength = Math.max(v1Total, layerEnd)
+  totalLengthRef.current = totalLength
+  const hasTail = clips.length > 0 && layerEnd > v1Total + 0.01
+  const tailFrames = hasTail ? Math.max(1, Math.round((layerEnd - v1Total) * Number(fps))) : 0
+  const frames = clips.length ? clips.reduce((s, c) => s + clipFrames(c), 0) + tailFrames : 1
   const tooMany = frames > MAX_FRAMES
   const busy = progress !== null
 
@@ -1744,7 +1841,28 @@ export function VideoConvertTool() {
       tmp.height = outH
       const tctx = tmp.getContext("2d", { willReadFrequently: true })!
       tctx.imageSmoothingQuality = "high"
-      // 클립을 순서대로 이어 붙인다(클립마다 시작부터 초당 장수만큼). 장면마다 그 시점의 위 트랙(V2·V3)을 겹친다
+      // 시퀀스 시간 T 의 위 트랙(V2 부터 위로)을 장면 위에 겹친다
+      const overlay = async (img: ImageData, T: number) => {
+        const ups = usedTracks(seqLayers).map((tr) => [tr, layerAt(seqLayers, tr, T)] as const).filter(([, l]) => !!l)
+        if (!ups.length) return img
+        ctx.putImageData(img, 0, 0)
+        for (const [tr, l] of ups) {
+          const el = await loadLayer(tr, l!.source.url)
+          await seek(el, Math.min(l!.start + (T - (l!.at ?? 0)), l!.end - 0.001, l!.source.duration - 0.001))
+          tctx.setTransform(1, 0, 0, 1, 0, 0)
+          tctx.clearRect(0, 0, outW, outH)
+          drawFramed(tctx, el, l!.source.width, l!.source.height, outW, outH, l!.motion, false)
+          if (!isNoAdjust(l!.adjust)) {
+            const li = tctx.getImageData(0, 0, outW, outH)
+            applyAdjust(li.data, l!.adjust)
+            tctx.putImageData(li, 0, 0)
+          }
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+          ctx.drawImage(tmp, 0, 0)
+        }
+        return ctx.getImageData(0, 0, outW, outH)
+      }
+      // 클립을 순서대로 이어 붙인다(클립마다 시작부터 초당 장수만큼). 장면마다 그 시점의 위 트랙을 겹친다
       let seqAt = 0
       for (const c of seqClips) {
         if (cancelled) return
@@ -1756,30 +1874,21 @@ export function VideoConvertTool() {
           drawFramed(ctx, video, c.source.width, c.source.height, outW, outH, c.motion)
           let img = ctx.getImageData(0, 0, outW, outH)
           applyAdjust(img.data, c.adjust)
-          const T = seqAt + i / Number(fps)
-          const ups = UPPER_TRACKS.map((tr) => [tr, layerAt(seqLayers, tr, T)] as const).filter(([, l]) => !!l)
-          if (ups.length) {
-            ctx.putImageData(img, 0, 0)
-            for (const [tr, l] of ups) {
-              const el = await loadLayer(tr, l!.source.url)
-              await seek(el, Math.min(l!.start + (T - (l!.at ?? 0)), l!.end - 0.001, l!.source.duration - 0.001))
-              tctx.setTransform(1, 0, 0, 1, 0, 0)
-              tctx.clearRect(0, 0, outW, outH)
-              drawFramed(tctx, el, l!.source.width, l!.source.height, outW, outH, l!.motion, false)
-              if (!isNoAdjust(l!.adjust)) {
-                const li = tctx.getImageData(0, 0, outW, outH)
-                applyAdjust(li.data, l!.adjust)
-                tctx.putImageData(li, 0, 0)
-              }
-              ctx.setTransform(1, 0, 0, 1, 0, 0)
-              ctx.drawImage(tmp, 0, 0)
-            }
-            img = ctx.getImageData(0, 0, outW, outH)
-          }
+          img = await overlay(img, seqAt + i / Number(fps))
           const data = img.data.buffer
           worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
         }
         seqAt += clipLen(c)
+      }
+      // V1 이 끝난 뒤에도 위 트랙이 이어지면: 검은 바탕에 위 트랙만
+      for (let i = 0; i < tailFrames; i++) {
+        if (cancelled) return
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.fillStyle = "#000"
+        ctx.fillRect(0, 0, outW, outH)
+        const img = await overlay(ctx.getImageData(0, 0, outW, outH), seqAt + i / Number(fps))
+        const data = img.data.buffer
+        worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
       }
       worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
       const bytes = await finished
@@ -1920,6 +2029,7 @@ export function VideoConvertTool() {
     cancelRef.current?.()
     setClips([])
     setLayers([])
+    setUpperWant(MIN_UPPER)
     setSelId(null)
     setMedia([])
     setActiveId(null)
@@ -2026,8 +2136,10 @@ export function VideoConvertTool() {
     }
     return 0
   }
-  const now = activeClip ? seqStart(activeClip.id) + Math.min(Math.max(time - activeClip.start, 0), clipLen(activeClip)) : 0
-  fxRef.current = { v1: activeClip, layers, now }
+  const v1Now = activeClip ? seqStart(activeClip.id) + Math.min(Math.max(time - activeClip.start, 0), clipLen(activeClip)) : 0
+  // V1 이 끝난 뒤(위 트랙만 남은 구간)에서는 tail 이 재생 헤드다
+  const now = tail ?? v1Now
+  fxRef.current = { v1: tail !== null ? null : activeClip, layers, now }
   // 멈춰 있을 때 재생 헤드·위 트랙이 바뀌면 위 트랙 장면을 맞춘다
   useEffect(() => {
     if (playing) return
@@ -2039,6 +2151,12 @@ export function VideoConvertTool() {
   const pendingLocal = useRef<number | null>(null)
   const seekSequence = (t: number) => {
     if (clips.length === 0) return
+    if (hasTail && t >= v1Total) {
+      setSeqPlay(false)
+      enterTail(Math.min(t, Math.max(v1Total, totalLength - 0.001)), false)
+      return
+    }
+    if (tail !== null || tailClock.current) stopTail()
     let acc = 0
     let target = clips[clips.length - 1]
     for (const c of clips) {
@@ -2109,6 +2227,21 @@ export function VideoConvertTool() {
   const playFromHead = () => {
     const v = preview.current
     if (!v || !activeClip) return
+    if (tailClock.current) {
+      pauseTail()
+      setSeqPlay(false)
+      return
+    }
+    if (tail !== null) {
+      if (tail >= totalLength - 0.05) {
+        stopTail()
+        playSequence()
+      } else {
+        setSeqPlay(true)
+        enterTail(tail, true)
+      }
+      return
+    }
     if (!v.paused) {
       v.pause()
       setSeqPlay(false)
@@ -2657,10 +2790,13 @@ export function VideoConvertTool() {
                         />
                       )
                     })}
-                    {UPPER_TRACKS.map((tr) => (
+                    {Array.from({ length: upperCount }, (_, i) => i + 1).map((tr) => (
                       <video
                         key={`layer-${tr}`}
-                        ref={tr === 1 ? layerVidA : layerVidB}
+                        ref={(el) => {
+                          if (el) layerVids.current.set(tr, el)
+                          else layerVids.current.delete(tr)
+                        }}
                         preload="auto"
                         muted
                         playsInline
@@ -2689,7 +2825,7 @@ export function VideoConvertTool() {
                       now={now}
                       total={totalLength}
                       fps={Number(fps)}
-                      playing={playing && seqPlay}
+                      playing={tailPlaying || (playing && seqPlay)}
                       disabled={busy}
                       zoom={previewZoom}
                       onZoom={setPreviewZoom}
@@ -2703,7 +2839,7 @@ export function VideoConvertTool() {
                       onSplit={splitAtPlayhead}
                       loop={playing && !seqPlay}
                       onLoop={loopClip}
-                      playingHead={playing}
+                      playingHead={isPlaying}
                       subscribeHead={subscribeHead}
                     />
                   </div>
@@ -2929,7 +3065,9 @@ export function VideoConvertTool() {
                       onLayerChange={changeLayer}
                       onMoveClip={moveClipTrack}
                       onDropMedia={dropOnTrack}
-                      playingHead={playing}
+                      upperCount={upperCount}
+                      onAddTrack={upperCount < MAX_UPPER ? () => setUpperWant(upperCount + 1) : undefined}
+                      playingHead={isPlaying}
                       subscribeHead={subscribeHead}
                       activeId={selClip?.id ?? null}
                       now={now}
