@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, Download, FileInput, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
+import { CopyPlus, Download, FileInput, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -1290,6 +1292,7 @@ export function VideoConvertTool() {
       })
     }
     const seqClips = clips
+    const startKey = workKeyRef.current
     cancelRef.current = () => {
       cancelled = true
       worker.terminate()
@@ -1336,6 +1339,8 @@ export function VideoConvertTool() {
       const base = first.file.name.replace(/\.[^.]+$/, "") + (seqClips.length > 1 ? `_편집${seqClips.length}컷` : "")
       const made = { url: URL.createObjectURL(blob), size: blob.size, width: outW, height: outH, frames, name: `${base}.${format}` }
       setResult(made)
+      setSavedKey(startKey)
+      setSaveOpen(false)
       // 만든 움짤과 설정을 히스토리에 남긴다(제목 = 만든 파일 이름. 같은 동영상도 WebP·GIF 는 따로 보인다)
       if (blob.size <= HISTORY_MAX) {
         const head = seqClips[0]
@@ -1531,6 +1536,13 @@ export function VideoConvertTool() {
   }
   // 프로그램 모니터 막대: 재생 헤드부터 이어서 재생(끝이면 처음부터) · 1프레임 이동 · 처음/끝 · 시작/끝 표시 · 클립 반복
   const [previewZoom, setPreviewZoom] = useState("fit")
+  const [saveOpen, setSaveOpen] = useState(false)
+  // 저장 안 한 작업: 마지막으로 저장(변환)한 뒤 클립·설정이 바뀌었으면 닫을 때 묻는다
+  const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end]), format, width, fps, colors, speed, repeat, adjust, motion])
+  const [savedKey, setSavedKey] = useState("")
+  const workKeyRef = useRef(workKey)
+  workKeyRef.current = workKey
+  useToolDirty(clips.length > 0 && workKey !== savedKey)
   const playFromHead = () => {
     const v = preview.current
     if (!v || !activeClip) return
@@ -1617,127 +1629,168 @@ export function VideoConvertTool() {
         }}
       />
 
-      {/* 내보내기 막대: 형식 · 크기 · 장수 · 화질 · 속도 · 반복 · 예상 용량 · 변환 */}
-      <div className="flex flex-wrap items-end gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-2">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">만들 형식</span>
-          <Tabs
-            value={format}
-            onValueChange={(v) => {
-              const next = v as Format
-              if (next === format || busy) return
-              setFormat(next)
-              // 화질 고르기는 형식마다 다르다(GIF 색 수 / WebP 압축 품질)
-              setColors(FORMATS[next].defaultOption)
-              setResult(null)
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="webp" disabled={busy}>
-                WebP
-              </TabsTrigger>
-              <TabsTrigger value="gif" disabled={busy}>
-                GIF
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-        <BarSelect id="gif-width" label="가로 크기" value={width} onChange={setWidth} disabled={busy} options={WIDTHS} className="w-40" />
-        <BarSelect id="gif-fps" label="초당 장수" value={fps} onChange={setFps} disabled={busy} options={FPS.map((f) => ({ value: f, label: `${f}장` }))} className="w-24" />
-        <BarSelect id="gif-colors" label="화질" value={colors} onChange={setColors} disabled={busy} options={F.options} className="w-36" />
-        <BarSelect
-          id="gif-speed"
-          label="재생 속도"
-          value={speed}
-          onChange={setSpeed}
-          disabled={busy}
-          options={SPEEDS.map((s) => ({ value: s, label: `${s}배${s === "1" ? " (그대로)" : ""}` }))}
-          className="w-32"
-        />
-        <BarSelect
-          id="gif-repeat"
-          label="반복"
-          value={repeat}
-          onChange={setRepeat}
-          disabled={busy}
-          options={[
-            { value: "0", label: "계속 반복" },
-            { value: "-1", label: "한 번만 재생" },
-          ]}
-          className="w-32"
-        />
-        {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
-        {source && (
-          <div
-            className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm ${
-              estimate !== null && estimate > 10 * 1024 * 1024 ? "border-amber-500/50 bg-amber-500/8" : "bg-muted/40"
-            }`}
-            aria-live="polite"
-          >
-            <span className="text-xs text-muted-foreground">예상 {F.label}</span>
-            <span className="font-semibold tabular-nums">{estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}</span>
-            {estimating && estimate !== null && (
-              <LoaderCircle className="size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="다시 재는 중" />
-            )}
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {outW}×{outH} · {frames}장 · {fmt(totalLength / Number(speed))}
-              {multi ? ` · ${clips.length}컷` : ""}
-            </span>
-          </div>
+      {/* 창 머리 X 왼쪽: 저장하기(누르면 오른쪽에서 저장 칸이 나온다). 변환 중이면 진행률도 */}
+      <ToolHeaderActions>
+        {busy && (
+          <span className="hidden items-center gap-2 text-xs tabular-nums sm:flex" aria-live="polite">
+            <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+            {progress.step}… {Math.round(progress.ratio * 100)}%
+          </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          {busy ? (
-            <div className="flex h-9 min-w-64 items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 text-sm" aria-live="polite">
-              <span className="font-medium">{progress.step}…</span>
-              <span className="font-semibold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
-              <Progress value={progress.ratio * 100} className="h-1.5 w-24" />
-              <Button variant="ghost" size="xs" onClick={() => cancelRef.current?.()}>
-                취소
+        <Button size="sm" disabled={!source} onClick={() => setSaveOpen(true)}>
+          <Save data-icon="inline-start" />
+          저장하기
+        </Button>
+      </ToolHeaderActions>
+
+      {/* 저장 칸: 형식 · 크기 · 장수 · 화질 · 속도 · 반복 · 예상 용량 · 변환 */}
+      <Sheet open={saveOpen} onOpenChange={setSaveOpen}>
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
+          <SheetHeader className="border-b">
+            <SheetTitle>저장하기</SheetTitle>
+            <SheetDescription className="break-keep">형식·크기·화질을 고르고 변환하면 바로 내려받아지고 히스토리에 남습니다.</SheetDescription>
+          </SheetHeader>
+          <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="flex flex-col gap-4 p-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">만들 형식</span>
+              <Tabs
+                value={format}
+                onValueChange={(v) => {
+                  const next = v as Format
+                  if (next === format || busy) return
+                  setFormat(next)
+                  // 화질 고르기는 형식마다 다르다(GIF 색 수 / WebP 압축 품질)
+                  setColors(FORMATS[next].defaultOption)
+                  setResult(null)
+                }}
+              >
+                <TabsList className="w-full">
+                  <TabsTrigger value="webp" disabled={busy}>
+                    WebP
+                  </TabsTrigger>
+                  <TabsTrigger value="gif" disabled={busy}>
+                    GIF
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <span className="text-xs break-keep text-muted-foreground">
+                {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 .webp 그대로 올립니다."}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <BarSelect id="gif-width" label="가로 크기" value={width} onChange={setWidth} disabled={busy} options={WIDTHS} />
+              <BarSelect id="gif-fps" label="초당 장수" value={fps} onChange={setFps} disabled={busy} options={FPS.map((f) => ({ value: f, label: `${f}장` }))} />
+              <BarSelect id="gif-colors" label="화질" value={colors} onChange={setColors} disabled={busy} options={F.options} />
+              <BarSelect
+                id="gif-speed"
+                label="재생 속도"
+                value={speed}
+                onChange={setSpeed}
+                disabled={busy}
+                options={SPEEDS.map((s) => ({ value: s, label: `${s}배${s === "1" ? " (그대로)" : ""}` }))}
+              />
+              <BarSelect
+                id="gif-repeat"
+                label="반복"
+                value={repeat}
+                onChange={setRepeat}
+                disabled={busy}
+                options={[
+                  { value: "0", label: "계속 반복" },
+                  { value: "-1", label: "한 번만 재생" },
+                ]}
+                className="col-span-2"
+              />
+            </div>
+            {/* 예상 용량: 설정을 바꿀 때마다 다시 잰다 */}
+            {source && (
+              <div
+                className={`flex items-center gap-3 rounded-lg border p-3 ${
+                  estimate !== null && estimate > 10 * 1024 * 1024 ? "border-amber-500/50 bg-amber-500/8" : "bg-muted/40"
+                }`}
+                aria-live="polite"
+              >
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-xs text-muted-foreground">예상 {F.label} 용량</span>
+                  <span className="flex items-center gap-2 text-lg font-semibold tabular-nums">
+                    {estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}
+                    {estimating && estimate !== null && (
+                      <LoaderCircle className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="다시 재는 중" />
+                    )}
+                  </span>
+                </div>
+                <span className="text-right text-xs text-muted-foreground tabular-nums">
+                  {outW}×{outH}px
+                  <br />
+                  {frames}장 · {fmt(totalLength / Number(speed))}
+                  {multi ? ` · ${clips.length}컷` : ""}
+                </span>
+              </div>
+            )}
+            <div className="flex flex-col gap-1 text-xs" aria-live="polite">
+              {error && <span className="text-destructive">{error}</span>}
+              {tooMany && (
+                <span className="text-destructive">
+                  장수가 너무 많습니다({frames}장, 최대 {MAX_FRAMES}장). 구간을 줄이거나 초당 장수를 낮춰 주세요.
+                </span>
+              )}
+              {!tooMany && estimate !== null && estimate > 10 * 1024 * 1024 && (
+                <span className="break-keep text-amber-700 dark:text-amber-300">10MB 가 넘습니다. 가로 크기·초당 장수·화질을 낮추거나 구간을 줄이면 가벼워집니다.</span>
+              )}
+              {first && outW < (Number(width) || 0) && <span className="text-muted-foreground">원본보다 크게는 만들지 않습니다.</span>}
+            </div>
+          </SmoothScrollArea>
+          <SheetFooter className="border-t">
+            {busy ? (
+              <div className="flex flex-col gap-2" aria-live="polite">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">{progress.step}…</span>
+                  <span className="text-lg font-semibold tabular-nums">{Math.round(progress.ratio * 100)}%</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {progress.done} / {frames}장
+                  </span>
+                  <Button variant="ghost" size="xs" className="ml-auto" onClick={() => cancelRef.current?.()}>
+                    취소
+                  </Button>
+                </div>
+                <Progress value={progress.ratio * 100} className="h-2" />
+              </div>
+            ) : (
+              <Button size="lg" className="w-full" disabled={!source || tooMany || totalLength <= 0} onClick={() => void convert()}>
+                <Wand2 data-icon="inline-start" />
+                {F.label} 로 저장(변환 후 내려받기)
+              </Button>
+            )}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* 히스토리 불러오는 중 · 불러온 설정 안내 */}
+      {(fetching || loaded || (error && !saveOpen)) && (
+        <div className="flex flex-col gap-1 rounded-lg border bg-card px-3 py-2 text-xs" aria-live="polite">
+          {error && !saveOpen && <span className="text-destructive">{error}</span>}
+          {fetching && (
+            <div className="flex items-center gap-2">
+              <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+              원본 동영상 불러오는 중… <span className="tabular-nums">{Math.round(fetching.ratio * 100)}%</span>
+              <Progress value={fetching.ratio * 100} className="h-1.5 w-40" />
+              <span className="truncate text-muted-foreground">{fetching.name}</span>
+            </div>
+          )}
+          {loaded && (
+            <div className="flex items-center gap-2">
+              <FileInput className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 break-keep">
+                "{loaded.title}" 설정을 불러왔습니다. 이 기록에는 원본 동영상이 없어서 다시 골라야 합니다
+                {loaded.form.source ? ` — 원본: ${loaded.form.source} (같은 파일을 고르면 구간 ${fmt(loaded.form.start)}–${fmt(loaded.form.end)}도 채웁니다)` : ""}
+              </span>
+              <Button variant="ghost" size="icon-xs" aria-label="불러온 설정 안내 닫기" onClick={() => setLoaded(null)}>
+                <X />
               </Button>
             </div>
-          ) : (
-            <Button disabled={!source || tooMany || totalLength <= 0} onClick={() => void convert()}>
-              <Wand2 data-icon="inline-start" />
-              {F.label} 로 변환 후 내려받기
-            </Button>
           )}
         </div>
-        {(error || tooMany || (estimate !== null && estimate > 10 * 1024 * 1024) || (first && outW < (Number(width) || 0))) && (
-          <div className="flex w-full flex-col gap-0.5 text-xs" aria-live="polite">
-            {error && <span className="text-destructive">{error}</span>}
-            {tooMany && (
-              <span className="text-destructive">
-                장수가 너무 많습니다({frames}장, 최대 {MAX_FRAMES}장). 구간을 줄이거나 초당 장수를 낮춰 주세요.
-              </span>
-            )}
-            {!tooMany && estimate !== null && estimate > 10 * 1024 * 1024 && (
-              <span className="text-amber-700 dark:text-amber-300">10MB 가 넘습니다. 가로 크기·초당 장수·화질을 낮추거나 구간을 줄이면 가벼워집니다.</span>
-            )}
-            {first && outW < (Number(width) || 0) && <span className="text-muted-foreground">원본보다 크게는 만들지 않습니다.</span>}
-          </div>
-        )}
-        {fetching && (
-          <div className="flex w-full items-center gap-2 text-xs" aria-live="polite">
-            <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
-            원본 동영상 불러오는 중… <span className="tabular-nums">{Math.round(fetching.ratio * 100)}%</span>
-            <Progress value={fetching.ratio * 100} className="h-1.5 w-40" />
-            <span className="truncate text-muted-foreground">{fetching.name}</span>
-          </div>
-        )}
-        {loaded && (
-          <div className="flex w-full items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-xs" aria-live="polite">
-            <FileInput className="size-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 break-keep">
-              "{loaded.title}" 설정을 불러왔습니다. 이 기록에는 원본 동영상이 없어서 다시 골라야 합니다
-              {loaded.form.source ? ` — 원본: ${loaded.form.source} (같은 파일을 고르면 구간 ${fmt(loaded.form.start)}–${fmt(loaded.form.end)}도 채웁니다)` : ""}
-            </span>
-            <Button variant="ghost" size="icon-xs" aria-label="불러온 설정 안내 닫기" onClick={() => setLoaded(null)}>
-              <X />
-            </Button>
-          </div>
-        )}
-      </div>
-
+      )}
       <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,24vw,420px)]">
         <div className="grid min-h-0 gap-2 lg:grid-rows-[minmax(0,62fr)_minmax(0,38fr)]">
           <div className="grid min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_clamp(300px,22vw,400px)]">

@@ -1,8 +1,10 @@
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useCallback, useRef, useState } from "react"
 import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, ShieldCheck, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { ToolChromeContext } from "@/components/tools/tool-chrome"
 import { Input } from "@/components/ui/input"
 import { PAGE_GRID } from "@/lib/layout"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
@@ -259,10 +261,22 @@ function ToolsList({ onOpen }: { onOpen: (t: Tool) => void }) {
   )
 }
 
-// 로그인한 화면: 앱은 전체 화면 창으로 연다(오른쪽 위 X 로 닫기)
+// 로그인한 화면: 앱은 전체 화면 창으로 연다(오른쪽 위 X 로 닫기).
+// 도구는 머리 오른쪽(X 왼쪽)에 버튼을 넣을 수 있고(ToolHeaderActions), 저장하지 않은 작업이 있으면(useToolDirty) 닫기 전에 묻는다
 function ToolDialog({ tool: open, onClose }: { tool: Tool | null; onClose: () => void }) {
+  const [actions, setActions] = useState<HTMLDivElement | null>(null)
+  const dirty = useRef(false)
+  const setDirty = useCallback((d: boolean) => {
+    dirty.current = d
+  }, [])
+  const [confirm, setConfirm] = useState(false)
+  const requestClose = () => {
+    if (dirty.current) setConfirm(true)
+    else onClose()
+  }
   return (
-      <Dialog open={open !== null} onOpenChange={(o) => !o && onClose()}>
+    <ToolChromeContext.Provider value={{ actions, setDirty }}>
+      <Dialog open={open !== null} onOpenChange={(o) => !o && requestClose()}>
         <DialogContent
           showCloseButton={false}
           className="flex h-svh max-h-svh w-screen max-w-none flex-col gap-0 rounded-none p-0 sm:max-w-none"
@@ -276,11 +290,11 @@ function ToolDialog({ tool: open, onClose }: { tool: Tool | null; onClose: () =>
                   <DialogTitle className="truncate">{open.name}</DialogTitle>
                   <DialogDescription className="truncate text-xs">{open.description}</DialogDescription>
                 </div>
-                <DialogClose asChild>
-                  <Button variant="ghost" size="icon" aria-label="닫기">
-                    <X />
-                  </Button>
-                </DialogClose>
+                {/* 도구가 넣는 버튼 자리(X 왼쪽) */}
+                <div ref={setActions} className="flex items-center gap-2" />
+                <Button variant="ghost" size="icon" aria-label="닫기" onClick={requestClose}>
+                  <X />
+                </Button>
               </div>
               {/* 도구 화면 스크롤도 부드럽게 */}
               <SmoothScrollArea className={`min-h-0 flex-1 overflow-auto ${open.fill ? "lg:overflow-hidden" : ""}`} contentClassName={open.fill ? "lg:h-full" : undefined}>
@@ -290,5 +304,27 @@ function ToolDialog({ tool: open, onClose }: { tool: Tool | null; onClose: () =>
           )}
         </DialogContent>
       </Dialog>
+      <AlertDialog open={confirm} onOpenChange={setConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>작업 중인 내용이 있습니다</AlertDialogTitle>
+            <AlertDialogDescription className="break-keep">저장하지 않고 닫으면 지금 편집한 내용이 사라집니다. 그래도 닫을까요?</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>계속 작업</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                dirty.current = false
+                setConfirm(false)
+                onClose()
+              }}
+            >
+              저장 안 하고 닫기
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ToolChromeContext.Provider>
   )
 }
