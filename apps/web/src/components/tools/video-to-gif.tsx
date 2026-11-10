@@ -754,7 +754,15 @@ export function VideoConvertTool() {
   const [playing, setPlaying] = useState(false)
   const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
-  const preview = useRef<HTMLVideoElement>(null)
+  // 미리보기 동영상은 두 개를 번갈아 쓴다(앞 = 보이는 것). 전체 재생 중에는 뒤에 다음 클립을 미리 열어 두었다가 경계에서 바꿔 끼운다
+  const preview = useRef<HTMLVideoElement | null>(null)
+  const vidA = useRef<HTMLVideoElement | null>(null)
+  const vidB = useRef<HTMLVideoElement | null>(null)
+  const vids = [vidA, vidB]
+  const [front, setFront] = useState<0 | 1>(0)
+  const frontRef = useRef<0 | 1>(0)
+  const prepared = useRef<{ id: number } | null>(null)
+  const lastSwitch = useRef(0)
   const cancelRef = useRef<(() => void) | null>(null)
   // 히스토리에서 불러온 설정: 원본 동영상은 남기지 않아서, 만든 움짤과 원본 이름을 보여 주고 같은 동영상을 고르면 구간까지 채운다
   const [loaded, setLoaded] = useState<{ title: string; fileId: string; form: VideoForm } | null>(null)
@@ -926,17 +934,52 @@ export function VideoConvertTool() {
     setTime(v.currentTime)
     if (v.paused) return // 멈춰 있을 때는 프레임 띠에서 구간 밖을 눌러 봐도 그 자리에 둔다
     if (seqRef.current && v.currentTime >= range[1] - 0.04) {
-      nextClip()
+      if (performance.now() - lastSwitch.current > 200) nextClip()
       return
     }
     if (v.currentTime >= range[1] || v.currentTime < range[0] - 0.05) v.currentTime = range[0]
   }
   // 전체 재생: 다음 클립(마지막이면 처음)으로 넘어가 그 클립 시작부터 이어서 재생한다
+  const nextOf = (c: Clip) => clips[(clips.findIndex((x) => x.id === c.id) + 1) % clips.length]
+  // 다음 클립을 뒤 영상에 미리 열고 시작 위치로 옮겨 둔다(지금 클립 끝 1.2초 전부터)
+  const prepareNext = () => {
+    const v = preview.current
+    if (!seqRef.current || !v || !activeClip || v.paused) return
+    if (range[1] - v.currentTime > 1.2) return
+    const next = nextOf(activeClip)
+    if (prepared.current?.id === next.id) return
+    const back = vids[1 - frontRef.current].current
+    if (!back) return
+    prepared.current = { id: next.id }
+    back.defaultPlaybackRate = back.playbackRate = Number(speed)
+    const go = () => {
+      back.currentTime = next.start
+    }
+    if (back.src !== next.source.url) {
+      back.addEventListener("loadeddata", go, { once: true })
+      back.src = next.source.url
+    } else go()
+  }
   const nextClip = () => {
     const v = preview.current
     if (!v || !activeClip) return
-    const i = clips.findIndex((c) => c.id === activeClip.id)
-    const next = clips[(i + 1) % clips.length]
+    lastSwitch.current = performance.now()
+    const next = nextOf(activeClip)
+    const back = vids[1 - frontRef.current].current
+    // 뒤 영상이 다음 클립 시작에 준비돼 있으면 바꿔 끼우고 바로 이어 재생(끊김 없음)
+    if (back && prepared.current?.id === next.id && back.readyState >= 2 && !back.seeking && Math.abs(back.currentTime - next.start) < 0.08) {
+      prepared.current = null
+      const f = (1 - frontRef.current) as 0 | 1
+      frontRef.current = f
+      preview.current = back
+      void back.play().catch(() => {})
+      v.pause()
+      setFront(f)
+      setTime(next.start)
+      setActiveId(next.id)
+      return
+    }
+    prepared.current = null
     if (next.source.url === activeClip.source.url) {
       // 같은 동영상이면 위치만 옮긴다
       v.currentTime = next.start
@@ -995,6 +1038,14 @@ export function VideoConvertTool() {
     }
   }
 
+  useEffect(() => {
+    const v = preview.current
+    if (v && source && v.src !== source.url) {
+      prepared.current = null
+      v.src = source.url
+    }
+    // 결과를 보다 돌아오면 영상 칸이 새로 생겨 다시 넣는다(result)
+  }, [source, front, result])
   // 재생 속도를 미리보기에도 반영한다(결과를 보다 돌아오면 영상이 새로 붙어 다시 맞춘다)
   useEffect(() => {
     const v = preview.current
@@ -1029,14 +1080,22 @@ export function VideoConvertTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adjust, motion, result])
 
-  // 재생 위치(프레임 띠의 세로선). 재생 중에는 화면 그릴 때마다 따라간다
+  // 재생 위치(재생 헤드). 재생 중에는 화면 그릴 때마다 따라가고, 전체 재생이면 다음 클립을 준비하고 경계에서 바로 넘긴다
   const [time, setTime] = useState(0)
+  const tickRef = useRef<() => void>(() => {})
+  tickRef.current = () => {
+    const v = preview.current
+    if (!v) return
+    setTime(v.currentTime)
+    drawAdjusted()
+    prepareNext()
+    if (seqRef.current && !v.paused && v.currentTime >= range[1] - 0.03 && performance.now() - lastSwitch.current > 200) nextClip()
+  }
   useEffect(() => {
     if (!playing) return
     let raf = 0
     const tick = () => {
-      if (preview.current) setTime(preview.current.currentTime)
-      drawAdjusted()
+      tickRef.current()
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -1423,28 +1482,34 @@ export function VideoConvertTool() {
   // 단축키(프리미어와 같게): 스페이스 재생 · ←→ 1프레임(Shift = 1초) · Home/End · I/O 시작·끝 표시 · C 자르기
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keysRef.current = (e: KeyboardEvent) => {
-    if (!source || result || busy) return
+    if (!source || result || busy || saveOpen) return
+    // 확인 창·고르기 목록이 열려 있으면 그쪽이 먼저
+    if (document.querySelector('[role=alertdialog], [role=listbox], [role=menu]')) return
+    // 글자를 치는 칸에서만 단축키를 쉰다(눈금·버튼·슬라이더에 포커스가 있어도 편집 단축키가 먼저)
     const el = e.target instanceof HTMLElement ? e.target : null
-    if (el && (el.closest("input, textarea, select, [contenteditable=true], [role=combobox], [role=listbox], [role=option], [role=tab]") || (el.getAttribute("role") === "slider" && !el.closest("[data-monitor]")))) return
-    if (e.ctrlKey || e.metaKey || e.altKey) return
-    const k = e.key
-    if (k === " ") playFromHead()
-    else if (k === "ArrowLeft" || k === "ArrowRight") {
-      const d = (k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 1 : 1 / Math.max(1, Number(fps)))
+    if (el && (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color)$/i.test((el as HTMLInputElement).type)))) return
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return
+    // 한글 입력 상태에서도 되게 글자(e.key) 대신 키 위치(e.code)로 본다(C = ㅊ, I = ㅑ, O = ㅐ)
+    const c = e.code
+    if (c === "Space") playFromHead()
+    else if (c === "ArrowLeft" || c === "ArrowRight") {
+      const d = (c === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 1 : 1 / Math.max(1, Number(fps)))
       preview.current?.pause()
       seekSequence(Math.min(Math.max(now + d, 0), Math.max(0, totalLength - 0.001)))
-    } else if (k === "Home") seekSequence(0)
-    else if (k === "End") seekSequence(Math.max(0, totalLength - 0.001))
-    else if (k === "i" || k === "I") markIn()
-    else if (k === "o" || k === "O") markOut()
-    else if (k === "c" || k === "C") splitAtPlayhead()
+    } else if (c === "Home") seekSequence(0)
+    else if (c === "End") seekSequence(Math.max(0, totalLength - 0.001))
+    else if (c === "KeyI") markIn()
+    else if (c === "KeyO") markOut()
+    else if (c === "KeyC") splitAtPlayhead()
     else return
+    // 처리한 키는 포커스된 칸(눈금·버튼 등)으로 넘기지 않는다(두 번 움직이거나 버튼이 눌리지 않게)
     e.preventDefault()
+    e.stopPropagation()
   }
   useEffect(() => {
     const on = (e: KeyboardEvent) => keysRef.current(e)
-    window.addEventListener("keydown", on)
-    return () => window.removeEventListener("keydown", on)
+    window.addEventListener("keydown", on, true)
+    return () => window.removeEventListener("keydown", on, true)
   }, [])
   const mediaThumb = useClipThumbs(media.map((s) => ({ id: -1, source: s, start: 0, end: s.duration })))
   const clipNo = clips.findIndex((c) => c.id === activeClip?.id) + 1
@@ -1687,22 +1752,34 @@ export function VideoConvertTool() {
                       className={previewZoom === "fit" ? "absolute inset-0" : "relative m-auto shrink-0"}
                       style={previewZoom === "fit" ? undefined : { width: source.width * Number(previewZoom), height: source.height * Number(previewZoom) }}
                     >
-                    <video
-                      ref={preview}
-                      src={source.url}
-                      preload="auto"
-                      muted
-                      playsInline
-                      onTimeUpdate={onTime}
-                      onSeeked={onSeeked}
-                      onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
-                      onPlay={() => setPlaying(true)}
-                      onPause={() => setPlaying(false)}
-                      onClick={togglePlay}
-                      onLoadedData={onPreviewReady}
-                      onEnded={onEnded}
-                      className="absolute inset-0 size-full cursor-pointer object-contain"
-                    />
+                    {([0, 1] as const).map((i) => {
+                      // 보이는 영상(앞)의 일만 받는다. 뒤 영상은 다음 클립을 미리 여는 데만 쓴다
+                      const onFront = (fn: () => void) => (e: React.SyntheticEvent<HTMLVideoElement>) => {
+                        if (e.currentTarget === preview.current) fn()
+                      }
+                      return (
+                        <video
+                          key={i}
+                          ref={(el) => {
+                            vids[i].current = el
+                            if (frontRef.current === i) preview.current = el
+                          }}
+                          preload="auto"
+                          muted
+                          playsInline
+                          onTimeUpdate={onFront(onTime)}
+                          onSeeked={onFront(onSeeked)}
+                          onLoadedMetadata={(e) => (e.currentTarget.defaultPlaybackRate = e.currentTarget.playbackRate = Number(speed))}
+                          onPlay={onFront(() => setPlaying(true))}
+                          onPause={onFront(() => setPlaying(false))}
+                          onClick={onFront(togglePlay)}
+                          onLoadedData={onFront(onPreviewReady)}
+                          onEnded={onFront(onEnded)}
+                          aria-hidden={front !== i}
+                          className={`absolute inset-0 size-full object-contain ${front === i ? "cursor-pointer" : "pointer-events-none opacity-0"}`}
+                        />
+                      )
+                    })}
                     {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
                     <canvas
                       ref={adjustCanvas}
