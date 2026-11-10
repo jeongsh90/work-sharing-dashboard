@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CopyPlus, Download, FileInput, History, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
+import { CopyPlus, Download, FileInput, History, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
@@ -870,11 +870,10 @@ export function VideoConvertTool() {
   const loadedRef = useRef<{ title: string; fileId: string; form: VideoForm } | null>(null)
 
   // 화면을 닫으면 만든 주소·작업을 정리한다(동영상 주소는 어느 클립도 쓰지 않게 되면 푼다)
+  // (뺀 동영상도 되돌리기로 다시 쓸 수 있어 주소는 창을 닫을 때 한꺼번에 푼다)
   const urlsRef = useRef(new Set<string>())
   useEffect(() => {
-    const used = new Set([...clips.map((c) => c.source.url), ...media.map((s) => s.url)])
-    for (const u of urlsRef.current) if (!used.has(u)) URL.revokeObjectURL(u)
-    urlsRef.current = used
+    for (const u of [...clips.map((c) => c.source.url), ...media.map((s) => s.url)]) urlsRef.current.add(u)
   }, [clips, media])
   useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
   useEffect(() => () => void (result && URL.revokeObjectURL(result.url)), [result])
@@ -1557,6 +1556,64 @@ export function VideoConvertTool() {
     togglePlay()
   }
   // 단축키(프리미어와 같게): 스페이스 재생 · ←→ 1프레임(Shift = 1초) · Home/End · I/O 시작·끝 표시 · C 자르기 · Delete 고른 클립 삭제
+  // ── 되돌리기 기록: 바뀐 뒤 0.35초 손을 멈추면 한 단계로 남긴다(슬라이더·손잡이 끌기는 끌기 한 번 = 한 단계) ──
+  type Snap = { clips: Clip[]; media: Source[]; adjust: Adjust; motion: Motion; activeId: number | null }
+  const hist = useRef<{ past: Snap[]; present: Snap | null; future: Snap[] }>({ past: [], present: null, future: [] })
+  const [histVer, setHistVer] = useState(0) // 버튼 켜기·끄기만 다시 그리게
+  const snapNow = useRef<Snap>({ clips, media, adjust, motion, activeId })
+  snapNow.current = { clips, media, adjust, motion, activeId: activeClip?.id ?? null }
+  const sameSnap = (a: Snap, b: Snap) => a.clips === b.clips && a.media === b.media && a.adjust === b.adjust && a.motion === b.motion
+  const record = () => {
+    const h = hist.current
+    const now = snapNow.current
+    if (h.present && sameSnap(h.present, now)) {
+      h.present = now // 고른 클립만 바뀐 것은 단계로 남기지 않는다
+      return
+    }
+    if (h.present) h.past.push(h.present)
+    if (h.past.length > 100) h.past.shift()
+    h.present = now
+    h.future = []
+    setHistVer((v) => v + 1)
+  }
+  useEffect(() => {
+    const t = setTimeout(record, 350)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clips, media, adjust, motion])
+  const applySnap = (p: Snap) => {
+    preview.current?.pause()
+    setSeqPlay(false)
+    setClips(p.clips)
+    setMedia(p.media)
+    setAdjust(p.adjust)
+    setMotion(p.motion)
+    setActiveId(p.clips.some((c) => c.id === p.activeId) ? p.activeId : (p.clips[0]?.id ?? null))
+    setResult(null)
+    setError(null)
+    setHistVer((v) => v + 1)
+  }
+  const undo = () => {
+    record() // 아직 남기지 않은 마지막 변경부터
+    const h = hist.current
+    const prev = h.past.pop()
+    if (!prev || !h.present) return
+    h.future.push(h.present)
+    h.present = prev
+    applySnap(prev)
+  }
+  const redo = () => {
+    record()
+    const h = hist.current
+    const next = h.future.pop()
+    if (!next || !h.present) return
+    h.past.push(h.present)
+    h.present = next
+    applySnap(next)
+  }
+  void histVer
+  const canUndo = hist.current.past.length > 0 || (hist.current.present !== null && !sameSnap(hist.current.present, snapNow.current))
+  const canRedo = hist.current.future.length > 0
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keysRef.current = (e: KeyboardEvent) => {
     if (!source || result || busy || saveOpen) return
@@ -1565,6 +1622,13 @@ export function VideoConvertTool() {
     // 글자를 치는 칸에서만 단축키를 쉰다(눈금·버튼·슬라이더에 포커스가 있어도 편집 단축키가 먼저)
     const el = e.target instanceof HTMLElement ? e.target : null
     if (el && (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color)$/i.test((el as HTMLInputElement).type)))) return
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === "KeyZ" || e.code === "KeyY")) {
+      if (e.code === "KeyY" || e.shiftKey) redo()
+      else undo()
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return
     // 한글 입력 상태에서도 되게 글자(e.key) 대신 키 위치(e.code)로 본다(C = ㅊ, I = ㅑ, O = ㅐ)
     const c = e.code
@@ -1837,7 +1901,7 @@ export function VideoConvertTool() {
                 ) : source ? (
                   <span className="truncate text-xs text-muted-foreground tabular-nums">
                     {multi ? `${clipNo}번 클립 · ` : ""}
-                    {source.file.name} · {source.width}×{source.height} · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제
+                    {source.file.name} · {source.width}×{source.height} · 스페이스 재생 · ←→ 1프레임 · I/O 시작·끝 · C 자르기 · Delete 삭제 · Ctrl+Z 되돌리기
                   </span>
                 ) : null
               }
@@ -2099,6 +2163,16 @@ export function VideoConvertTool() {
               actions={
                 source ? (
                   <>
+                    <Tip content="되돌리기 (Ctrl+Z)">
+                      <Button variant="ghost" size="icon-xs" aria-label="되돌리기" disabled={busy || !canUndo} onClick={undo}>
+                        <Undo2 />
+                      </Button>
+                    </Tip>
+                    <Tip content="다시 실행 (Ctrl+Shift+Z)">
+                      <Button variant="ghost" size="icon-xs" aria-label="다시 실행" disabled={busy || !canRedo} onClick={redo}>
+                        <Redo2 />
+                      </Button>
+                    </Tip>
                     <Tip content="재생 위치에서 고른 클립을 둘로 자릅니다(면도칼)">
                       <Button variant="outline" size="xs" disabled={busy} onClick={splitAtPlayhead}>
                         <Scissors data-icon="inline-start" />
