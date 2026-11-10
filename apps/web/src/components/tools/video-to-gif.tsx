@@ -1848,20 +1848,6 @@ export function VideoConvertTool() {
               </div>
             )}
           </SmoothScrollArea>
-          <SheetFooter className="border-t">
-            <Button
-              size="lg"
-              className="w-full"
-              disabled={!source}
-              onClick={() => {
-                setSettingsOpen(false)
-                setSaveOpen(true)
-              }}
-            >
-              <Save data-icon="inline-start" />
-              저장하기로
-            </Button>
-          </SheetFooter>
         </SheetContent>
       </Sheet>
 
