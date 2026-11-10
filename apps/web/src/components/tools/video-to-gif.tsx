@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, Scissors, SlidersHorizontal, Upload, Wand2, X } from "lucide-react"
+import { Download, Film, LoaderCircle, Move, Pause, Play, RotateCcw, Scissors, SlidersHorizontal, Upload, Wand2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -14,6 +15,7 @@ import { ToolHistory } from "@/components/tools/tool-history"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
+import { drawWithMotion, isNoMotion, NO_MOTION, type Motion } from "@/components/tools/video-motion"
 import { Tip } from "@/components/tip"
 
 // 동영상 → GIF · 동영상 → WebP: 동영상 파일(MP4·MOV·WebM)을 골라 구간·크기·초당 장수를 정하고 GIF(또는 움직이는 WebP)로 바꾼다.
@@ -93,6 +95,7 @@ type VideoForm = {
   speed: string
   repeat: string
   adjust: Adjust
+  motion?: Motion // 모션·불투명도(프리미어 효과 컨트롤과 같은 칸)
   source: string // 원본 파일 이름
   start: number // 구간(초)
   end: number
@@ -142,6 +145,7 @@ async function measurePerFrame(
   h: number,
   option: string,
   adjust: Adjust,
+  motion: Motion,
   alive: () => boolean,
 ): Promise<number | null> {
   const video = document.createElement("video")
@@ -169,7 +173,7 @@ async function measurePerFrame(
     for (const t of times) {
       if (!alive()) return null
       await seek(video, t)
-      ctx.drawImage(video, 0, 0, w, h)
+      drawWithMotion(ctx, video, video.videoWidth, video.videoHeight, w, h, motion)
       const img = ctx.getImageData(0, 0, w, h)
       applyAdjust(img.data, adjust)
       const data = img.data.buffer
@@ -307,6 +311,8 @@ export function VideoConvertTool() {
   const [repeat, setRepeat] = useState("0")
   const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST) // 색 보정(노출·오프셋·감마·색조·채도·명도)
   const adjusted = !isNoAdjust(adjust)
+  const [motion, setMotion] = useState<Motion>(NO_MOTION) // 모션·불투명도(위치·비율·회전·기준점·깜박임 제거·자르기)
+  const moved = source ? !isNoMotion(motion, source.width, source.height) : false
   const adjustCanvas = useRef<HTMLCanvasElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ step: string; ratio: number; done: number } | null>(null)
@@ -370,10 +376,13 @@ export function VideoConvertTool() {
   // 색 보정 미리보기: 보정이 있으면 동영상 위 캔버스에 지금 장면을 보정해 그린다(가로 최대 860 으로 줄여서)
   const adjustRef = useRef(adjust)
   adjustRef.current = adjust
+  const motionRef = useRef(motion)
+  motionRef.current = motion
   const drawAdjusted = () => {
     const v = preview.current
     const c = adjustCanvas.current
-    if (!v || !c || !v.videoWidth || isNoAdjust(adjustRef.current)) return
+    if (!v || !c || !v.videoWidth) return
+    if (isNoAdjust(adjustRef.current) && isNoMotion(motionRef.current, v.videoWidth, v.videoHeight)) return
     const w = Math.min(860, v.videoWidth)
     const h = Math.max(1, Math.round((v.videoHeight * w) / v.videoWidth))
     if (c.width !== w || c.height !== h) {
@@ -381,7 +390,8 @@ export function VideoConvertTool() {
       c.height = h
     }
     const ctx = c.getContext("2d", { willReadFrequently: true })!
-    ctx.drawImage(v, 0, 0, w, h)
+    drawWithMotion(ctx, v, v.videoWidth, v.videoHeight, w, h, motionRef.current)
+    if (isNoAdjust(adjustRef.current)) return
     const img = ctx.getImageData(0, 0, w, h)
     applyAdjust(img.data, adjustRef.current)
     ctx.putImageData(img, 0, 0)
@@ -389,7 +399,7 @@ export function VideoConvertTool() {
   useEffect(() => {
     drawAdjusted()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adjust, result])
+  }, [adjust, motion, result])
 
   // 재생 위치(프레임 띠의 세로선). 재생 중에는 화면 그릴 때마다 따라간다
   const [time, setTime] = useState(0)
@@ -485,14 +495,14 @@ export function VideoConvertTool() {
 
   // 설정을 바꾸면 잠깐 뒤(손을 멈춘 뒤) 한 장 평균 크기를 다시 잰다. 초당 장수·속도·반복은 장수만 바뀌어 다시 재지 않는다.
   const [perFrame, setPerFrame] = useState<{ key: string; bytes: number } | null>(null)
-  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}|${JSON.stringify(adjust)}` : ""
+  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}|${JSON.stringify(adjust)}|${JSON.stringify(motion)}` : ""
   useEffect(() => {
     // 손잡이를 끄는 동안에는 재지 않는다(미리보기와 영상 읽기를 다투지 않게)
     if (!source || busy || sliding || length <= 0) return
     let alive = true
     const timer = setTimeout(() => {
       const times = Array.from({ length: SAMPLES }, (_, i) => Math.min(range[0] + ((i + 0.5) * length) / SAMPLES, source.duration - 0.001))
-      measurePerFrame(format, source.url, times, outW, outH, colors, adjust, () => alive).then(
+      measurePerFrame(format, source.url, times, outW, outH, colors, adjust, motion, () => alive).then(
         (bytes) => alive && bytes !== null && setPerFrame({ key: sampleKey, bytes }),
         () => {},
       )
@@ -549,7 +559,7 @@ export function VideoConvertTool() {
       for (let i = 0; i < frames; i++) {
         if (cancelled) return
         await seek(video, Math.min(range[0] + i / Number(fps), source.duration - 0.001))
-        ctx.drawImage(video, 0, 0, outW, outH)
+        drawWithMotion(ctx, video, source.width, source.height, outW, outH, motion)
         const img = ctx.getImageData(0, 0, outW, outH)
         applyAdjust(img.data, adjust)
         const data = img.data.buffer
@@ -564,7 +574,7 @@ export function VideoConvertTool() {
       setResult(made)
       // 만든 움짤과 설정을 히스토리에 남긴다(제목 = 만든 파일 이름. 같은 동영상도 WebP·GIF 는 따로 보인다)
       if (blob.size <= HISTORY_MAX) {
-        const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, source: source.file.name, start: range[0], end: range[1], outW, outH, frames, size: blob.size }
+        const form: VideoForm = { format, width, fps, colors, speed, repeat, adjust, motion, source: source.file.name, start: range[0], end: range[1], outW, outH, frames, size: blob.size }
         const safe = base.replace(/[^\w.\-가-힣 ]/g, "_").slice(0, 50) || "video"
         blobToDataUrl(blob)
           .then((image) => api("/tools/video/history", { body: { title: made.name, fileName: `${safe}.${format}`, form, image } }))
@@ -604,6 +614,7 @@ export function VideoConvertTool() {
     setSpeed(f.speed)
     setRepeat(f.repeat)
     setAdjust(f.adjust ?? NO_ADJUST)
+    setMotion(f.motion ?? NO_MOTION)
     setResult(null)
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -847,6 +858,8 @@ export function VideoConvertTool() {
                 </Field>
               </div>
 
+              <MotionPanel value={motion} onChange={setMotion} srcW={source.width} srcH={source.height} disabled={busy} />
+
               <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} />
 
               <Field data-invalid={tooMany}>
@@ -972,11 +985,11 @@ export function VideoConvertTool() {
                   onLoadedData={drawAdjusted}
                   className="max-h-[60vh] w-full cursor-pointer object-contain"
                 />
-                {/* 색 보정 미리보기(보정이 있을 때만). 누르면 아래 동영상이 받는다 */}
+                {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
                 <canvas
                   ref={adjustCanvas}
                   aria-hidden
-                  className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted ? "" : "hidden"}`}
+                  className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${adjusted || moved ? "" : "hidden"}`}
                 />
               </div>
               <div className="flex items-center gap-3">
@@ -1118,6 +1131,248 @@ function AdjustPanel({ value, onChange, disabled }: { value: Adjust; onChange: (
         })}
       </div>
       <FieldDescription className="break-keep">포토샵 노출·색조/채도와 같은 방식입니다. 미리보기와 만드는 파일에 그대로 들어갑니다.</FieldDescription>
+    </Field>
+  )
+}
+
+// ── 모션 칸: 프리미어 프로 효과 컨트롤의 "모션"·"불투명도"와 같은 칸. 파란 숫자를 좌우로 끌면 바뀌고(Shift = 10배), 누르면 직접 입력 ──
+function Scrub({
+  value,
+  onChange,
+  step,
+  digits,
+  min = -Infinity,
+  max = Infinity,
+  suffix = "",
+  label,
+  disabled,
+}: {
+  value: number
+  onChange: (v: number) => void
+  step: number
+  digits: number
+  min?: number
+  max?: number
+  suffix?: string
+  label: string
+  disabled?: boolean
+}) {
+  const [edit, setEdit] = useState<string | null>(null)
+  const drag = useRef<{ x: number; v: number; moved: boolean } | null>(null)
+  const clamp = (v: number) => Math.min(max, Math.max(min, Number(v.toFixed(digits))))
+  const commit = () => {
+    const n = Number(edit)
+    if (edit !== null && edit.trim() !== "" && Number.isFinite(n)) onChange(clamp(n))
+    setEdit(null)
+  }
+  if (edit !== null)
+    return (
+      <Input
+        autoFocus
+        aria-label={label}
+        value={edit}
+        inputMode="decimal"
+        className="h-7 w-20 px-1.5 text-right text-sm tabular-nums"
+        onChange={(e) => setEdit(e.target.value)}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit()
+          if (e.key === "Escape") setEdit(null)
+        }}
+      />
+    )
+  return (
+    <button
+      type="button"
+      aria-label={`${label} ${value.toFixed(digits)}${suffix}`}
+      disabled={disabled}
+      className="cursor-ew-resize rounded px-1 text-sm text-sky-600 tabular-nums select-none hover:underline disabled:cursor-default disabled:opacity-50 dark:text-sky-400"
+      onPointerDown={(e) => {
+        if (disabled || e.button !== 0) return
+        e.currentTarget.setPointerCapture(e.pointerId)
+        drag.current = { x: e.clientX, v: value, moved: false }
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current
+        if (!d) return
+        const dx = e.clientX - d.x
+        if (Math.abs(dx) > 2) d.moved = true
+        if (d.moved) onChange(clamp(d.v + dx * step * (e.shiftKey ? 10 : 1)))
+      }}
+      onPointerUp={() => {
+        const d = drag.current
+        drag.current = null
+        if (d && !d.moved) setEdit(value.toFixed(digits))
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight" || e.key === "ArrowUp") onChange(clamp(value + step * (e.shiftKey ? 10 : 1)))
+        else if (e.key === "ArrowLeft" || e.key === "ArrowDown") onChange(clamp(value - step * (e.shiftKey ? 10 : 1)))
+        else return
+        e.preventDefault()
+      }}
+    >
+      {value.toFixed(digits)}
+      {suffix}
+    </button>
+  )
+}
+
+function MotionPanel({
+  value,
+  onChange,
+  srcW,
+  srcH,
+  disabled,
+}: {
+  value: Motion
+  onChange: (m: Motion) => void
+  srcW: number
+  srcH: number
+  disabled?: boolean
+}) {
+  const set = (patch: Partial<Motion>) => onChange({ ...value, ...patch })
+  const x = value.x ?? srcW / 2
+  const y = value.y ?? srcH / 2
+  const ax = value.ax ?? srcW / 2
+  const ay = value.ay ?? srcH / 2
+  type Row = { label: string; changed: boolean; reset: Partial<Motion>; body: React.ReactNode; dim?: boolean }
+  const crop = (key: "cropL" | "cropT" | "cropR" | "cropB", label: string): Row => ({
+    label,
+    changed: value[key] !== 0,
+    reset: { [key]: 0 },
+    body: <Scrub label={label} value={value[key]} step={0.1} digits={1} min={0} max={100} suffix=" %" disabled={disabled} onChange={(v) => set({ [key]: v })} />,
+  })
+  const rows: Row[] = [
+    {
+      label: "위치",
+      changed: x !== srcW / 2 || y !== srcH / 2,
+      reset: { x: null, y: null },
+      body: (
+        <>
+          <Scrub label="위치 가로" value={x} step={1} digits={1} disabled={disabled} onChange={(v) => set({ x: v })} />
+          <Scrub label="위치 세로" value={y} step={1} digits={1} disabled={disabled} onChange={(v) => set({ y: v })} />
+        </>
+      ),
+    },
+    {
+      label: "비율 조정",
+      changed: value.scale !== 100,
+      reset: { scale: 100 },
+      body: <Scrub label="비율 조정" value={value.scale} step={0.5} digits={1} min={0} max={10000} disabled={disabled} onChange={(v) => set({ scale: v })} />,
+    },
+    {
+      label: "폭 비율 조정",
+      changed: !value.uniform && value.scaleW !== 100,
+      reset: { scaleW: 100 },
+      dim: value.uniform,
+      body: (
+        <Scrub
+          label="폭 비율 조정"
+          value={value.uniform ? value.scale : value.scaleW}
+          step={0.5}
+          digits={1}
+          min={0}
+          max={10000}
+          disabled={disabled || value.uniform}
+          onChange={(v) => set({ scaleW: v })}
+        />
+      ),
+    },
+    {
+      label: "",
+      changed: false,
+      reset: {},
+      body: (
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={value.uniform}
+            disabled={disabled}
+            onCheckedChange={(on) => set(on === true ? { uniform: true } : { uniform: false, scaleW: value.scale })}
+          />
+          균일 비율
+        </label>
+      ),
+    },
+    {
+      label: "회전",
+      changed: value.rotation !== 0,
+      reset: { rotation: 0 },
+      body: <Scrub label="회전" value={value.rotation} step={0.5} digits={1} suffix="°" disabled={disabled} onChange={(v) => set({ rotation: v })} />,
+    },
+    {
+      label: "기준점",
+      changed: ax !== srcW / 2 || ay !== srcH / 2,
+      reset: { ax: null, ay: null },
+      body: (
+        <>
+          <Scrub label="기준점 가로" value={ax} step={1} digits={1} disabled={disabled} onChange={(v) => set({ ax: v })} />
+          <Scrub label="기준점 세로" value={ay} step={1} digits={1} disabled={disabled} onChange={(v) => set({ ay: v })} />
+        </>
+      ),
+    },
+    {
+      label: "깜박임 제거 필터",
+      changed: value.flicker !== 0,
+      reset: { flicker: 0 },
+      body: <Scrub label="깜박임 제거 필터" value={value.flicker} step={0.01} digits={2} min={0} max={1} disabled={disabled} onChange={(v) => set({ flicker: v })} />,
+    },
+    crop("cropL", "왼쪽 자르기"),
+    crop("cropT", "위쪽 자르기"),
+    crop("cropR", "오른쪽 자르기"),
+    crop("cropB", "아래쪽 자르기"),
+  ]
+  const opacityRow: Row = {
+    label: "불투명도",
+    changed: value.opacity !== 100,
+    reset: { opacity: 100 },
+    body: <Scrub label="불투명도" value={value.opacity} step={0.5} digits={1} min={0} max={100} suffix=" %" disabled={disabled} onChange={(v) => set({ opacity: v })} />,
+  }
+  const line = (r: Row, i: number) => (
+    <div key={r.label || `row-${i}`} className="flex min-h-8 items-center gap-2">
+      <span className={`w-28 shrink-0 text-sm ${r.dim ? "text-muted-foreground/60" : ""}`}>{r.label}</span>
+      <div className="flex flex-1 flex-wrap items-center gap-2">{r.body}</div>
+      {r.label && (
+        <Tip content={`${r.label} 기본값`}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`${r.label} 기본값`}
+            disabled={disabled || !r.changed}
+            onClick={() => set(r.reset)}
+          >
+            <RotateCcw />
+          </Button>
+        </Tip>
+      )}
+    </div>
+  )
+  return (
+    <Field>
+      <FieldLabel>
+        <Move className="size-4" />
+        모션
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="ml-auto"
+          disabled={disabled || isNoMotion(value, srcW, srcH)}
+          onClick={() => onChange(NO_MOTION)}
+        >
+          <RotateCcw data-icon="inline-start" />
+          기본값
+        </Button>
+      </FieldLabel>
+      <div className="flex flex-col gap-0.5 rounded-lg border p-3">
+        {rows.map(line)}
+        <span className="mt-2 border-t pt-3 text-xs font-medium text-muted-foreground">불투명도</span>
+        {line(opacityRow, rows.length)}
+      </div>
+      <FieldDescription className="break-keep">
+        프리미어 프로 효과 컨트롤과 같은 방식입니다. 파란 숫자를 좌우로 끌면 바뀌고(Shift 를 누르면 10배), 누르면 직접 입력합니다. 위치·기준점은 원본({srcW}×{srcH}) 픽셀 기준이고, 비는 곳은 검정으로 채웁니다.
+      </FieldDescription>
     </Field>
   )
 }
