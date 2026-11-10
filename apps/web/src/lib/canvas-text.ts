@@ -1,4 +1,4 @@
-// 디자인 툴 캔버스 그리기 공통: 글꼴(Noto Sans KR 500·700) 불러오기와 칸 폭에 맞춘 줄바꿈.
+// 디자인 툴 캔버스 그리기 공통: 글꼴(Noto Sans KR 500·700·900) 불러오기와 칸 폭에 맞춘 줄바꿈.
 
 export const FONT = '"Noto Sans KR"'
 
@@ -8,11 +8,11 @@ export function loadFonts() {
   if (!fontsReady) {
     const link = document.createElement("link")
     link.rel = "stylesheet"
-    link.href = "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700&display=block"
+    link.href = "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=block"
     document.head.appendChild(link)
     fontsReady = new Promise<void>((resolve) => {
       link.onload = () =>
-        Promise.all([document.fonts.load(`700 40px ${FONT}`, "가나다"), document.fonts.load(`500 26px ${FONT}`, "가나다")]).then(
+        Promise.all([document.fonts.load(`700 40px ${FONT}`, "가나다"), document.fonts.load(`500 26px ${FONT}`, "가나다"), document.fonts.load(`900 40px ${FONT}`, "가나다")]).then(
           () => resolve(),
           () => resolve(),
         )

@@ -8,10 +8,12 @@ import { apiFetch, ApiError } from "@/lib/api"
 import { FONT, loadFonts } from "@/lib/canvas-text"
 import { useZoom, ZoomControl } from "@/components/tools/zoom-control"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
+import noroBgUrl from "@/assets/tools/noro-cert/noro-bg.jpg"
+import noroSandUrl from "@/assets/tools/noro-cert/noro-sand.png"
 
 // 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
 // 사양: docs/tools/수매확인서_툴_사양.md (Figma 셰프애찬 461:212). 고칠 수 있는 건 생산일자뿐이다.
-// 디자인 툴 > 노로 비검출해역 확인서도 같은 틀(Figma 720:352)에 글·강조만 다르다(CERTS.noro, 사양 docs/tools/노로비검출_툴_사양.md).
+// 디자인 툴 > 노로 비검출해역 확인서는 바다 배경 틀(Figma 729:441, 860×1400, 파란 강조)이다(CERTS.noro, 사양 docs/tools/노로비검출_툴_사양.md).
 // 말풍선은 '생산일자' + PDF 표 첫 칸(생산일자)에 적힌 값 그대로(예 10.22). 서버가 OCR 로 읽어 채운다.
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다. PDF 분석(이미지·OCR·위치)은 서버가 한다(apps/api/src/purchase-cert.ts).
 
@@ -28,14 +30,15 @@ type Layout = {
 }
 
 const W = 860
-const H = 1429
 const SCALE = 1 // 결과 이미지 = Figma 프레임 크기 그대로(가로 860)
 const ORANGE = "#ff4d00"
 const INK = "#111111"
 const SUB = "#555555"
-const PAPER = { x: 120, y: 392 + 80, w: 620, h: 877 } // 이미지 영역(392부터 1037) 가운데, 위아래 80
+const BLUE = "#1d4ed8" // 노로 강조(형광펜·연결·말풍선 테두리)
+const TITLE_BLUE = "#2563eb"
+const DESC_BLUE = "#3b82f6"
 
-type Seg = { text: string; weight: 500 | 700; color: string }
+type Seg = { text: string; weight: 500 | 700 | 900; color: string }
 
 // 확인서 종류마다 다른 것: 서버 주소 · 제목·설명 글 · 강조 말풍선 글과 폭 · 날짜 말풍선 머리 · 받는 파일 · 내려받는 이름
 type CertConfig = {
@@ -50,6 +53,11 @@ type CertConfig = {
   fileName: string
   defaultDateBox: { left: number; top: number } // 표를 못 찾았을 때 날짜 말풍선 기본 위치
   findText: string // 첨부 칸 안내: 무엇을 찾는지
+  height: number // 결과 이미지 높이(가로는 860)
+  paper: { x: number; y: number; w: number; h: number } // 종이 자리
+  docTop: number // 종이 안에서 확인서 첫 장이 놓이는 높이(강조 좌표도 이만큼 내려간다)
+  accent: string // 형광펜·연결·말풍선 테두리 색
+  theme: "pattern" | "sea" // 바탕: 주황 패턴(수매확인서) / 바다 사진 + 아래 모래(노로)
 }
 const CERTS: Record<"purchase" | "noro", CertConfig> = {
   purchase: {
@@ -76,22 +84,27 @@ const CERTS: Record<"purchase" | "noro", CertConfig> = {
     fileName: "2026.jpg", // 다운로드 파일 이름은 늘 2026.jpg
     defaultDateBox: { left: 11, top: 527 }, // 사양 7-6 기준값
     findText: "'생식용 굴'·생산일자",
+    height: 1429,
+    paper: { x: 120, y: 392 + 80, w: 620, h: 877 }, // 이미지 영역(392부터 1037) 가운데, 위아래 80
+    docTop: 0,
+    accent: ORANGE,
+    theme: "pattern",
   },
-  // 노로 비검출해역 확인서(Figma 720:352): 표 채취해역 칸의 '노로 비검출해역' + 수매일자
+  // 노로 비검출해역 확인서(Figma 729:441): 표 채취해역 칸의 '노로 비검출해역' + 수매일자
   noro: {
     endpoint: "/tools/noro-cert",
     name: "노로 비검출해역 확인서",
     title: [
-      { text: "노로 비검출", weight: 700, color: ORANGE },
+      { text: "노로 비검출", weight: 900, color: TITLE_BLUE },
       { text: " 해역 굴", weight: 700, color: INK },
     ],
     desc: [
       [
-        { text: "노로바이러스 비검출 해역", weight: 700, color: ORANGE },
+        { text: "노로바이러스 비검출 해역", weight: 900, color: DESC_BLUE },
         { text: "에서 채취한", weight: 500, color: SUB },
       ],
       [
-        { text: "생식용 굴", weight: 700, color: ORANGE },
+        { text: "생식용 굴", weight: 900, color: DESC_BLUE },
         { text: "만 수매하였음을 확인 받았습니다.", weight: 500, color: SUB },
       ],
     ],
@@ -102,6 +115,11 @@ const CERTS: Record<"purchase" | "noro", CertConfig> = {
     fileName: "noro.jpg",
     defaultDateBox: { left: 58, top: 385 },
     findText: "'노로 비검출해역'·수매일자",
+    height: 1400,
+    paper: { x: 120, y: 1400 - 120 - 877, w: 620, h: 877 }, // 아래 여백 120, 종이 아래쪽은 모래에 묻힌다
+    docTop: 10,
+    accent: BLUE,
+    theme: "sea",
   },
 }
 
@@ -157,9 +175,9 @@ function bubble(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, 
 }
 
 // 테두리 2px 안쪽
-function bubbleBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+function bubbleBorder(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
   ctx.save()
-  ctx.strokeStyle = ORANGE
+  ctx.strokeStyle = color
   ctx.lineWidth = 2
   ctx.beginPath()
   ctx.roundRect(x + 1, y + 1, w - 2, h - 2, 7)
@@ -175,42 +193,48 @@ async function draw(
   value: string,
 ) {
   await loadFonts()
-  const pattern = await loadImage(patternUrl)
+  const sea = cfg.theme === "sea"
+  const [back, sand] = sea ? await Promise.all([loadImage(noroBgUrl), loadImage(noroSandUrl)]) : [await loadImage(patternUrl), null]
+  const H = cfg.height
+  const PAPER = cfg.paper
   const ctx = canvas.getContext("2d")!
   canvas.width = W * SCALE
   canvas.height = H * SCALE
   ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0)
   ctx.imageSmoothingQuality = "high" // PDF(2480px)를 종이(620)에 줄여 넣을 때 글자가 뭉개지지 않게
 
-  // 바탕
+  // 바탕: 흰색(수매확인서) / 바다 사진(노로, 종이 왼쪽 아래 그림자까지 들어 있다)
   ctx.fillStyle = "#ffffff"
   ctx.fillRect(0, 0, W, H)
+  if (sea) ctx.drawImage(back, 0, 0, W, H)
 
   // 제목(72 Bold, '안심' 주황) · 설명(30 Medium, 강조 Bold 주황) — 제목 줄 y120~206, 설명 y234 부터 줄높이 49
   drawLine(ctx, cfg.title, 72, -0.02, 120 + 43)
   drawLine(ctx, cfg.desc[0], 30, -0.02, 234 + 24.5)
   drawLine(ctx, cfg.desc[1], 30, -0.02, 234 + 49 + 24.5)
 
-  // 이미지 영역: 패턴(248 원본을 124 로 반복)
-  const tile = document.createElement("canvas")
-  tile.width = 124 * SCALE
-  tile.height = 124 * SCALE
-  tile.getContext("2d")!.drawImage(pattern, 0, 0, tile.width, tile.height)
-  const pat = ctx.createPattern(tile, "repeat")!
-  pat.setTransform(new DOMMatrix([1 / SCALE, 0, 0, 1 / SCALE, 0, 392]))
-  ctx.fillStyle = pat
-  ctx.fillRect(0, 392, W, 1037)
+  // 이미지 영역: 패턴(248 원본을 124 로 반복) — 수매확인서만
+  if (!sea) {
+    const tile = document.createElement("canvas")
+    tile.width = 124 * SCALE
+    tile.height = 124 * SCALE
+    tile.getContext("2d")!.drawImage(back, 0, 0, tile.width, tile.height)
+    const pat = ctx.createPattern(tile, "repeat")!
+    pat.setTransform(new DOMMatrix([1 / SCALE, 0, 0, 1 / SCALE, 0, 392]))
+    ctx.fillStyle = pat
+    ctx.fillRect(0, 392, W, 1037)
+  }
 
-  // 종이(그림자 y8 blur24 10%) + PDF 첫 장
+  // 종이(그림자: 수매확인서 y8 blur24 10% / 노로 y5 blur5 15%) + 확인서 첫 장(노로는 종이 위 10 아래로 내려 놓는다)
   ctx.save()
-  ctx.shadowColor = "rgba(0,0,0,0.10)"
-  ctx.shadowBlur = 24
-  ctx.shadowOffsetY = 8
+  ctx.shadowColor = sea ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.10)"
+  ctx.shadowBlur = sea ? 5 : 24
+  ctx.shadowOffsetY = sea ? 5 : 8
   ctx.fillStyle = "#ffffff"
   ctx.fillRect(PAPER.x, PAPER.y, PAPER.w, PAPER.h)
   ctx.restore()
   if (page) {
-    ctx.drawImage(page, PAPER.x, PAPER.y, PAPER.w, PAPER.h)
+    ctx.drawImage(page, PAPER.x, PAPER.y + cfg.docTop, PAPER.w, PAPER.h)
   } else {
     ctx.font = `500 22px ${FONT}`
     ctx.letterSpacing = "0px"
@@ -220,23 +244,29 @@ async function draw(
     ctx.textAlign = "start"
   }
 
-  // 아래부터 종이 기준 좌표
+  // 아래부터 확인서 첫 장 기준 좌표(서버가 준 강조 위치는 첫 장 620×877 기준)
   ctx.save()
-  ctx.translate(PAPER.x, PAPER.y)
+  ctx.translate(PAPER.x, PAPER.y + cfg.docTop)
   const { highlight: hl, tag, dateBox } = layout
 
-  // 형광펜 + 연결(주황 30% · 곱하기)
+  // 형광펜 + 연결(강조색 30% · 곱하기)
+  // 연결: 수매확인서는 형광펜 폭 → 말풍선 폭(양쪽 7 안쪽), 노로(Figma 729:441)는 형광펜 가운데 60% → 말풍선 가운데 150
   if (hl) {
     ctx.save()
     ctx.globalCompositeOperation = "multiply"
-    ctx.fillStyle = "rgba(255,77,0,0.30)"
+    ctx.fillStyle = cfg.accent
+    ctx.globalAlpha = 0.3
     ctx.fillRect(hl.l, hl.t, hl.r - hl.l, hl.b - hl.t)
     if (tag) {
+      const mid = (hl.l + hl.r) / 2
+      const top = sea ? [mid - (hl.r - hl.l) * 0.3, mid + (hl.r - hl.l) * 0.3] : [hl.l, hl.r]
+      const tagMid = tag.left + cfg.tagWidth / 2
+      const bottom = sea ? [tagMid - 75, tagMid + 75] : [tag.left + 7, tag.left + cfg.tagWidth - 7]
       ctx.beginPath()
-      ctx.moveTo(hl.l, hl.b)
-      ctx.lineTo(hl.r, hl.b)
-      ctx.lineTo(tag.left + cfg.tagWidth - 7, tag.top)
-      ctx.lineTo(tag.left + 7, tag.top)
+      ctx.moveTo(top[0], hl.b)
+      ctx.lineTo(top[1], hl.b)
+      ctx.lineTo(bottom[1], tag.top)
+      ctx.lineTo(bottom[0], tag.top)
       ctx.closePath()
       ctx.fill()
     }
@@ -246,7 +276,7 @@ async function draw(
   // 강조 말풍선('생식용 굴' 164×50 / '노로 비검출해역' 220×50)
   if (tag) {
     bubble(ctx, tag.left, tag.top, cfg.tagWidth, 50)
-    bubbleBorder(ctx, tag.left, tag.top, cfg.tagWidth, 50)
+    bubbleBorder(ctx, tag.left, tag.top, cfg.tagWidth, 50, cfg.accent)
     centerText(ctx, cfg.tagLabel, 24, -0.02, tag.left + cfg.tagWidth / 2, tag.top + 2 + 23)
   }
 
@@ -260,14 +290,17 @@ async function draw(
     ctx.clip()
     ctx.fillStyle = "#f5f5f5"
     ctx.fillRect(x + 2, y + 2, 160, 50)
-    ctx.fillStyle = ORANGE
+    ctx.fillStyle = cfg.accent
     ctx.fillRect(x + 2, y + 2 + 48, 160, 2)
     ctx.restore()
-    bubbleBorder(ctx, x, y, 164, 112)
+    bubbleBorder(ctx, x, y, 164, 112, cfg.accent)
     centerText(ctx, cfg.dateLabel, 24, -0.013, x + 82, y + 2 + 24)
     centerText(ctx, value, 31, -0.01, x + 82, y + 52 + 29)
   }
   ctx.restore()
+
+  // 노로: 맨 위에 모래(종이 아래쪽을 덮는다)
+  if (sand) ctx.drawImage(sand, 0, H - sand.height, W, sand.height)
 }
 
 export function PurchaseCertTool() {
@@ -408,7 +441,7 @@ function CertTool({ cfg }: { cfg: CertConfig }) {
           <Download data-icon="inline-start" />
           {ready ? `${fileName} 다운로드` : "확인서를 올리면 다운로드할 수 있습니다"}
         </Button>
-        <p className="text-xs text-muted-foreground">이미지 860×1429 JPG(Figma 프레임 크기). 상세페이지 업로드는 알드라이브로 직접 합니다.</p>
+        <p className="text-xs text-muted-foreground">이미지 860×{cfg.height} JPG(Figma 프레임 크기). 상세페이지 업로드는 알드라이브로 직접 합니다.</p>
       </div>
     </div>
   )
