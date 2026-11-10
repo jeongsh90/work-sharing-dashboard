@@ -1426,7 +1426,7 @@ export function VideoConvertTool() {
     setSpeed(f.speed)
     setRepeat(f.repeat)
     setAdjust(normalizeAdjust(f.adjust))
-    setMotion(f.motion ?? NO_MOTION)
+    setMotion(f.motion ? { ...f.motion, opacity: 100 } : NO_MOTION)
     setResult(null)
   }
 
@@ -2073,7 +2073,7 @@ export function VideoConvertTool() {
                   <MotionPanel value={motion} onChange={setMotion} srcW={source.width} srcH={source.height} disabled={busy} />
                 </div>
               ) : (
-                <EmptyNote>동영상을 가져오면 위치·비율·회전·자르기·불투명도를 조절합니다.</EmptyNote>
+                <EmptyNote>동영상을 가져오면 위치·비율·회전·자르기를 조절합니다.</EmptyNote>
               )}
             </Panel>
           </div>
@@ -2717,12 +2717,6 @@ function MotionPanel({
     crop("cropR", "오른쪽 자르기"),
     crop("cropB", "아래쪽 자르기"),
   ]
-  const opacityRow: Row = {
-    label: "불투명도",
-    changed: value.opacity !== 100,
-    reset: { opacity: 100 },
-    body: <Scrub label="불투명도" value={value.opacity} step={0.5} digits={1} min={0} max={100} suffix=" %" disabled={disabled} onChange={(v) => set({ opacity: v })} />,
-  }
   const line = (r: Row, i: number) => (
     <div key={r.label || `row-${i}`} className="flex min-h-8 items-center gap-2">
       <span className={`w-28 shrink-0 text-sm ${r.dim ? "text-muted-foreground/60" : ""}`}>{r.label}</span>
@@ -2762,8 +2756,6 @@ function MotionPanel({
       </FieldLabel>
       <div className="flex flex-col gap-0.5 rounded-lg border p-3">
         {rows.map(line)}
-        <span className="mt-2 border-t pt-3 text-xs font-medium text-muted-foreground">불투명도</span>
-        {line(opacityRow, rows.length)}
       </div>
       <FieldDescription className="break-keep">
         프리미어 프로 효과 컨트롤과 같은 방식입니다. 파란 숫자를 좌우로 끌면 바뀌고(Shift 를 누르면 10배), 누르면 직접 입력합니다. 위치·기준점은 원본({srcW}×{srcH}) 픽셀 기준이고, 비는 곳은 검정으로 채웁니다.
