@@ -16,6 +16,7 @@ const execFileAsync = promisify(execFile)
 const SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), '../scripts/pdf-page.ps1')
 const PAGE_WIDTH = 2480 // A4 300dpi 가로
 const PAPER_WIDTH = 620
+const PAPER_HEIGHT = 877
 
 type Word = { t: string; x: number; y: number; w: number; h: number; line: string }
 type Ocr = { width: number; height: number; lines: { text: string; words: Omit<Word, 'line'>[] }[] }
@@ -88,6 +89,8 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
     if (pageCount > 1) warnings.push(`PDF 가 ${pageCount}쪽입니다. 첫 장만 씁니다.`)
 
     const s = PAPER_WIDTH / ocr.width
+    // 세로는 세로 비율로(화면은 첫 장을 종이 620×877 에 맞춰 늘려 그린다. A4 가 아닌 PDF·스캔도 강조가 제자리에 오게)
+    const sy = PAPER_HEIGHT / ocr.height
     const words: Word[] = ocr.lines.flatMap((l) => l.words.map((w) => ({ ...w, line: l.text })))
 
     // 7-2. 발행일
@@ -123,7 +126,7 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
         const end = rest.find((w) => /해역/.test(w.t)) ?? rest[rest.length - 1] ?? n1
         const top = Math.min(n1.y, end.y)
         const bottom = Math.max(n1.y + n1.h, end.y + end.h)
-        highlight = { l: (n1.x - 8) * s, t: (top - 8) * s, r: (end.x + end.w + 8) * s, b: (bottom + 8) * s }
+        highlight = { l: (n1.x - 8) * s, t: (top - 8) * sy, r: (end.x + end.w + 8) * s, b: (bottom + 8) * sy }
         const left = (highlight.l + highlight.r) / 2 - 110
         tag = { left: Math.max(4, Math.min(PAPER_WIDTH - 224, left)), top: highlight.b + 14 }
       } else {
@@ -136,7 +139,7 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
     } else if (w1) {
       const w2 = words.filter((w) => w.line === w1.line && w.x > w1.x).sort((a, b) => a.x - b.x)[0]
       const right = w2 && /^굴/.test(w2.t) ? w2.x + w2.w / [...w2.t].length : w1.x + w1.w
-      highlight = { l: (w1.x - 8) * s, t: (w1.y - 10) * s, r: (right + 8) * s, b: (w1.y + w1.h + 10) * s }
+      highlight = { l: (w1.x - 8) * s, t: (w1.y - 10) * sy, r: (right + 8) * s, b: (w1.y + w1.h + 10) * sy }
       // 7-4. 말풍선: 형광펜 가운데 아래
       tag = { left: (highlight.l + highlight.r) / 2 - 82, top: highlight.b + 14 }
     } else {
@@ -167,7 +170,7 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
       let y = mid
       while (dark(vx, y) && y < PH) y++
       const B = scanY(vx, y, 1)
-      dateBox = { left: R * s + 4 - 164, top: ((T + B) / 2) * s - 56 }
+      dateBox = { left: R * s + 4 - 164, top: ((T + B) / 2) * sy - 56 }
       // 생산일자 값: 첫 칸 머리 아래(값 칸) 안에 든 글자를 PDF 에 적힌 그대로 읽는다(예 10.22)
       const cell = words
         .filter((w) => {
@@ -200,11 +203,14 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
           .join('')
         const m = /(20\d{2})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})/.exec(row)
         if (m) produced = `${m[2].padStart(2, '0')}.${m[3].padStart(2, '0')}`
-        // 표를 못 찾았으면 말풍선을 그 줄 높이에 둔다
-        if (!dateBox) dateBox = { left: 58, top: cy * s - 56 }
       }
-      // 말풍선을 조금 아래로(표 머리보다 값 줄 쪽으로)
-      if (dateBox) dateBox = { ...dateBox, top: dateBox.top + 24 }
+      // 말풍선 위치: 표 칸 계산은 PDF·이미지마다 흔들려서, '노로 비검출해역' 값 줄 가운데에 맞춘다(어떤 파일이든 같은 자리).
+      // 가로는 표 첫 칸 오른쪽 선에 맞추되, 못 찾았거나 엉뚱하면 기본값 58
+      if (noroWord) {
+        const cy = noroWord.y + noroWord.h / 2
+        const left = dateBox && dateBox.left >= 20 && dateBox.left <= 150 ? dateBox.left : 58
+        dateBox = { left, top: cy * sy - 56 }
+      }
     }
     if (dateBox && !produced) warnings.push(kind === 'noro' ? '확인서에서 수매일자 값을 읽지 못했습니다. 직접 입력해 주세요.' : 'PDF 에서 생산일자 값을 읽지 못했습니다. 직접 입력해 주세요.')
 
