@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Download, FileInput, History, Search, Trash2 } from "lucide-react"
+import { Download, FileInput, History, LoaderCircle, Search, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,7 +30,7 @@ export function ToolHistory<F>({
   contain = false,
 }: {
   tool: string
-  onLoad?: (form: F) => void | Promise<void>
+  onLoad?: (form: F, item: HistoryItem<F>) => void | Promise<void>
   fileName?: (title: string, item: HistoryItem<F>) => string
   // 주면 썸네일 없이 목록으로 보여 준다(상세페이지: 카테고리·번호 같은 정보 한 줄)
   meta?: (form: F) => string
@@ -55,6 +55,17 @@ export function ToolHistory<F>({
     }
     return { latest, old }
   }, [data])
+  // 불러오는 중인 기록: 버튼에 도는 표시를 띄우고 그동안 다른 불러오기는 막는다(너무 빨리 끝나도 잠깐은 보이게)
+  const [loadingId, setLoadingId] = useState<number | null>(null)
+  const load = async (h: HistoryItem<F>) => {
+    if (!onLoad || loadingId !== null) return
+    setLoadingId(h.id)
+    try {
+      await Promise.all([onLoad(h.form, h), new Promise((r) => setTimeout(r, 350))])
+    } finally {
+      setLoadingId(null)
+    }
+  }
   const base = showOld ? old : latest
   const q = query.trim().toLowerCase()
   const list = base.filter((h) => !q || `${h.title} ${h.authorName}`.toLowerCase().includes(q))
@@ -98,8 +109,8 @@ export function ToolHistory<F>({
               <Tip content={onLoad ? "누르면 입력 내용을 불러옵니다" : undefined}><button
                 type="button"
                 className="flex min-w-0 flex-1 flex-col text-left disabled:opacity-50"
-                disabled={!onLoad}
-                onClick={() => onLoad && void onLoad(h.form)}
+                disabled={!onLoad || loadingId !== null}
+                onClick={() => void load(h)}
               >
                 <span className="truncate font-medium hover:underline">{h.title}</span>
                 <span className="truncate text-xs text-muted-foreground tabular-nums">
@@ -107,9 +118,9 @@ export function ToolHistory<F>({
                 </span>
               </button></Tip>
               {onLoad && (
-                <Button size="sm" variant="outline" onClick={() => void onLoad(h.form)}>
-                  <FileInput data-icon="inline-start" />
-                  불러오기
+                <Button size="sm" variant="outline" disabled={loadingId !== null} onClick={() => void load(h)}>
+                  {loadingId === h.id ? <LoaderCircle data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <FileInput data-icon="inline-start" />}
+                  {loadingId === h.id ? "불러오는 중…" : "불러오기"}
                 </Button>
               )}
               <Button size="icon-sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label={`${h.title} 지우기`} onClick={() => remove(h)}>
@@ -128,6 +139,12 @@ export function ToolHistory<F>({
                 onClick={() => downloadFile(h.fileId, fileName(h.title, h))}
               >
                 <AuthImage fileId={h.fileId} alt={h.title} size="w640" className={contain ? "size-full object-contain" : "size-full object-cover object-top"} />
+                {loadingId === h.id && (
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/70 text-sm font-medium backdrop-blur-[1px]">
+                    <LoaderCircle className="size-6 animate-spin motion-reduce:animate-none" />
+                    불러오는 중…
+                  </span>
+                )}
               </button></Tip>
               <div className="flex flex-col gap-1 p-3">
                 <Tip content={h.title}><p className="truncate text-sm font-medium">
@@ -142,8 +159,8 @@ export function ToolHistory<F>({
                     다운로드
                   </Button>
                   {onLoad && (
-                    <Tip content={"입력 내용 불러오기"}><Button size="icon-sm" variant="ghost" aria-label="입력 내용 불러오기" onClick={() => void onLoad(h.form)}>
-                      <FileInput />
+                    <Tip content={"입력 내용 불러오기"}><Button size="icon-sm" variant="ghost" aria-label="입력 내용 불러오기" disabled={loadingId !== null} onClick={() => void load(h)}>
+                      {loadingId === h.id ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <FileInput />}
                     </Button></Tip>
                   )}
                   <Button size="icon-sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label="삭제" onClick={() => remove(h)}>

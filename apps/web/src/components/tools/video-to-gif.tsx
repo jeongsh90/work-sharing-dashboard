@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Download, Film, LoaderCircle, Move, Pause, Play, RotateCcw, Scissors, SlidersHorizontal, Upload, Wand2, X } from "lucide-react"
+import { Download, FileInput, Film, LoaderCircle, Move, Pause, Play, RotateCcw, Scissors, SlidersHorizontal, Upload, Wand2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -11,7 +11,8 @@ import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api, formatBytes } from "@/lib/api"
 import { invalidate } from "@/lib/store"
-import { ToolHistory } from "@/components/tools/tool-history"
+import { ToolHistory, type HistoryItem } from "@/components/tools/tool-history"
+import { AuthImage } from "@/components/requests/file-list"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
 import { applyAdjust, isNoAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
@@ -322,6 +323,9 @@ export function VideoConvertTool() {
   const picker = useRef<HTMLInputElement>(null)
   const preview = useRef<HTMLVideoElement>(null)
   const cancelRef = useRef<(() => void) | null>(null)
+  // 히스토리에서 불러온 설정: 원본 동영상은 남기지 않아서, 만든 움짤과 원본 이름을 보여 주고 같은 동영상을 고르면 구간까지 채운다
+  const [loaded, setLoaded] = useState<{ title: string; fileId: string; form: VideoForm } | null>(null)
+  const topRef = useRef<HTMLDivElement>(null)
 
   // 화면을 닫으면 만든 주소·작업을 정리한다
   useEffect(() => () => void (source && URL.revokeObjectURL(source.url)), [source])
@@ -348,8 +352,10 @@ export function VideoConvertTool() {
         return
       }
       setSource({ file, url, duration: v.duration, width: v.videoWidth, height: v.videoHeight })
-      // 처음에는 앞 5초(짧으면 전체)
-      setRange([0, Math.min(v.duration, 5)])
+      // 처음에는 앞 5초(짧으면 전체). 불러온 설정과 같은 동영상이면 그때 구간
+      const same = loaded && loaded.form.source === file.name
+      setRange(same ? [Math.min(loaded.form.start, v.duration), Math.min(loaded.form.end, v.duration)] : [0, Math.min(v.duration, 5)])
+      setLoaded(null)
       setPlaying(false)
     }
     v.onerror = () => {
@@ -605,8 +611,13 @@ export function VideoConvertTool() {
   }
 
   // 히스토리에서 불러오기: 그때 설정(형식·크기·화질·속도·반복·색 보정)을 채운다. 동영상은 다시 골라야 한다
-  const loadForm = (f: VideoForm) => {
+  const loadForm = (f: VideoForm, h: HistoryItem<VideoForm>) => {
     if (busy) return
+    // 지금 열린 동영상이 그때 원본과 같으면 구간도 채우고, 아니면 원본을 다시 고르라고 보여 준다
+    if (source && source.file.name === f.source) {
+      setRange([Math.min(f.start, source.duration), Math.min(f.end, source.duration)])
+      setLoaded(null)
+    } else setLoaded({ title: h.title, fileId: h.fileId, form: f })
     setFormat(f.format)
     setWidth(f.width)
     setFps(f.fps)
@@ -616,7 +627,8 @@ export function VideoConvertTool() {
     setAdjust(f.adjust ?? NO_ADJUST)
     setMotion(f.motion ?? NO_MOTION)
     setResult(null)
-    window.scrollTo({ top: 0, behavior: "smooth" })
+    // 도구 창 안에서 스크롤하므로 창의 맨 위 칸으로 옮긴다
+    requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
   }
 
   const reset = () => {
@@ -629,7 +641,7 @@ export function VideoConvertTool() {
   const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files")
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl grid-cols-12 gap-6 p-4 md:p-6">
+    <div ref={topRef} className="mx-auto grid w-full max-w-6xl scroll-mt-4 grid-cols-12 gap-6 p-4 md:p-6">
       <input
         ref={picker}
         type="file"
@@ -671,6 +683,26 @@ export function VideoConvertTool() {
               {format === "gif" ? "어디서나 열리는 움짤. 256색이라 용량이 큽니다." : "같은 화질에 GIF 의 절반 이하 용량. 상세페이지에는 .webp 그대로 올립니다."}
             </FieldDescription>
           </Field>
+          {loaded && (
+            <div className="flex gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3" aria-live="polite">
+              <div className="size-20 shrink-0 overflow-hidden rounded-md bg-muted">
+                <AuthImage fileId={loaded.fileId} alt={loaded.title} size="w640" className="size-full object-contain" />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+                <span className="font-medium break-keep">
+                  <FileInput className="mr-1 inline size-4 align-[-2px]" />
+                  "{loaded.title}" 설정을 불러왔습니다
+                </span>
+                <span className="text-xs break-keep text-muted-foreground">
+                  형식·크기·화질·속도·반복·모션·색 보정을 채웠습니다. 원본 동영상은 저장하지 않아서 다시 골라야 합니다
+                  {loaded.form.source ? ` — 원본: ${loaded.form.source} (같은 파일을 고르면 구간 ${fmt(loaded.form.start)}–${fmt(loaded.form.end)}도 채웁니다)` : ""}
+                </span>
+              </div>
+              <Button variant="ghost" size="icon-sm" aria-label="불러온 설정 안내 닫기" onClick={() => setLoaded(null)}>
+                <X />
+              </Button>
+            </div>
+          )}
           <Field>
             <FieldLabel>동영상</FieldLabel>
             {source ? (
