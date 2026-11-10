@@ -82,30 +82,46 @@ function toneTable(a: Adjust) {
   return out
 }
 
+// 채널마다 입력 0~255 → 출력 0~255 표(흰색 균형·노출·톤을 한 번에). 같은 보정값이면 다시 만들지 않는다(미리보기는 장면마다 부른다)
+type Luts = { r: Uint8Array; g: Uint8Array; b: Uint8Array }
+const lutCache = new Map<string, Luts>()
+function channelLuts(a: Adjust): Luts {
+  const key = `${a.temperature}|${a.tint}|${a.exposure}|${a.contrast}|${a.highlights}|${a.shadows}|${a.whites}|${a.blacks}`
+  const hit = lutCache.get(key)
+  if (hit) return hit
+  const [gr, gg, gb] = wbGains(a.temperature, a.tint)
+  const ev = 2 ** a.exposure
+  const T = toneTable(a)
+  const top = STEPS - 1
+  const make = (k: number) => Uint8Array.from({ length: 256 }, (_, i) => T[Math.min(top, Math.round(LIN[i] * k * ev * top))])
+  const luts = { r: make(gr), g: make(gg), b: make(gb) }
+  if (lutCache.size > 32) lutCache.clear()
+  lutCache.set(key, luts)
+  return luts
+}
+
 // 장면 하나(RGBA)를 그 자리에서 고친다
 export function applyAdjust(data: Uint8ClampedArray, a: Adjust) {
   if (isNoAdjust(a)) return
-  const [gr, gg, gb] = wbGains(a.temperature, a.tint)
-  const ev = 2 ** a.exposure
-  const kr = gr * ev
-  const kg = gg * ev
-  const kb = gb * ev
-  const T = toneTable(a)
-  const top = STEPS - 1
+  const { r: LR, g: LG, b: LB } = channelLuts(a)
   const sat = a.saturation / 100
-  for (let i = 0; i < data.length; i += 4) {
-    let r = T[Math.min(top, Math.round(LIN[data[i]] * kr * top))]
-    let g = T[Math.min(top, Math.round(LIN[data[i + 1]] * kg * top))]
-    let b = T[Math.min(top, Math.round(LIN[data[i + 2]] * kb * top))]
-    if (sat !== 1) {
-      const y = 0.2126 * r + 0.7152 * g + 0.0722 * b
-      r = y + (r - y) * sat
-      g = y + (g - y) * sat
-      b = y + (b - y) * sat
+  const n = data.length
+  if (sat === 1) {
+    for (let i = 0; i < n; i += 4) {
+      data[i] = LR[data[i]]
+      data[i + 1] = LG[data[i + 1]]
+      data[i + 2] = LB[data[i + 2]]
     }
-    data[i] = r
-    data[i + 1] = g
-    data[i + 2] = b
+    return
+  }
+  for (let i = 0; i < n; i += 4) {
+    const r = LR[data[i]]
+    const g = LG[data[i + 1]]
+    const b = LB[data[i + 2]]
+    const y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    data[i] = y + (r - y) * sat
+    data[i + 1] = y + (g - y) * sat
+    data[i + 2] = y + (b - y) * sat
   }
 }
 

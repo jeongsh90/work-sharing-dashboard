@@ -13,7 +13,37 @@ const cache = new Map<string, unknown>()
 let version = 0
 const listeners = new Set<() => void>()
 
+// 같은 주소를 여러 화면 조각이 쓰면(예: 홈 표·사이드바·머리글이 모두 /requests) 한 번만 받는다:
+// - 받는 중이면 그 결과를 같이 쓴다(inflight)
+// - 방금(1.5초 안) 받았으면 다시 받지 않는다(fetchedAt) — 30초 주기·창으로 돌아올 때 조각마다 따로 받던 것
+// - 받은 내용이 전과 같으면 예전 값을 그대로 돌려줘 화면을 다시 그리지 않는다(cacheText)
+const inflight = new Map<string, Promise<unknown>>()
+const fetchedAt = new Map<string, number>()
+const cacheText = new Map<string, string>()
+const FRESH_MS = 1500
+
+function fetchShared<T>(path: string): Promise<T> {
+  const running = inflight.get(path)
+  if (running) return running as Promise<T>
+  const p = api<T>(path)
+    .then((data) => {
+      const text = JSON.stringify(data)
+      if (cache.has(path) && cacheText.get(path) === text) return cache.get(path) as T
+      cacheText.set(path, text)
+      cache.set(path, data)
+      return data
+    })
+    .finally(() => {
+      inflight.delete(path)
+      fetchedAt.set(path, Date.now())
+    })
+  inflight.set(path, p)
+  return p
+}
+
 export function invalidate() {
+  // 무언가를 바꾼 뒤에는 방금 받았어도 다시 받는다
+  fetchedAt.clear()
   version++
   listeners.forEach((l) => l())
 }
@@ -25,6 +55,8 @@ function subscribe(listener: () => void) {
 
 export function clearCache() {
   cache.clear()
+  cacheText.clear()
+  fetchedAt.clear()
 }
 
 export function useApi<T>(path: string | null, pollMs = 30_000) {
@@ -38,14 +70,16 @@ export function useApi<T>(path: string | null, pollMs = 30_000) {
   useEffect(() => {
     if (!path) return
     let alive = true
-    const load = () =>
-      api<T>(path).then(
-        (data) => {
-          cache.set(path, data)
-          if (alive) setState({ path, data, error: null })
-        },
-        (error: Error) => alive && setState((s) => ({ path, data: s.path === path ? s.data : null, error: error.message })),
-      )
+    // 받은 값이 화면에 있는 것과 같으면(같은 참조) 상태를 바꾸지 않는다 → 다시 그리지 않음
+    const show = (data: T) =>
+      alive && setState((s) => (s.path === path && s.data === data && s.error === null ? s : { path, data, error: null }))
+    const load = () => {
+      if (cache.has(path) && Date.now() - (fetchedAt.get(path) ?? 0) < FRESH_MS && !inflight.has(path)) {
+        show(cache.get(path) as T)
+        return
+      }
+      fetchShared<T>(path).then(show, (error: Error) => alive && setState((s) => ({ path, data: s.path === path ? s.data : null, error: error.message })))
+    }
     load()
     const timer = setInterval(() => document.visibilityState === 'visible' && load(), pollMs)
     // 다른 창(예: 요청자 창과 작업자 창)을 오가면 돌아온 즉시 새로 받는다.

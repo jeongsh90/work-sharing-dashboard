@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Download, FileText, ImageOff, LoaderCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -23,7 +23,23 @@ export function AuthImage({
   style?: React.CSSProperties
   onLoad?: () => void
 }) {
-  const { url, error } = useFileUrl(fileId, size)
+  // 화면에 들어오기 직전(300px 앞)에 받는다: 카드가 많은 화면(최종 파일 보관함 등)에서 안 보이는 이미지까지 한꺼번에 받지 않게
+  const holder = useRef<HTMLDivElement>(null)
+  const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined")
+  useEffect(() => {
+    if (near) return
+    const el = holder.current
+    if (!el) return
+    const io = new IntersectionObserver((es) => {
+      if (es.some((e) => e.isIntersecting)) {
+        setNear(true)
+        io.disconnect()
+      }
+    }, { rootMargin: "300px" })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [near])
+  const { url, error } = useFileUrl(near ? fileId : null, size)
   if (error) {
     return (
       <div className={`flex items-center justify-center gap-2 bg-muted p-6 text-sm text-muted-foreground ${className ?? ""}`}>
@@ -34,7 +50,7 @@ export function AuthImage({
   }
   if (!url) {
     return (
-      <div className={`flex min-h-40 w-full items-center justify-center gap-2 bg-muted text-sm text-muted-foreground ${className ?? ""}`}>
+      <div ref={holder} className={`flex min-h-40 w-full items-center justify-center gap-2 bg-muted text-sm text-muted-foreground ${className ?? ""}`}>
         <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" aria-label="불러오는 중" />
         <span className="hidden sm:inline">이미지를 불러오는 중…</span>
       </div>

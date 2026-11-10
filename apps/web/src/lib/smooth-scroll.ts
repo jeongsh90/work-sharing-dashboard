@@ -4,6 +4,26 @@ import { useEffect, type RefObject } from 'react'
 // 페이지(창) 전체에 붙은 Lenis. 화면 안 특정 위치로 옮길 때 쓴다.
 let pageLenis: Lenis | null = null
 
+// 모든 Lenis(페이지·안쪽 스크롤 영역)를 화면 갱신 하나로 함께 돌린다. 영역마다 따로 돌리던 것(autoRaf)을 합쳐
+// 스크롤 영역이 많은 화면(디자인 툴)에서도 매 화면 콜백이 하나뿐이고, 영역이 없으면 멈춘다.
+const instances = new Set<Lenis>()
+let rafId = 0
+const loop = (time: number) => {
+  instances.forEach((l) => l.raf(time))
+  rafId = instances.size ? requestAnimationFrame(loop) : 0
+}
+const track = (l: Lenis) => {
+  instances.add(l)
+  if (!rafId) rafId = requestAnimationFrame(loop)
+}
+const untrack = (l: Lenis) => {
+  instances.delete(l)
+  if (!instances.size && rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+}
+
 // 요소가 화면 가운데쯤 오게 부드럽게 스크롤한다.
 export function scrollToElement(el: HTMLElement) {
   const offset = -(window.innerHeight / 2 - el.getBoundingClientRect().height / 2)
@@ -49,12 +69,13 @@ export function useSmoothScroll(options: LenisOptions = {}, wrapperRef?: RefObje
     const wrapper = wrapperRef?.current
     if (wrapperRef && !wrapper) return
     const lenis = new Lenis({
-      autoRaf: true,
+      autoRaf: false,
       allowNestedScroll: true,
       ...options,
       ...(wrapper ? { wrapper, content: wrapper.firstElementChild ?? wrapper } : {}),
     })
     if (!wrapper) pageLenis = lenis
+    track(lenis)
     // 스크롤이 멈춘 채 남는 경우를 막는다: 휠을 굴릴 때 열린 창·메뉴가 없으면 남은 스크롤 잠금을 풀고 다시 움직이게 한다.
     let queued = false
     const onWheel = () => {
@@ -69,6 +90,7 @@ export function useSmoothScroll(options: LenisOptions = {}, wrapperRef?: RefObje
     return () => {
       window.removeEventListener('wheel', onWheel)
       if (pageLenis === lenis) pageLenis = null
+      untrack(lenis)
       lenis.destroy()
     }
     // 옵션은 처음 한 번만 적용한다
