@@ -895,7 +895,7 @@ export function VideoConvertTool() {
     })
 
   // 동영상 고르기: 처음이면 타임라인을 새로 만들고, 이미 있으면(영상 추가) 뒤에 클립으로 붙인다.
-  // 처음 한 개는 앞 5초(짧으면 전체), 뒤에 붙이는 영상은 전체 길이. 불러온 설정과 같은 동영상이면 그때 구간
+  // 클립은 원본 전체 길이로 올린다. 불러온 설정과 같은 동영상이면 그때 구간
   // binOnly: 미디어 칸에만 가져온다(타임라인이 비어 있으면 타임라인에도 올린다 — 처음 가져온 영상은 바로 편집)
   const open = async (input: File | File[] | undefined, opts?: { savedId?: string; append?: boolean; binOnly?: boolean; ranges?: [number, number][] }) => {
     const files = (Array.isArray(input) ? input : input ? [input] : []).filter(Boolean)
@@ -931,7 +931,7 @@ export function VideoConvertTool() {
       if (r) return newClip(s, Math.min(r[0], s.duration), Math.min(r[1], s.duration))
       if (!append && i === 0) {
         const same = want && want.form.source === s.file.name
-        return same ? newClip(s, Math.min(want.form.start, s.duration), Math.min(want.form.end, s.duration)) : newClip(s, 0, Math.min(s.duration, 5))
+        return same ? newClip(s, Math.min(want.form.start, s.duration), Math.min(want.form.end, s.duration)) : newClip(s, 0, s.duration)
       }
       return newClip(s, 0, s.duration)
     })
