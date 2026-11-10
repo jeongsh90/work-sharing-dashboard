@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Download, FileText, ImageIcon, Search, X } from "lucide-react"
+import { Check, Download, FileText, ImageIcon, Link2, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -86,6 +86,33 @@ function DownloadMenu({ files }: { files: FileInfo[] }) {
         </SmoothScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+// 요청 상세 링크(#/requests/N)를 복사한다. 지금 접속한 주소(LAN·외부) 그대로 쓴다
+function CopyLinkButton({ id }: { id: string | number }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    const url = `${location.origin}${location.pathname}#/requests/${id}`
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      const ta = document.createElement("textarea")
+      ta.value = url
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand("copy")
+      ta.remove()
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+  }
+  return (
+    <Tip content={copied ? "복사됨" : "링크 복사"}>
+      <Button variant="outline" size="icon-sm" className="shrink-0" aria-label="링크 복사" onClick={() => void copy()}>
+        {copied ? <Check className="text-emerald-600" /> : <Link2 />}
+      </Button>
+    </Tip>
   )
 }
 
@@ -224,7 +251,10 @@ export function FilesPage() {
                       </span>
                     </button>
                   </div>
-                  {item.files.length > 0 && <DownloadMenu files={item.files} />}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <CopyLinkButton id={item.id} />
+                    {item.files.length > 0 && <DownloadMenu files={item.files} />}
+                  </div>
                 </div>
                 <FileGallery
                   files={item.files}
