@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+
+// 재생 헤드 알림: 재생 중 화면마다 시퀀스 시간(초)을 막대에 바로 넘긴다
+type HeadSubscribe = (fn: (t: number) => void) => () => void
 import { ChevronDown, CopyPlus, FileInput, History, Pipette, Redo2, Undo2, LayoutGrid, List, ListVideo, LoaderCircle, Move, Pause, Play, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, Repeat, Save, Settings2, SkipBack, SkipForward, StepBack, StepForward, Upload, Wand2, X, ZoomIn, ZoomOut } from "lucide-react"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -406,6 +409,8 @@ function MonitorBar({
   onSplit,
   loop,
   onLoop,
+  playingHead,
+  subscribeHead,
 }: {
   now: number
   total: number
@@ -424,6 +429,8 @@ function MonitorBar({
   onSplit: () => void
   loop: boolean
   onLoop: () => void
+  playingHead?: boolean
+  subscribeHead?: HeadSubscribe
 }) {
   const [ref, w] = useWidth<HTMLDivElement>()
   const pps = w / Math.max(total, 0.1)
@@ -436,6 +443,19 @@ function MonitorBar({
     return Math.min(Math.max(((x - r.left) / r.width) * total, 0), total)
   }
   const pct = total > 0 ? Math.min(now / total, 1) * 100 : 0
+  // 재생 중에는 막대만 직접 옮긴다(매끄럽게). 멈추면 화면 값으로
+  const headEl = useRef<HTMLDivElement>(null)
+  const fillEl = useRef<HTMLDivElement>(null)
+  const totalRef = useRef(total)
+  totalRef.current = total
+  const place = (p: number) => {
+    if (headEl.current) headEl.current.style.left = `${p}%`
+    if (fillEl.current) fillEl.current.style.width = `${p}%`
+  }
+  useLayoutEffect(() => {
+    if (!playingHead) place(pct)
+  })
+  useEffect(() => subscribeHead?.((t) => place(totalRef.current > 0 ? Math.min(t / totalRef.current, 1) * 100 : 0)), [subscribeHead])
   const btn = (label: string, icon: React.ReactNode, onClick: () => void, key?: string) => (
     <Tip content={key ? `${label} (${key})` : label}>
       <Button variant="ghost" size="icon-sm" aria-label={label} disabled={disabled} onClick={onClick}>
@@ -496,8 +516,8 @@ function MonitorBar({
           return <div key={t} className={`pointer-events-none absolute top-1 w-px bg-muted-foreground/50 ${major ? "h-3" : "h-1.5"}`} style={{ left: `${(t / Math.max(total, 0.1)) * 100}%` }} />
         })}
         <div className="pointer-events-none absolute inset-x-0 bottom-1 h-1.5 rounded-full bg-muted" />
-        <div className="pointer-events-none absolute bottom-1 left-0 h-1.5 rounded-full bg-sky-500/40" style={{ width: `${pct}%` }} />
-        <div className="pointer-events-none absolute top-0 bottom-0" style={{ left: `${pct}%` }}>
+        <div ref={fillEl} className="pointer-events-none absolute bottom-1 left-0 h-1.5 rounded-full bg-sky-500/40" />
+        <div ref={headEl} className="pointer-events-none absolute top-0 bottom-0">
           <div className="absolute top-0 -left-[5px] h-2.5 w-[11px] rounded-b-sm bg-sky-500" />
           <div className="absolute top-0 bottom-0 -left-px w-0.5 bg-sky-500" />
         </div>
@@ -545,7 +565,11 @@ function SequenceTimeline({
   onLayerChange,
   onMoveClip,
   onDropMedia,
+  playingHead,
+  subscribeHead,
 }: {
+  playingHead?: boolean
+  subscribeHead?: HeadSubscribe
   clips: Clip[]
   layers: Clip[]
   onSelectLayer: (id: number) => void
@@ -705,6 +729,25 @@ function SequenceTimeline({
     },
   })
   const dropAt = moving ? targetIndex(moving.id, moving.dx) : -1
+  const headEl = useRef<HTMLDivElement>(null)
+  const ppsRef = useRef(pps)
+  ppsRef.current = pps
+  useLayoutEffect(() => {
+    if (!playingHead && headEl.current) headEl.current.style.left = `${now * pps}px`
+  })
+  useEffect(
+    () =>
+      subscribeHead?.((t) => {
+        const el = headEl.current
+        if (!el) return
+        const x = t * ppsRef.current
+        el.style.left = `${x}px`
+        // 재생 헤드가 화면 밖으로 나가면 따라 넘긴다
+        const box = boxRef.current
+        if (box && (x < box.scrollLeft || x > box.scrollLeft + box.clientWidth - 16)) box.scrollLeft = Math.max(0, x - box.clientWidth * 0.2)
+      }),
+    [subscribeHead],
+  )
   // 자석: 시퀀스 처음·끝, 재생 헤드, V1 클립 경계, 다른 위 트랙 클립의 시작·끝(화면에서 8px 안이면 붙는다)
   const [snapLine, setSnapLine] = useState<number | null>(null)
   const snapPoints = (excludeId: number) => {
@@ -980,8 +1023,8 @@ function SequenceTimeline({
             )}
           </div>
           {snapLine !== null && <div className="pointer-events-none absolute inset-y-0 z-40 w-px bg-amber-300" style={{ left: snapLine * pps }} />}
-          {/* 재생 헤드 */}
-          <div className="pointer-events-none absolute inset-y-0 z-30" style={{ left: now * pps }}>
+          {/* 재생 헤드(재생 중에는 직접 옮긴다) */}
+          <div ref={headEl} className="pointer-events-none absolute inset-y-0 z-30">
             <div className="absolute top-0 -left-[5px] h-3 w-[11px] rounded-b-sm bg-sky-500" />
             <div className="absolute top-0 bottom-0 -left-px w-0.5 bg-sky-500" />
           </div>
@@ -1516,10 +1559,34 @@ export function VideoConvertTool() {
   // 재생 위치(재생 헤드). 재생 중에는 화면 그릴 때마다 따라가고, 전체 재생이면 다음 클립을 준비하고 경계에서 바로 넘긴다
   const [time, setTime] = useState(0)
   const tickRef = useRef<() => void>(() => {})
+  const headSubs = useRef(new Set<(t: number) => void>())
+  const subscribeHead = useRef<HeadSubscribe>((fn) => {
+    headSubs.current.add(fn)
+    return () => {
+      headSubs.current.delete(fn)
+    }
+  }).current
+  const lastLocal = useRef({ v: -1, at: 0 })
+  const lastStateAt = useRef(0)
   tickRef.current = () => {
     const v = preview.current
     if (!v) return
-    setTime(v.currentTime)
+    // 영상 시각은 장면 단위로만 바뀐다: 마지막 값에서 흐른 시간만큼 이어서 계산해 막대가 매끄럽게 움직이게
+    const lt = v.currentTime
+    const ms = performance.now()
+    if (lt !== lastLocal.current.v) lastLocal.current = { v: lt, at: ms }
+    const est = v.paused ? lt : lt + Math.min(0.12, ((ms - lastLocal.current.at) / 1000) * v.playbackRate)
+    const ac = fxRef.current.v1
+    if (ac) {
+      const T = seqStart(ac.id) + Math.min(Math.max(est - ac.start, 0), clipLen(ac))
+      fxRef.current.now = T
+      headSubs.current.forEach((fn) => fn(T))
+    }
+    // 화면(시간 글자·다른 칸)은 가끔만 다시 그린다(재생 중 화면 전체를 매번 그리면 버벅인다)
+    if (ms - lastStateAt.current > 140) {
+      lastStateAt.current = ms
+      setTime(lt)
+    }
     syncLayers(!v.paused)
     drawAdjusted()
     prepareNext()
@@ -2636,6 +2703,8 @@ export function VideoConvertTool() {
                       onSplit={splitAtPlayhead}
                       loop={playing && !seqPlay}
                       onLoop={loopClip}
+                      playingHead={playing}
+                      subscribeHead={subscribeHead}
                     />
                   </div>
                 </div>
@@ -2860,6 +2929,8 @@ export function VideoConvertTool() {
                       onLayerChange={changeLayer}
                       onMoveClip={moveClipTrack}
                       onDropMedia={dropOnTrack}
+                      playingHead={playing}
+                      subscribeHead={subscribeHead}
                       activeId={selClip?.id ?? null}
                       now={now}
                       fps={Number(fps)}
