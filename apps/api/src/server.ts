@@ -76,6 +76,7 @@ import {
   changeFtpPassword,
   updateFtpServer,
 } from './ftp.ts'
+import { readOrgPhoto, readOrgTree, saveOrgTree } from './org-tree.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -450,7 +451,25 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   // ── 조직도. 접속 중 표시는 ONLINE_VIEWERS 에게만 ──
   if (path === '/api/org' && method === 'GET') {
     const canSeeOnline = ONLINE_VIEWERS.includes(user.id)
-    return sendJson(res, 200, { canSeeOnline, members: orgMembers(canSeeOnline) })
+    return sendJson(res, 200, { canSeeOnline, members: orgMembers(canSeeOnline), tree: await readOrgTree(), canEditTree: ONLINE_VIEWERS.includes(user.id) || user.role === 'superadmin' })
+  }
+  // 회사 조직도 바꾸기(하이웍스에서 가져온 부서·사람·사진). 정상훈·슈퍼관리자만
+  if (path === '/api/org/tree' && method === 'PUT') {
+    if (!ONLINE_VIEWERS.includes(user.id) && user.role !== 'superadmin') throw new HttpError(403, '조직도를 바꿀 수 없는 계정입니다.')
+    try {
+      return sendJson(res, 200, await saveOrgTree(await readJson(req, 12_000_000)))
+    } catch (e) {
+      if (e instanceof HttpError) throw e
+      throw new HttpError(400, (e as Error).message)
+    }
+  }
+  // 조직도 사진(로그인한 누구나)
+  if (path.startsWith('/api/org/photo/') && method === 'GET') {
+    const data = await readOrgPhoto(path.slice('/api/org/photo/'.length))
+    if (!data) throw new HttpError(404, '사진이 없습니다.')
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': data.length, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' })
+    res.end(data)
+    return
   }
 
   // ── 계정 전환(SWITCH_ACCOUNTS 묶음끼리만) ──
