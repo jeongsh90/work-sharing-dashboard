@@ -323,6 +323,52 @@ const PREVIEW_ZOOMS = [
   { value: "1", label: "100%" },
 ]
 
+// 가로 스크롤 막대: 손잡이 길이 = 보이는 비율. 손잡이를 끌거나 빈 곳을 누르면 그쪽으로 옮긴다
+function ScrollBar({ viewW, contentW, scrollX, onScroll }: { viewW: number; contentW: number; scrollX: number; onScroll: (x: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const grab = useRef<{ x: number; start: number } | null>(null)
+  const max = Math.max(0, contentW - viewW)
+  const thumbPct = Math.min(100, (viewW / contentW) * 100)
+  const leftPct = max > 0 ? (scrollX / max) * (100 - thumbPct) : 0
+  const trackW = () => ref.current?.clientWidth ?? 1
+  return (
+    <div
+      ref={ref}
+      className="relative h-3 cursor-pointer touch-none rounded-full bg-muted select-none"
+      role="scrollbar"
+      aria-orientation="horizontal"
+      aria-controls="timeline"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(max)}
+      aria-valuenow={Math.round(scrollX)}
+      aria-label="타임라인 가로 스크롤"
+      onPointerDown={(e) => {
+        // 빈 곳을 누르면 그 자리가 손잡이 가운데가 되게
+        const r = ref.current!.getBoundingClientRect()
+        const ratio = (e.clientX - r.left) / r.width
+        onScroll(Math.min(max, Math.max(0, (ratio - thumbPct / 200) / (1 - thumbPct / 100)) * max))
+      }}
+    >
+      <div
+        className="absolute inset-y-0 rounded-full bg-muted-foreground/50 hover:bg-muted-foreground/70 active:bg-sky-500/70"
+        style={{ left: `${leftPct}%`, width: `${thumbPct}%` }}
+        onPointerDown={(e) => {
+          e.stopPropagation()
+          capture(e)
+          grab.current = { x: e.clientX, start: scrollX }
+        }}
+        onPointerMove={(e) => {
+          const g = grab.current
+          if (!g || e.buttons !== 1) return
+          const free = trackW() * (1 - thumbPct / 100)
+          onScroll(Math.min(max, Math.max(0, g.start + ((e.clientX - g.x) / Math.max(1, free)) * max)))
+        }}
+        onPointerUp={() => (grab.current = null)}
+      />
+    </div>
+  )
+}
+
 // 미리보기 아래 막대(프리미어 프로그램 모니터처럼): 지금 시간 · 보기 배율 · 시간 눈금과 재생 헤드 · 전체 길이 · 재생 버튼
 function MonitorBar({
   now,
@@ -498,6 +544,8 @@ function SequenceTimeline({
     setBoxW(el.clientWidth)
     return () => ro.disconnect()
   }, [])
+  // 가로 스크롤 위치(확대해서 칸을 넘으면 아래 스크롤 막대로 옮긴다)
+  const [scrollX, setScrollX] = useState(0)
   const total = clips.reduce((s, c) => s + clipLen(c), 0)
   // 확대: 1 = 전체가 칸 너비에 맞게(오른쪽에 조금 여유)
   const [zoom, setZoom] = useState(1)
@@ -588,6 +636,12 @@ function SequenceTimeline({
     },
   })
   const dropAt = moving ? targetIndex(moving.id, moving.dx) : -1
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || drag.current) return
+    const x = now * pps
+    if (x < el.scrollLeft || x > el.scrollLeft + el.clientWidth - 16) el.scrollLeft = Math.max(0, x - el.clientWidth * 0.2)
+  }, [now, pps])
 
   return (
     <div className="flex flex-col gap-1">
@@ -606,7 +660,13 @@ function SequenceTimeline({
           </Button>
         </div>
       </div>
-      <div ref={boxRef} className="relative overflow-x-auto overflow-y-hidden rounded-md border bg-muted/30 select-none" data-lenis-prevent>
+      <div
+        ref={boxRef}
+        id="timeline"
+        onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)}
+        className="relative overflow-x-auto overflow-y-hidden rounded-md border bg-muted/30 select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        data-lenis-prevent
+      >
         <div className="relative" style={{ width }}>
           {/* 시간 눈금 */}
           <div
@@ -706,6 +766,17 @@ function SequenceTimeline({
           </div>
         </div>
       </div>
+      {/* 넘치는 부분 스크롤 막대(프리미어 타임라인 아래 막대처럼): 손잡이 = 지금 보이는 범위. 끌거나 막대를 눌러 옮긴다 */}
+      {width > boxW + 1 && (
+        <ScrollBar
+          viewW={boxW}
+          contentW={width}
+          scrollX={scrollX}
+          onScroll={(x) => {
+            if (boxRef.current) boxRef.current.scrollLeft = x
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1534,6 +1605,24 @@ export function VideoConvertTool() {
             <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
             {progress.step}… {Math.round(progress.ratio * 100)}%
           </span>
+        )}
+        {/* 지금 설정으로 만들 때의 예상 용량(설정·클립을 바꾸면 다시 잰다) */}
+        {source && !busy && (
+          <Tip content={`${F.label} · ${outW}×${outH}px · ${frames}장 · ${fmt(totalLength / Number(speed))}${estimate !== null && estimate > 10 * 1024 * 1024 ? " — 10MB 가 넘습니다" : ""}`}>
+            <span
+              className={`hidden items-center gap-1.5 rounded-md border px-2 py-1 text-xs tabular-nums sm:flex ${
+                estimate !== null && estimate > 10 * 1024 * 1024 ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "text-muted-foreground"
+              }`}
+              aria-live="polite"
+            >
+              예상 {F.label}
+              <span className="font-semibold text-foreground">{estimate === null ? "재는 중…" : `약 ${formatBytes(estimate)}`}</span>
+              {estimating && estimate !== null && <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" aria-label="다시 재는 중" />}
+              <span className="hidden md:inline">
+                · {outW}×{outH} · {frames}장 · {fmt(totalLength / Number(speed))}
+              </span>
+            </span>
+          </Tip>
         )}
         <Button size="sm" disabled={!source} onClick={() => setSaveOpen(true)}>
           <Save data-icon="inline-start" />
