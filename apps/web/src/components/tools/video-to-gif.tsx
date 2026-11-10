@@ -83,9 +83,20 @@ type Source = { file: File; url: string; duration: number; width: number; height
 type Result = { url: string; size: number; width: number; height: number; frames: number; name: string }
 // 타임라인 클립(프리미어 시퀀스처럼): 동영상 하나의 한 구간. 클립을 순서대로 이어 붙여 한 움짤로 만든다.
 // 같은 동영상을 자르기·복제하면 Source 를 함께 쓴다.
-type Clip = { id: number; source: Source; start: number; end: number }
+type Clip = { id: number; source: Source; start: number; end: number; motion: Motion; adjust: Adjust; track?: number; at?: number }
 let clipSeq = 1
-const newClip = (source: Source, start: number, end: number): Clip => ({ id: clipSeq++, source, start, end })
+// fx: 모션·색 보정(자르기·복제한 클립은 원래 클립 것을 그대로 받는다)
+const newClip = (source: Source, start: number, end: number, fx?: { motion?: Motion; adjust?: Adjust }): Clip => ({
+  id: clipSeq++,
+  source,
+  start,
+  end,
+  motion: fx?.motion ?? NO_MOTION,
+  adjust: fx?.adjust ?? NO_ADJUST,
+})
+// 위 트랙(V2=1·V3=2)에서 시퀀스 시간 t 에 걸린 클립
+const layerAt = (ls: Clip[], track: number, t: number) => ls.find((c) => c.track === track && t >= (c.at ?? 0) && t < (c.at ?? 0) + Math.max(0, c.end - c.start))
+const UPPER_TRACKS = [1, 2] as const
 const clipLen = (c: Clip) => Math.max(0, c.end - c.start)
 // 화면 비율(출력 틀). 가로는 860 기준
 const RATIOS = [
@@ -97,15 +108,17 @@ const OUT_W = 860
 const ratioOf = (v: string) => RATIOS.find((r) => r.value === v) ?? RATIOS[0]
 // 장면 하나를 틀(outW×outH)에 그린다: 원본 비율 그대로 틀 안에 맞춰 가운데(남는 곳 검정, 프리미어 시퀀스와 같다).
 // 모션(위치·비율·회전·기준점·자르기·불투명도)은 원본 픽셀 기준이고 틀 밖으로 잘리지 않아, 비율을 키우면 틀을 채운다
-function drawFramed(ctx: CanvasRenderingContext2D, video: CanvasImageSource, srcW: number, srcH: number, outW: number, outH: number, m: Motion) {
+function drawFramed(ctx: CanvasRenderingContext2D, video: CanvasImageSource, srcW: number, srcH: number, outW: number, outH: number, m: Motion, bg = true) {
   const k = Math.min(outW / srcW, outH / srcH)
   const ox = (outW - srcW * k) / 2
   const oy = (outH - srcH * k) / 2
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.globalAlpha = 1
   ctx.filter = "none"
-  ctx.fillStyle = "#000"
-  ctx.fillRect(0, 0, outW, outH)
+  if (bg) {
+    ctx.fillStyle = "#000"
+    ctx.fillRect(0, 0, outW, outH)
+  }
   if (isNoMotion(m, srcW, srcH)) {
     ctx.drawImage(video, ox, oy, srcW * k, srcH * k)
     return
@@ -143,7 +156,9 @@ type VideoForm = {
   start: number // 구간(초)
   end: number
   // 여러 클립을 이어 붙였을 때 타임라인(순서대로). 첫 클립 = source·start·end
-  clips?: { source: string; sourceFileId?: string; start: number; end: number }[]
+  clips?: { source: string; sourceFileId?: string; start: number; end: number; motion?: Motion; adjust?: Adjust }[]
+  // 위 트랙(V2·V3) 클립: track 1 = V2, 2 = V3, at = 시퀀스 시작(초)
+  layers?: { source: string; sourceFileId?: string; start: number; end: number; track: number; at: number; motion?: Motion; adjust?: Adjust }[]
   outW: number
   outH: number
   frames: number
@@ -236,9 +251,10 @@ async function measurePerFrame(
 }
 
 // 클립 첫 장면 작은 그림(타임라인 칸). 클립 시작 위치가 바뀌면 다시 뽑는다
-function useClipThumbs(clips: Clip[]) {
+type ThumbClip = { source: Source; start: number; end: number }
+function useClipThumbs(clips: ThumbClip[]) {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
-  const key = (c: Clip) => `${c.source.url}|${c.start.toFixed(1)}`
+  const key = (c: ThumbClip) => `${c.source.url}|${c.start.toFixed(1)}`
   const want = [...new Set(clips.map(key))].filter((k) => !thumbs[k])
   const wantKey = want.join(",")
   useEffect(() => {
@@ -279,7 +295,7 @@ function useClipThumbs(clips: Clip[]) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantKey])
-  return (c: Clip) => thumbs[key(c)] ?? null
+  return (c: ThumbClip) => thumbs[key(c)] ?? null
 }
 
 // 시퀀스 타임라인(프리미어처럼): 위 시간 눈금 + 비디오 트랙 하나. 클립은 앞 클립 끝에 바로 이어 붙고(빈틈 없음),
@@ -524,8 +540,18 @@ function SequenceTimeline({
   onSeek,
   onTrim,
   onReorder,
+  layers,
+  onSelectLayer,
+  onLayerChange,
+  onMoveClip,
+  onDropMedia,
 }: {
   clips: Clip[]
+  layers: Clip[]
+  onSelectLayer: (id: number) => void
+  onLayerChange: (id: number, patch: Partial<Clip>, commit: boolean) => void
+  onMoveClip: (id: number, toTrack: number, at: number) => void
+  onDropMedia: (e: React.DragEvent, track: number, t: number) => void
   activeId: number | null
   now: number // 재생 헤드(시퀀스 시간, 초)
   fps: number
@@ -536,6 +562,7 @@ function SequenceTimeline({
   onReorder: (next: Clip[]) => void
 }) {
   const thumbOf = useClipThumbs(clips)
+  const layerThumbOf = useClipThumbs(layers)
   const boxRef = useRef<HTMLDivElement>(null)
   const [boxW, setBoxW] = useState(800)
   useEffect(() => {
@@ -564,7 +591,8 @@ function SequenceTimeline({
   const pps = frozenPps ?? scale ?? fit
   const MIN_PPS = 2
   const MAX_PPS = 2000
-  const width = Math.max(boxW, total * pps + 40)
+  const layerEnd = layers.reduce((m, c) => Math.max(m, (c.at ?? 0) + clipLen(c)), 0)
+  const width = Math.max(boxW, Math.max(total, layerEnd) * pps + 40)
   const starts = clips.reduce<number[]>((a, _c, i) => [...a, i === 0 ? 0 : a[i - 1] + clipLen(clips[i - 1])], [])
   const step = RULER_STEPS.find((s) => s * pps >= 80) ?? 600
   const minor = step / 5
@@ -575,6 +603,19 @@ function SequenceTimeline({
   const timeAt = (clientX: number) => {
     const r = boxRef.current!.getBoundingClientRect()
     return Math.min(Math.max((clientX - r.left + boxRef.current!.scrollLeft) / pps, 0), total)
+  }
+  const timeAtFree = (clientX: number) => {
+    const r = boxRef.current!.getBoundingClientRect()
+    return Math.max((clientX - r.left + boxRef.current!.scrollLeft) / pps, 0)
+  }
+  // 트랙 줄(0 = V1, 1 = V2, 2 = V3): 끌어서 놓을 트랙을 포인터 높이로 찾는다
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([null, null, null])
+  const rowAt = (y: number) => {
+    for (const tr of [2, 1, 0]) {
+      const r = rowRefs.current[tr]?.getBoundingClientRect()
+      if (r && y >= r.top && y <= r.bottom) return tr
+    }
+    return null
   }
   const scrub = {
     onPointerDown: (e: React.PointerEvent) => {
@@ -591,7 +632,8 @@ function SequenceTimeline({
   }
 
   // 클립 끌기: 몸통 = 순서 바꾸기(5px 넘게 움직였을 때), 그냥 누르면 고르고 그 시점으로 재생 헤드 이동 / 양 끝 = 길이 다듬기
-  const drag = useRef<{ id: number; x: number; mode: "move" | "start" | "end"; start: number; end: number; moved: boolean; last?: [number, number] } | null>(null)
+  const drag = useRef<{ id: number; x: number; mode: "move" | "start" | "end"; start: number; end: number; moved: boolean; last?: [number, number]; offT?: number } | null>(null)
+  const [upTarget, setUpTarget] = useState<number | null>(null) // V1 클립을 위 트랙으로 끄는 중이면 그 트랙
   const [moving, setMoving] = useState<{ id: number; dx: number } | null>(null)
   const targetIndex = (id: number, dx: number) => {
     const i = clips.findIndex((c) => c.id === id)
@@ -603,7 +645,8 @@ function SequenceTimeline({
       if (disabled) return
       e.stopPropagation()
       capture(e)
-      drag.current = { id: c.id, x: e.clientX, mode, start: c.start, end: c.end, moved: false }
+      const i0 = clips.findIndex((x) => x.id === c.id)
+      drag.current = { id: c.id, x: e.clientX, mode, start: c.start, end: c.end, moved: false, offT: timeAtFree(e.clientX) - (starts[i0] ?? 0) }
       if (mode !== "move") setFrozenPps(pps)
       if (mode !== "move") onSelect(c.id)
     },
@@ -614,7 +657,11 @@ function SequenceTimeline({
       const dx = e.clientX - d.x
       if (!d.moved && Math.abs(dx) < 5) return
       d.moved = true
-      if (d.mode === "move") setMoving({ id: c.id, dx })
+      if (d.mode === "move") {
+        setMoving({ id: c.id, dx })
+        const tr = rowAt(e.clientY)
+        setUpTarget(tr && tr > 0 ? tr : null)
+      }
       else {
         const dt = dx / pps
         const r2 = (v: number) => Math.round(v * 100) / 100
@@ -631,6 +678,12 @@ function SequenceTimeline({
       e.stopPropagation()
       if (d.mode === "move") {
         setMoving(null)
+        setUpTarget(null)
+        const tr = d.moved ? rowAt(e.clientY) : null
+        if (tr && tr > 0) {
+          onMoveClip(c.id, tr, Math.max(0, timeAtFree(e.clientX) - (d.offT ?? 0)))
+          return
+        }
         if (d.moved) {
           const to = targetIndex(c.id, e.clientX - d.x)
           const from = clips.findIndex((x) => x.id === c.id)
@@ -648,6 +701,72 @@ function SequenceTimeline({
     },
   })
   const dropAt = moving ? targetIndex(moving.id, moving.dx) : -1
+  const ldrag = useRef<{ id: number; x: number; y: number; mode: "move" | "start" | "end"; start: number; end: number; at: number; track: number; offT: number; moved: boolean; last?: Partial<Clip> } | null>(null)
+  const [ghost, setGhost] = useState<{ id: number; at: number; track: number } | null>(null)
+  const layerHandlers = (c: Clip, mode: "move" | "start" | "end") => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (disabled) return
+      e.stopPropagation()
+      capture(e)
+      ldrag.current = { id: c.id, x: e.clientX, y: e.clientY, mode, start: c.start, end: c.end, at: c.at ?? 0, track: c.track ?? 1, offT: timeAtFree(e.clientX) - (c.at ?? 0), moved: false }
+      if (mode !== "move") setFrozenPps(pps)
+      onSelectLayer(c.id)
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const d = ldrag.current
+      if (!d || d.id !== c.id || e.buttons !== 1) return
+      e.stopPropagation()
+      const dx = e.clientX - d.x
+      if (!d.moved && Math.abs(dx) < 5 && Math.abs(e.clientY - d.y) < 5) return
+      d.moved = true
+      const r2 = (v: number) => Math.round(v * 100) / 100
+      if (d.mode === "move") {
+        setGhost({ id: c.id, at: r2(Math.max(0, timeAtFree(e.clientX) - d.offT)), track: rowAt(e.clientY) ?? d.track })
+        return
+      }
+      const dt = dx / pps
+      if (d.mode === "start") {
+        let ns = Math.min(Math.max(d.start + dt, 0), d.end - 0.1)
+        let na = d.at + (ns - d.start)
+        if (na < 0) {
+          ns -= na
+          na = 0
+        }
+        d.last = { start: r2(ns), at: r2(na) }
+      } else d.last = { end: r2(Math.max(Math.min(d.end + dt, c.source.duration), d.start + 0.1)) }
+      onLayerChange(c.id, d.last, false)
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const d = ldrag.current
+      ldrag.current = null
+      setFrozenPps(null)
+      if (!d || d.id !== c.id) return
+      e.stopPropagation()
+      if (d.mode === "move") {
+        const g = ghost
+        setGhost(null)
+        if (!d.moved) {
+          onSeek(timeAt(e.clientX), true)
+          return
+        }
+        const at = g?.at ?? d.at
+        const tr = g?.track ?? d.track
+        if (tr === 0) onMoveClip(c.id, 0, at)
+        else onLayerChange(c.id, { at, track: tr }, true)
+      } else if (d.last) onLayerChange(c.id, d.last, true)
+    },
+  })
+  const trackDrop = (tr: number) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (disabled) return
+      e.preventDefault()
+      e.stopPropagation()
+    },
+    onDrop: (e: React.DragEvent) => onDropMedia(e, tr, timeAtFree(e.clientX)),
+  })
+  const trackLabel = (name: string) => (
+    <span className="pointer-events-none absolute bottom-0.5 left-0.5 z-20 rounded bg-background/80 px-1 text-[10px] leading-4 font-semibold text-muted-foreground">{name}</span>
+  )
   useEffect(() => {
     const el = boxRef.current
     if (!el || drag.current) return
@@ -709,8 +828,63 @@ function SequenceTimeline({
             {/* 시퀀스 끝 */}
             <div className="pointer-events-none absolute inset-y-0 border-l border-dashed border-amber-400/70" style={{ left: total * pps }} />
           </div>
-          {/* 비디오 트랙 V1 */}
-          <div {...scrub} className="relative h-16 cursor-pointer touch-none">
+          {/* 위 트랙 V3 · V2: 아무 시점에나 놓고, 위 트랙이 아래를 덮는다 */}
+          {([2, 1] as const).map((tr) => (
+            <div
+              key={tr}
+              ref={(el) => {
+                rowRefs.current[tr] = el
+              }}
+              {...scrub}
+              {...trackDrop(tr)}
+              className={`relative h-10 cursor-pointer touch-none border-b border-border/60 ${upTarget === tr || (ghost && ghost.track === tr) ? "bg-amber-400/10" : ""}`}
+            >
+              {trackLabel(`V${tr + 1}`)}
+              {layers
+                .filter((c) => (ghost?.id === c.id ? ghost.track : c.track) === tr)
+                .map((c) => {
+                  const sel = c.id === activeId
+                  const at = ghost?.id === c.id ? ghost.at : (c.at ?? 0)
+                  const thumb = layerThumbOf(c)
+                  return (
+                    <div
+                      key={c.id}
+                      {...layerHandlers(c, "move")}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={sel}
+                      aria-label={`V${tr + 1} 클립 ${c.source.file.name} ${fmt(c.start)}–${fmt(c.end)}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") onSelectLayer(c.id)
+                      }}
+                      className={`absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-[3px] border-2 bg-violet-900 active:cursor-grabbing ${sel ? "border-white" : "border-violet-600/80 hover:border-violet-300"} ${ghost?.id === c.id ? "z-20 opacity-80 shadow-lg" : ""}`}
+                      style={{ left: at * pps, width: Math.max(4, clipLen(c) * pps) }}
+                    >
+                      {thumb && <span aria-hidden className="absolute inset-0 bg-repeat-x opacity-60" style={{ backgroundImage: `url(${thumb})`, backgroundSize: "auto 100%" }} />}
+                      <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-violet-950/80 px-1.5 text-[10px] leading-4 text-white">{c.source.file.name}</span>
+                      <span className="pointer-events-none absolute right-1 bottom-0.5 rounded bg-black/60 px-1 text-[10px] text-white tabular-nums">{fmt(clipLen(c))}</span>
+                      {(["start", "end"] as const).map((edge) => (
+                        <span
+                          key={edge}
+                          {...layerHandlers(c, edge)}
+                          aria-hidden
+                          className={`absolute inset-y-0 z-10 w-2 cursor-ew-resize hover:bg-white/50 ${edge === "start" ? "left-0" : "right-0"} ${sel ? "bg-white/30" : ""}`}
+                        />
+                      ))}
+                    </div>
+                  )
+                })}
+            </div>
+          ))}
+          {/* 비디오 트랙 V1: 클립이 빈틈없이 이어 붙는다 */}
+          <div
+            ref={(el) => {
+              rowRefs.current[0] = el
+            }}
+            {...scrub}
+            className={`relative h-16 cursor-pointer touch-none ${ghost && ghost.track === 0 ? "bg-amber-400/10" : ""}`}
+          >
+            {trackLabel("V1")}
             {clips.map((c, i) => {
               const active = c.id === activeId
               const thumb = thumbOf(c)
@@ -827,9 +1001,36 @@ export function VideoConvertTool() {
   const [colors, setColors] = useState(F.defaultOption)
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")
-  const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST) // 색 보정(노출·오프셋·감마·색조·채도·명도)
-  const [motion, setMotion] = useState<Motion>(NO_MOTION) // 모션·불투명도(위치·비율·회전·기준점·깜박임 제거·자르기)
   const adjustCanvas = useRef<HTMLCanvasElement>(null)
+  // 위 트랙(V2·V3) 클립과 고른 클립. 모션·색 보정 칸은 고른 클립의 값을 보이고 바꾼다
+  const [layers, setLayers] = useState<Clip[]>([])
+  const [selId, setSelId] = useState<number | null>(null)
+  const selClip = layers.find((c) => c.id === selId) ?? clips.find((c) => c.id === selId) ?? activeClip
+  const selIsLayer = !!selClip && layers.some((c) => c.id === selClip.id)
+  const motion = selClip?.motion ?? NO_MOTION
+  const adjust = selClip?.adjust ?? NO_ADJUST
+  const selRef = useRef<number | null>(null)
+  selRef.current = selClip?.id ?? null
+  const patchClip = (id: number, fn: (c: Clip) => Clip) => {
+    setClips((cs) => cs.map((c) => (c.id === id ? fn(c) : c)))
+    setLayers((ls) => ls.map((c) => (c.id === id ? fn(c) : c)))
+  }
+  const setMotion = (m: Motion | ((m: Motion) => Motion)) => {
+    const id = selRef.current
+    if (id !== null) patchClip(id, (c) => ({ ...c, motion: typeof m === "function" ? m(c.motion) : m }))
+  }
+  const setAdjust = (a: Adjust | ((a: Adjust) => Adjust)) => {
+    const id = selRef.current
+    if (id !== null) patchClip(id, (c) => ({ ...c, adjust: typeof a === "function" ? a(c.adjust) : a }))
+  }
+  // 히스토리에서 불러온 한 클립짜리 기록의 모션·색 보정(그 동영상을 열 때 넣는다)
+  const pendingFx = useRef<{ motion: Motion; adjust: Adjust } | null>(null)
+  // 위 트랙 미리보기 동영상(V2·V3): 재생 헤드에 맞춰 따라 재생하고, 미리보기 캔버스에 겹쳐 그린다
+  const layerVidA = useRef<HTMLVideoElement | null>(null)
+  const layerVidB = useRef<HTMLVideoElement | null>(null)
+  const layerVid = (track: number) => (track === 1 ? layerVidA.current : layerVidB.current)
+  const fxRef = useRef<{ v1: Clip | null; layers: Clip[]; now: number }>({ v1: null, layers: [], now: 0 })
+  const layerTmp = useRef<HTMLCanvasElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ step: string; ratio: number; done: number } | null>(null)
   const [result, setResult] = useState<Result | null>(null)
@@ -907,7 +1108,12 @@ export function VideoConvertTool() {
   // 동영상 고르기: 처음이면 타임라인을 새로 만들고, 이미 있으면(영상 추가) 뒤에 클립으로 붙인다.
   // 클립은 원본 전체 길이로 올린다. 불러온 설정과 같은 동영상이면 그때 구간
   // binOnly: 미디어 칸에만 가져온다(타임라인이 비어 있으면 타임라인에도 올린다 — 처음 가져온 영상은 바로 편집)
-  const open = async (input: File | File[] | undefined, opts?: { savedId?: string; append?: boolean; binOnly?: boolean; ranges?: [number, number][] }) => {
+  type LayerSpec = { file: File; start: number; end: number; track: number; at: number; motion?: Motion; adjust?: Adjust }
+  const fixFx = (fx?: { motion?: Motion; adjust?: unknown }) => ({ motion: fx?.motion ? { ...fx.motion, opacity: 100 } : NO_MOTION, adjust: normalizeAdjust(fx?.adjust) })
+  const open = async (
+    input: File | File[] | undefined,
+    opts?: { savedId?: string; append?: boolean; binOnly?: boolean; ranges?: [number, number][]; fx?: { motion?: Motion; adjust?: Adjust }[]; layerSpecs?: LayerSpec[] },
+  ) => {
     const files = (Array.isArray(input) ? input : input ? [input] : []).filter(Boolean)
     if (files.length === 0) return
     if (files.some((f) => !isVideo(f))) {
@@ -918,7 +1124,7 @@ export function VideoConvertTool() {
     setError(null)
     setResult(null)
     // 같은 파일이 여러 클립에 쓰이면(불러온 타임라인) 한 번만 연다
-    const uniq = [...new Set(files)]
+    const uniq = [...new Set([...files, ...(opts?.layerSpecs ?? []).map((l) => l.file)])]
     const opened = await Promise.all(uniq.map(readSource))
     if (opened.some((s) => !s)) {
       opened.forEach((s) => s && URL.revokeObjectURL(s.url))
@@ -936,16 +1142,28 @@ export function VideoConvertTool() {
     const append = (opts?.append || opts?.binOnly) && clips.length > 0
     const want = loadedRef.current ?? loaded
     loadedRef.current = null
+    // 새로 시작할 때만 불러온 기록의 모션·색 보정을 넣는다
+    const fxFor = (i: number) => (opts?.fx?.[i] ? fixFx(opts.fx[i]) : !append && pendingFx.current ? pendingFx.current : undefined)
     const made = sources.map((s, i) => {
       const r = opts?.ranges?.[i]
-      if (r) return newClip(s, Math.min(r[0], s.duration), Math.min(r[1], s.duration))
+      if (r) return newClip(s, Math.min(r[0], s.duration), Math.min(r[1], s.duration), fxFor(i))
       if (!append && i === 0) {
         const same = want && want.form.source === s.file.name
-        return same ? newClip(s, Math.min(want.form.start, s.duration), Math.min(want.form.end, s.duration)) : newClip(s, 0, s.duration)
+        return same ? newClip(s, Math.min(want.form.start, s.duration), Math.min(want.form.end, s.duration), fxFor(i)) : newClip(s, 0, s.duration, fxFor(i))
       }
       return newClip(s, 0, s.duration)
     })
+    if (!append) pendingFx.current = null
     setClips((cs) => (append ? [...cs, ...made] : made))
+    if (!append) {
+      setLayers(
+        (opts?.layerSpecs ?? []).map((l) => {
+          const src = byFile.get(l.file)!
+          return { ...newClip(src, Math.min(l.start, src.duration), Math.min(l.end, src.duration), fixFx(l)), track: l.track, at: Math.max(0, l.at) }
+        }),
+      )
+      setSelId(null)
+    }
     setActiveId(made[0].id)
     setLoaded(null)
     setPlaying(false)
@@ -955,6 +1173,23 @@ export function VideoConvertTool() {
   // ── 타임라인 편집(프리미어처럼): 자르기(면도칼) · 복제 · 삭제 · 순서 바꾸기 ──
   const splitAtPlayhead = () => {
     if (!activeClip) return
+    // 위 트랙 클립: 재생 헤드가 그 클립 위에 있을 때 둘로
+    if (selIsLayer && selClip) {
+      const at = selClip.at ?? 0
+      const local = selClip.start + (now - at)
+      if (local <= selClip.start + 0.1 || local >= selClip.end - 0.1) {
+        setError("자를 위치(재생 헤드)를 고른 클립 위, 시작·끝에서 0.1초 이상 떨어진 곳으로 옮겨 주세요.")
+        return
+      }
+      setError(null)
+      const cut = Math.round(local * 100) / 100
+      const a = { ...selClip, end: cut }
+      const b = { ...newClip(selClip.source, cut, selClip.end, selClip), track: selClip.track, at: at + (cut - selClip.start) }
+      setLayers((ls) => ls.flatMap((c) => (c.id === selClip.id ? [a, b] : [c])))
+      setSelId(b.id)
+      setResult(null)
+      return
+    }
     const t = preview.current?.currentTime ?? time
     if (t <= activeClip.start + 0.1 || t >= activeClip.end - 0.1) {
       setError("자를 위치를 고른 클립 구간 안(시작·끝에서 0.1초 이상 떨어진 곳)으로 옮겨 주세요.")
@@ -963,20 +1198,51 @@ export function VideoConvertTool() {
     setError(null)
     const cut = Math.round(t * 10) / 10
     const a = { ...activeClip, end: cut }
-    const b = newClip(activeClip.source, cut, activeClip.end)
+    const b = newClip(activeClip.source, cut, activeClip.end, activeClip)
     setClips((cs) => cs.flatMap((c) => (c.id === activeClip.id ? [a, b] : [c])))
     setActiveId(b.id)
+    setSelId(b.id)
     setResult(null)
+  }
+  // 위 트랙에서 겹치지 않는 자리: 원하는 시점에 다른 클립이 있으면 그 뒤로 민다
+  const placeOnTrack = (ls: Clip[], track: number, at: number, len: number, exclude?: number) => {
+    let t = Math.max(0, at)
+    const others = ls.filter((c) => c.track === track && c.id !== exclude).sort((x, y) => (x.at ?? 0) - (y.at ?? 0))
+    for (const o of others) {
+      const oa = o.at ?? 0
+      const oe = oa + clipLen(o)
+      if (t < oe && t + len > oa) t = oe
+    }
+    return Math.round(t * 100) / 100
   }
   const duplicateClip = () => {
     if (!activeClip) return
-    const copy = newClip(activeClip.source, activeClip.start, activeClip.end)
+    if (selIsLayer && selClip) {
+      const at = placeOnTrack(layers, selClip.track!, (selClip.at ?? 0) + clipLen(selClip), clipLen(selClip))
+      const copy = { ...newClip(selClip.source, selClip.start, selClip.end, selClip), track: selClip.track, at }
+      setLayers((ls) => [...ls, copy])
+      setSelId(copy.id)
+      setResult(null)
+      return
+    }
+    const copy = newClip(activeClip.source, activeClip.start, activeClip.end, activeClip)
     setClips((cs) => cs.flatMap((c) => (c.id === activeClip.id ? [c, copy] : [c])))
     setActiveId(copy.id)
     setResult(null)
   }
   const removeClip = () => {
     if (!activeClip) return
+    if (selIsLayer && selClip) {
+      setLayers((ls) => ls.filter((c) => c.id !== selClip.id))
+      setSelId(null)
+      setResult(null)
+      return
+    }
+    if (clips.length === 1 && layers.length > 0) {
+      setError("V1 에는 클립이 하나는 있어야 합니다(영상 길이는 V1 기준). 위 트랙 클립을 먼저 지우거나 V1 에 다른 클립을 넣어 주세요.")
+      return
+    }
+    setSelId(null)
     const i = clips.findIndex((c) => c.id === activeClip.id)
     const next = clips.filter((c) => c.id !== activeClip.id)
     setClips(next)
@@ -995,6 +1261,7 @@ export function VideoConvertTool() {
   // 미디어 칸에서 빼면 그 동영상으로 만든 클립도 타임라인에서 빠진다
   const removeMedia = (s: Source) => {
     setMedia((m) => m.filter((x) => x !== s))
+    setLayers((ls) => ls.filter((c) => c.source !== s))
     const next = clips.filter((c) => c.source !== s)
     setClips(next)
     if (!next.some((c) => c.id === activeClip?.id)) setActiveId(next[0]?.id ?? null)
@@ -1002,6 +1269,7 @@ export function VideoConvertTool() {
     setSeqPlay(false)
   }
   const selectClip = (id: number) => {
+    setSelId(id)
     if (id === activeClip?.id) return
     preview.current?.pause()
     setSeqPlay(false)
@@ -1134,10 +1402,6 @@ export function VideoConvertTool() {
   }, [speed, source, result])
 
   // 색 보정 미리보기: 보정이 있으면 동영상 위 캔버스에 지금 장면을 보정해 그린다(가로 최대 860 으로 줄여서)
-  const adjustRef = useRef(adjust)
-  adjustRef.current = adjust
-  const motionRef = useRef(motion)
-  motionRef.current = motion
   const drawAdjusted = () => {
     const v = preview.current
     const c = adjustCanvas.current
@@ -1148,16 +1412,71 @@ export function VideoConvertTool() {
       c.height = h
     }
     const ctx = c.getContext("2d", { willReadFrequently: true })!
-    drawFramed(ctx, v, v.videoWidth, v.videoHeight, w, h, motionRef.current)
-    if (isNoAdjust(adjustRef.current)) return
-    const img = ctx.getImageData(0, 0, w, h)
-    applyAdjust(img.data, adjustRef.current)
-    ctx.putImageData(img, 0, 0)
+    const { v1, layers: ls, now: T } = fxRef.current
+    drawFramed(ctx, v, v.videoWidth, v.videoHeight, w, h, v1?.motion ?? NO_MOTION)
+    if (v1 && !isNoAdjust(v1.adjust)) {
+      const img = ctx.getImageData(0, 0, w, h)
+      applyAdjust(img.data, v1.adjust)
+      ctx.putImageData(img, 0, 0)
+    }
+    for (const tr of UPPER_TRACKS) {
+      const c = layerAt(ls, tr, T)
+      const el = layerVid(tr)
+      if (!c || !el || el.readyState < 2 || !el.videoWidth || el.dataset.clip !== String(c.id)) continue
+      const tmp = (layerTmp.current ??= document.createElement("canvas"))
+      if (tmp.width !== w || tmp.height !== h) {
+        tmp.width = w
+        tmp.height = h
+      }
+      const tctx = tmp.getContext("2d", { willReadFrequently: true })!
+      tctx.setTransform(1, 0, 0, 1, 0, 0)
+      tctx.clearRect(0, 0, w, h)
+      drawFramed(tctx, el, el.videoWidth, el.videoHeight, w, h, c.motion, false)
+      if (!isNoAdjust(c.adjust)) {
+        const img = tctx.getImageData(0, 0, w, h)
+        applyAdjust(img.data, c.adjust)
+        tctx.putImageData(img, 0, 0)
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.drawImage(tmp, 0, 0)
+    }
+  }
+  // 위 트랙 동영상을 재생 헤드에 맞춘다(재생 중이면 같이 재생, 멈춰 있으면 그 장면으로)
+  const syncLayers = (playingNow: boolean) => {
+    const { layers: ls, now: T } = fxRef.current
+    for (const tr of UPPER_TRACKS) {
+      const el = layerVid(tr)
+      if (!el) continue
+      const c = layerAt(ls, tr, T)
+      if (!c) {
+        if (!el.paused) el.pause()
+        el.dataset.clip = ""
+        continue
+      }
+      if (el.src !== c.source.url) {
+        el.dataset.clip = ""
+        el.src = c.source.url
+        continue // 열리면(loadeddata) 다시 맞춘다
+      }
+      el.dataset.clip = String(c.id)
+      el.defaultPlaybackRate = el.playbackRate = Number(speed)
+      if (el.readyState < 1) continue
+      const local = Math.min(c.start + (T - (c.at ?? 0)), c.end - 0.001)
+      if (playingNow) {
+        if (el.paused) {
+          el.currentTime = local
+          void el.play().catch(() => {})
+        } else if (Math.abs(el.currentTime - local) > 0.25) el.currentTime = local
+      } else {
+        if (!el.paused) el.pause()
+        if (Math.abs(el.currentTime - local) > 0.02) el.currentTime = local
+      }
+    }
   }
   useEffect(() => {
     drawAdjusted()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adjust, motion, result])
+  }, [clips, layers, selId, result])
 
   // 재생 위치(재생 헤드). 재생 중에는 화면 그릴 때마다 따라가고, 전체 재생이면 다음 클립을 준비하고 경계에서 바로 넘긴다
   const [time, setTime] = useState(0)
@@ -1166,6 +1485,7 @@ export function VideoConvertTool() {
     const v = preview.current
     if (!v) return
     setTime(v.currentTime)
+    syncLayers(!v.paused)
     drawAdjusted()
     prepareNext()
     if (seqRef.current && !v.paused && v.currentTime >= range[1] - 0.03 && performance.now() - lastSwitch.current > 200) nextClip()
@@ -1226,14 +1546,14 @@ export function VideoConvertTool() {
 
   // 설정을 바꾸면 잠깐 뒤(손을 멈춘 뒤) 한 장 평균 크기를 다시 잰다. 초당 장수·속도·반복은 장수만 바뀌어 다시 재지 않는다.
   const [perFrame, setPerFrame] = useState<{ key: string; bytes: number } | null>(null)
-  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}|${JSON.stringify(adjust)}|${JSON.stringify(motion)}` : ""
+  const sampleKey = source ? `${source.url}|${range[0].toFixed(1)}|${range[1].toFixed(1)}|${outW}|${format}|${colors}|${JSON.stringify(activeClip?.adjust)}|${JSON.stringify(activeClip?.motion)}` : ""
   useEffect(() => {
     // 손잡이를 끄는 동안에는 재지 않는다(미리보기와 영상 읽기를 다투지 않게)
     if (!source || busy || sliding || length <= 0) return
     let alive = true
     const timer = setTimeout(() => {
       const times = Array.from({ length: SAMPLES }, (_, i) => Math.min(range[0] + ((i + 0.5) * length) / SAMPLES, source.duration - 0.001))
-      measurePerFrame(format, source.url, times, outW, outH, colors, adjust, motion, () => alive).then(
+      measurePerFrame(format, source.url, times, outW, outH, colors, activeClip?.adjust ?? NO_ADJUST, activeClip?.motion ?? NO_MOTION, () => alive).then(
         (bytes) => alive && bytes !== null && setPerFrame({ key: sampleKey, bytes }),
         () => {},
       )
@@ -1272,6 +1592,27 @@ export function VideoConvertTool() {
       })
     }
     const seqClips = clips
+    const seqLayers = layers
+    // 위 트랙 동영상(트랙마다 하나)
+    const lv = new Map<number, { el: HTMLVideoElement; url: string }>()
+    const loadLayer = (track: number, url: string) => {
+      let e = lv.get(track)
+      if (!e) {
+        const el = document.createElement("video")
+        el.muted = true
+        el.preload = "auto"
+        e = { el, url: "" }
+        lv.set(track, e)
+      }
+      const entry = e
+      if (entry.url === url) return Promise.resolve(entry.el)
+      entry.url = url
+      return new Promise<HTMLVideoElement>((resolve, reject) => {
+        entry.el.onloadeddata = () => resolve(entry.el)
+        entry.el.onerror = () => reject(new Error("load"))
+        entry.el.src = url
+      })
+    }
     const startKey = workKeyRef.current
     cancelRef.current = () => {
       cancelled = true
@@ -1296,7 +1637,13 @@ export function VideoConvertTool() {
       })
       worker.postMessage(F.start(outW, outH, Number(repeat), colors, delay))
       setProgress({ step: "변환하는 중", ratio: 0, done: 0 })
-      // 클립을 순서대로 이어 붙인다(클립마다 시작부터 초당 장수만큼)
+      const tmp = document.createElement("canvas")
+      tmp.width = outW
+      tmp.height = outH
+      const tctx = tmp.getContext("2d", { willReadFrequently: true })!
+      tctx.imageSmoothingQuality = "high"
+      // 클립을 순서대로 이어 붙인다(클립마다 시작부터 초당 장수만큼). 장면마다 그 시점의 위 트랙(V2·V3)을 겹친다
+      let seqAt = 0
       for (const c of seqClips) {
         if (cancelled) return
         await load(c.source.url)
@@ -1304,12 +1651,33 @@ export function VideoConvertTool() {
         for (let i = 0; i < n; i++) {
           if (cancelled) return
           await seek(video, Math.min(c.start + i / Number(fps), c.end - 0.001, c.source.duration - 0.001))
-          drawFramed(ctx, video, c.source.width, c.source.height, outW, outH, motion)
-          const img = ctx.getImageData(0, 0, outW, outH)
-          applyAdjust(img.data, adjust)
+          drawFramed(ctx, video, c.source.width, c.source.height, outW, outH, c.motion)
+          let img = ctx.getImageData(0, 0, outW, outH)
+          applyAdjust(img.data, c.adjust)
+          const T = seqAt + i / Number(fps)
+          const ups = UPPER_TRACKS.map((tr) => [tr, layerAt(seqLayers, tr, T)] as const).filter(([, l]) => !!l)
+          if (ups.length) {
+            ctx.putImageData(img, 0, 0)
+            for (const [tr, l] of ups) {
+              const el = await loadLayer(tr, l!.source.url)
+              await seek(el, Math.min(l!.start + (T - (l!.at ?? 0)), l!.end - 0.001, l!.source.duration - 0.001))
+              tctx.setTransform(1, 0, 0, 1, 0, 0)
+              tctx.clearRect(0, 0, outW, outH)
+              drawFramed(tctx, el, l!.source.width, l!.source.height, outW, outH, l!.motion, false)
+              if (!isNoAdjust(l!.adjust)) {
+                const li = tctx.getImageData(0, 0, outW, outH)
+                applyAdjust(li.data, l!.adjust)
+                tctx.putImageData(li, 0, 0)
+              }
+              ctx.setTransform(1, 0, 0, 1, 0, 0)
+              ctx.drawImage(tmp, 0, 0)
+            }
+            img = ctx.getImageData(0, 0, outW, outH)
+          }
           const data = img.data.buffer
           worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
         }
+        seqAt += clipLen(c)
       }
       worker.postMessage({ type: "finish" } satisfies GifWorkerIn)
       const bytes = await finished
@@ -1323,10 +1691,10 @@ export function VideoConvertTool() {
       // 만든 움짤과 설정을 히스토리에 남긴다(제목 = 만든 파일 이름. 같은 동영상도 WebP·GIF 는 따로 보인다)
       if (blob.size <= HISTORY_MAX) {
         const head = seqClips[0]
-        const form: VideoForm = { format, width, ratio, fps, colors, speed, repeat, adjust, motion, source: head.source.file.name, start: head.start, end: head.end, outW, outH, frames, size: blob.size }
+        const form: VideoForm = { format, width, ratio, fps, colors, speed, repeat, adjust: head.adjust, motion: head.motion, source: head.source.file.name, start: head.start, end: head.end, outW, outH, frames, size: blob.size }
         const safe = base.replace(/[^\w.\-가-힣 ]/g, "_").slice(0, 50) || "video"
         // 원본 동영상도 함께 남긴다(불러오면 그 동영상들이 다시 열린다). 못 올리면 설정·움짤만 남긴다
-        const files = [...new Set(seqClips.map((c) => c.source.file))]
+        const files = [...new Set([...seqClips, ...seqLayers].map((c) => c.source.file))]
         const ids = Promise.all(files.map((f) => (f.size <= SOURCE_MAX ? uploadSource(f).catch(() => null) : Promise.resolve(null))))
         Promise.all([blobToDataUrl(blob), ids])
           .then(([image, idList]) => {
@@ -1335,8 +1703,11 @@ export function VideoConvertTool() {
             const full: VideoForm = {
               ...form,
               ...(headId ? { sourceFileId: headId } : {}),
-              ...(seqClips.length > 1
-                ? { clips: seqClips.map((c) => ({ source: c.source.file.name, sourceFileId: idOf.get(c.source.file) ?? undefined, start: c.start, end: c.end })) }
+              ...(seqClips.length > 1 || seqLayers.length > 0
+                ? {
+                    clips: seqClips.map((c) => ({ source: c.source.file.name, sourceFileId: idOf.get(c.source.file) ?? undefined, start: c.start, end: c.end, motion: c.motion, adjust: c.adjust })),
+                    layers: seqLayers.map((c) => ({ source: c.source.file.name, sourceFileId: idOf.get(c.source.file) ?? undefined, start: c.start, end: c.end, track: c.track ?? 1, at: c.at ?? 0, motion: c.motion, adjust: c.adjust })),
+                  }
                 : {}),
             }
             const fileIds = [...new Set(idList.filter((x): x is string => !!x))]
@@ -1355,6 +1726,10 @@ export function VideoConvertTool() {
       worker.terminate()
       video.removeAttribute("src")
       video.load()
+      for (const { el } of lv.values()) {
+        el.removeAttribute("src")
+        el.load()
+      }
       cancelRef.current = null
       if (!cancelled) setProgress(null)
     }
@@ -1366,13 +1741,16 @@ export function VideoConvertTool() {
   const loadForm = async (f: VideoForm, h: HistoryItem<VideoForm>) => {
     if (busy) return
     // 여러 클립을 이어 붙인 기록: 원본 동영상들을 받아 타임라인(순서·구간)을 그대로 다시 만든다
-    if (f.clips && f.clips.length > 1 && f.clips.every((c) => c.sourceFileId)) {
+    const fClips = f.clips ?? []
+    const fLayers = f.layers ?? []
+    if ((fClips.length > 1 || fLayers.length > 0) && [...fClips, ...fLayers].every((c) => c.sourceFileId)) {
       requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
       try {
-        const ids = [...new Set(f.clips.map((c) => c.sourceFileId!))]
+        const all = [...fClips, ...fLayers]
+        const ids = [...new Set(all.map((c) => c.sourceFileId!))]
         const files = new Map<string, File>()
         for (const [n, fid] of ids.entries()) {
-          const name = f.clips.find((c) => c.sourceFileId === fid)!.source
+          const name = all.find((c) => c.sourceFileId === fid)!.source
           setFetching({ name: `${name} (${n + 1}/${ids.length})`, ratio: 0 })
           const blob = await fetchFileBlob(fid, (ratio) => setFetching({ name: `${name} (${n + 1}/${ids.length})`, ratio }))
           const file = new File([blob], name, { type: blob.type || "video/mp4" })
@@ -1381,8 +1759,12 @@ export function VideoConvertTool() {
         }
         applyForm(f)
         await open(
-          f.clips.map((c) => files.get(c.sourceFileId!)!),
-          { ranges: f.clips.map((c) => [c.start, c.end] as [number, number]) },
+          fClips.map((c) => files.get(c.sourceFileId!)!),
+          {
+            ranges: fClips.map((c) => [c.start, c.end] as [number, number]),
+            fx: fClips.map((c) => ({ motion: c.motion ?? f.motion, adjust: c.adjust ?? f.adjust })),
+            layerSpecs: fLayers.map((l) => ({ file: files.get(l.sourceFileId!)!, start: l.start, end: l.end, track: l.track, at: l.at, motion: l.motion, adjust: l.adjust })),
+          },
         )
         return
       } catch {
@@ -1412,6 +1794,9 @@ export function VideoConvertTool() {
     // 지금 열린 동영상이 그때 원본과 같으면 구간도 채우고, 아니면 원본을 다시 고르라고 보여 준다
     if (source && source.file.name === f.source) {
       setRange([Math.min(f.start, source.duration), Math.min(f.end, source.duration)])
+      const fx = pendingFx.current
+      if (fx && activeClip) patchClip(activeClip.id, (c) => ({ ...c, ...fx }))
+      pendingFx.current = null
       setLoaded(null)
     } else setLoaded({ title: h.title, fileId: h.fileId, form: f })
     // 도구 창 안에서 스크롤하므로 창의 맨 위 칸으로 옮긴다
@@ -1425,14 +1810,15 @@ export function VideoConvertTool() {
     setColors(f.colors)
     setSpeed(f.speed)
     setRepeat(f.repeat)
-    setAdjust(normalizeAdjust(f.adjust))
-    setMotion(f.motion ? { ...f.motion, opacity: 100 } : NO_MOTION)
+    pendingFx.current = fixFx(f)
     setResult(null)
   }
 
   const reset = () => {
     cancelRef.current?.()
     setClips([])
+    setLayers([])
+    setSelId(null)
     setMedia([])
     setActiveId(null)
     setSeqPlay(false)
@@ -1460,6 +1846,75 @@ export function VideoConvertTool() {
     }
     if (e.dataTransfer.files.length) void open([...e.dataTransfer.files], { append: true })
   }
+  // 위 트랙 클립 고르기 · 옮기기(놓을 때 같은 트랙 클립과 겹치면 그 뒤로) · 끝 다듬기
+  const selectLayer = (id: number) => setSelId(id)
+  const changeLayer = (id: number, patch: Partial<Clip>, commit: boolean) => {
+    setSliding(!commit)
+    setLayers((ls) =>
+      ls.map((c) => {
+        if (c.id !== id) return c
+        const n = { ...c, ...patch }
+        if (commit && (patch.at !== undefined || patch.track !== undefined)) n.at = placeOnTrack(ls, n.track ?? 1, n.at ?? 0, clipLen(n), id)
+        return n
+      }),
+    )
+    setResult(null)
+  }
+  // 트랙 사이 옮기기: V1 → 위 트랙(그 시점에), 위 트랙 → V1(그 시점에 가까운 자리에 끼워 넣기)
+  const moveClipTrack = (id: number, toTrack: number, at: number) => {
+    const inV1 = clips.find((c) => c.id === id)
+    if (inV1 && toTrack > 0) {
+      if (clips.length === 1) {
+        setError("V1 에는 클립이 하나는 있어야 합니다(영상 길이는 V1 기준).")
+        return
+      }
+      const next = clips.filter((c) => c.id !== id)
+      setClips(next)
+      if (activeClip?.id === id) setActiveId(next[0]?.id ?? null)
+      setLayers((ls) => [...ls, { ...inV1, track: toTrack, at: placeOnTrack(ls, toTrack, at, clipLen(inV1)) }])
+      setSelId(id)
+    } else if (!inV1 && toTrack === 0) {
+      const l = layers.find((c) => c.id === id)
+      if (!l) return
+      setLayers((ls) => ls.filter((c) => c.id !== id))
+      const moved: Clip = { ...l, track: undefined, at: undefined }
+      let acc = 0
+      let idx = clips.length
+      for (let i = 0; i < clips.length; i++) {
+        if (at < acc + clipLen(clips[i]) / 2) {
+          idx = i
+          break
+        }
+        acc += clipLen(clips[i])
+      }
+      setClips((cs) => [...cs.slice(0, idx), moved, ...cs.slice(idx)])
+      setSelId(id)
+    }
+    setResult(null)
+  }
+  // 미디어 → 타임라인 트랙에 끌어 놓기(V1 은 뒤에 붙이고, V2·V3 는 놓은 시점에)
+  const dropOnTrack = (e: React.DragEvent, track: number, t: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(false)
+    if (busy) return
+    const idx = e.dataTransfer.getData(MEDIA_TYPE)
+    if (idx === "") {
+      if (e.dataTransfer.files.length) void open([...e.dataTransfer.files], { append: true })
+      return
+    }
+    const src = media[Number(idx)]
+    if (!src) return
+    if (track === 0 || clips.length === 0) {
+      addToTimeline(src)
+      return
+    }
+    const c: Clip = { ...newClip(src, 0, src.duration), track, at: 0 }
+    c.at = placeOnTrack(layers, track, t, clipLen(c))
+    setLayers((ls) => [...ls, c])
+    setSelId(c.id)
+    setResult(null)
+  }
   // 시퀀스 시간(재생 헤드): 고른 클립의 시퀀스 시작 + 그 클립 안 위치
   const seqStart = (id: number | undefined) => {
     let t = 0
@@ -1470,6 +1925,14 @@ export function VideoConvertTool() {
     return 0
   }
   const now = activeClip ? seqStart(activeClip.id) + Math.min(Math.max(time - activeClip.start, 0), clipLen(activeClip)) : 0
+  fxRef.current = { v1: activeClip, layers, now }
+  // 멈춰 있을 때 재생 헤드·위 트랙이 바뀌면 위 트랙 장면을 맞춘다
+  useEffect(() => {
+    if (playing) return
+    syncLayers(false)
+    drawAdjusted()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now, layers, playing])
   // 재생 헤드를 옮기면 그 시점 클립을 고르고 그 장면을 미리보기에 띄운다(다른 동영상이면 열린 뒤에 옮긴다)
   const pendingLocal = useRef<number | null>(null)
   const seekSequence = (t: number) => {
@@ -1508,7 +1971,7 @@ export function VideoConvertTool() {
   // 흰색 균형 스포이트: 켜면 미리보기를 눌러 그 자리(보정 전 원본 색, 5×5 평균)를 회색으로 맞춘다
   const [wbPick, setWbPick] = useState(false)
   const pickWhite = (e: React.MouseEvent<HTMLDivElement>) => {
-    const v = preview.current
+    const v = selIsLayer && selClip ? layerVid(selClip.track ?? 1) : preview.current
     const c = adjustCanvas.current
     if (!v || !c || !v.videoWidth) return
     const r = c.getBoundingClientRect()
@@ -1536,11 +1999,11 @@ export function VideoConvertTool() {
   const [saveOpen, setSaveOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false) // 동영상 설정 칸
   // 저장 안 한 작업: 마지막으로 저장(변환)한 뒤 클립·설정이 바뀌었으면 닫을 때 묻는다
-  const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end]), format, ratio, fps, colors, speed, repeat, adjust, motion])
+  const workKey = JSON.stringify([clips.map((c) => [c.source.url, c.start, c.end, c.motion, c.adjust]), layers.map((c) => [c.source.url, c.start, c.end, c.track, c.at, c.motion, c.adjust]), format, ratio, fps, colors, speed, repeat])
   const [savedKey, setSavedKey] = useState("")
   const workKeyRef = useRef(workKey)
   workKeyRef.current = workKey
-  useToolDirty(clips.length > 0 && workKey !== savedKey)
+  useToolDirty((clips.length > 0 || layers.length > 0) && workKey !== savedKey)
   const playFromHead = () => {
     const v = preview.current
     if (!v || !activeClip) return
@@ -1563,12 +2026,25 @@ export function VideoConvertTool() {
   }
   const markIn = () => {
     if (!activeClip) return
+    if (selIsLayer && selClip) {
+      const at = selClip.at ?? 0
+      const local = selClip.start + (now - at)
+      if (local < selClip.end - 0.1 && local >= 0) patchClip(selClip.id, (c) => ({ ...c, start: Math.round(local * 100) / 100, at: Math.round(now * 100) / 100 }))
+      setResult(null)
+      return
+    }
     const t = preview.current?.currentTime ?? time
     setRange([Math.min(Math.max(t, 0), range[1] - 0.1), range[1]])
     setResult(null)
   }
   const markOut = () => {
     if (!activeClip || !source) return
+    if (selIsLayer && selClip) {
+      const local = selClip.start + (now - (selClip.at ?? 0))
+      if (local > selClip.start + 0.1) patchClip(selClip.id, (c) => ({ ...c, end: Math.min(Math.round(local * 100) / 100, c.source.duration) }))
+      setResult(null)
+      return
+    }
     const t = preview.current?.currentTime ?? time
     setRange([range[0], Math.min(Math.max(t, range[0] + 0.1), source.duration)])
     setResult(null)
@@ -1584,12 +2060,12 @@ export function VideoConvertTool() {
   }
   // 단축키(프리미어와 같게): 스페이스 재생 · ←→ 1프레임(Shift = 1초) · Home/End · I/O 시작·끝 표시 · C 자르기 · Delete 고른 클립 삭제
   // ── 되돌리기 기록: 바뀐 뒤 0.35초 손을 멈추면 한 단계로 남긴다(슬라이더·손잡이 끌기는 끌기 한 번 = 한 단계) ──
-  type Snap = { clips: Clip[]; media: Source[]; adjust: Adjust; motion: Motion; activeId: number | null }
+  type Snap = { clips: Clip[]; layers: Clip[]; media: Source[]; activeId: number | null }
   const hist = useRef<{ past: Snap[]; present: Snap | null; future: Snap[] }>({ past: [], present: null, future: [] })
   const [histVer, setHistVer] = useState(0) // 버튼 켜기·끄기만 다시 그리게
-  const snapNow = useRef<Snap>({ clips, media, adjust, motion, activeId })
-  snapNow.current = { clips, media, adjust, motion, activeId: activeClip?.id ?? null }
-  const sameSnap = (a: Snap, b: Snap) => a.clips === b.clips && a.media === b.media && a.adjust === b.adjust && a.motion === b.motion
+  const snapNow = useRef<Snap>({ clips, layers, media, activeId })
+  snapNow.current = { clips, layers, media, activeId: activeClip?.id ?? null }
+  const sameSnap = (a: Snap, b: Snap) => a.clips === b.clips && a.layers === b.layers && a.media === b.media
   const record = () => {
     const h = hist.current
     const now = snapNow.current
@@ -1607,14 +2083,13 @@ export function VideoConvertTool() {
     const t = setTimeout(record, 350)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clips, media, adjust, motion])
+  }, [clips, layers, media])
   const applySnap = (p: Snap) => {
     preview.current?.pause()
     setSeqPlay(false)
     setClips(p.clips)
+    setLayers(p.layers)
     setMedia(p.media)
-    setAdjust(p.adjust)
-    setMotion(p.motion)
     setActiveId(p.clips.some((c) => c.id === p.activeId) ? p.activeId : (p.clips[0]?.id ?? null))
     setResult(null)
     setError(null)
@@ -1641,6 +2116,49 @@ export function VideoConvertTool() {
   void histVer
   const canUndo = hist.current.past.length > 0 || (hist.current.present !== null && !sameSnap(hist.current.present, snapNow.current))
   const canRedo = hist.current.future.length > 0
+  const fxClipboard = useRef<{ motion: Motion; adjust: Adjust } | null>(null)
+  const [fxNote, setFxNote] = useState<string | null>(null)
+  useEffect(() => {
+    if (!fxNote) return
+    const t = setTimeout(() => setFxNote(null), 1800)
+    return () => clearTimeout(t)
+  }, [fxNote])
+  const copyFx = () => {
+    if (!selClip) return
+    fxClipboard.current = { motion: selClip.motion, adjust: selClip.adjust }
+    setFxNote("보정값 복사함")
+  }
+  const pasteFx = () => {
+    const fx = fxClipboard.current
+    if (!fx || !selClip) return
+    patchClip(selClip.id, (c) => ({ ...c, motion: fx.motion, adjust: fx.adjust }))
+    setResult(null)
+    setFxNote("보정값 붙여넣음")
+  }
+  // 클립 복사·붙여넣기(Ctrl+C / Ctrl+V): 고른 클립을 모션·색 보정까지 그대로, 고른 클립 바로 뒤에(같은 트랙)
+  const clipClipboard = useRef<Clip | null>(null)
+  const copyClip = () => {
+    if (!selClip) return
+    clipClipboard.current = selClip
+    setFxNote("클립 복사함")
+  }
+  const pasteClip = () => {
+    const src = clipClipboard.current
+    if (!src) return
+    const base = newClip(src.source, src.start, src.end, src)
+    if (selIsLayer && selClip) {
+      const c: Clip = { ...base, track: selClip.track, at: placeOnTrack(layers, selClip.track ?? 1, (selClip.at ?? 0) + clipLen(selClip), clipLen(base)) }
+      setLayers((ls) => [...ls, c])
+      setSelId(c.id)
+    } else {
+      const anchor = selClip && clips.some((c) => c.id === selClip.id) ? selClip : activeClip
+      const idx = anchor ? clips.findIndex((c) => c.id === anchor.id) + 1 : clips.length
+      setClips((cs) => [...cs.slice(0, idx), base, ...cs.slice(idx)])
+      setSelId(base.id)
+    }
+    setResult(null)
+    setFxNote("클립 붙여넣음")
+  }
   const keysRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keysRef.current = (e: KeyboardEvent) => {
     if (!source || busy || saveOpen || settingsOpen || historyOpen) return
@@ -1649,6 +2167,20 @@ export function VideoConvertTool() {
     // 글자를 치는 칸에서만 단축키를 쉰다(눈금·버튼·슬라이더에 포커스가 있어도 편집 단축키가 먼저)
     const el = e.target instanceof HTMLElement ? e.target : null
     if (el && (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color)$/i.test((el as HTMLInputElement).type)))) return
+    if ((e.ctrlKey || e.metaKey) && e.altKey && (e.code === "KeyC" || e.code === "KeyV")) {
+      if (e.code === "KeyC") copyFx()
+      else pasteFx()
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === "KeyC" || e.code === "KeyV")) {
+      if (e.code === "KeyC") copyClip()
+      else pasteClip()
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === "KeyZ" || e.code === "KeyY")) {
       if (e.code === "KeyY" || e.shiftKey) redo()
       else undo()
@@ -1680,7 +2212,7 @@ export function VideoConvertTool() {
     window.addEventListener("keydown", on, true)
     return () => window.removeEventListener("keydown", on, true)
   }, [])
-  const mediaThumb = useClipThumbs(media.map((s) => ({ id: -1, source: s, start: 0, end: s.duration })))
+  const mediaThumb = useClipThumbs(media.map((s) => ({ source: s, start: 0, end: s.duration })))
   const clipNo = clips.findIndex((c) => c.id === activeClip?.id) + 1
 
   return (
@@ -2023,6 +2555,22 @@ export function VideoConvertTool() {
                         />
                       )
                     })}
+                    {UPPER_TRACKS.map((tr) => (
+                      <video
+                        key={`layer-${tr}`}
+                        ref={tr === 1 ? layerVidA : layerVidB}
+                        preload="auto"
+                        muted
+                        playsInline
+                        aria-hidden
+                        className="pointer-events-none absolute size-px opacity-0"
+                        onLoadedData={() => {
+                          syncLayers(playing)
+                          drawAdjusted()
+                        }}
+                        onSeeked={drawAdjusted}
+                      />
+                    ))}
                     {wbPick && (
                       <div className="absolute inset-0 z-20 cursor-crosshair" onClick={pickWhite} role="button" aria-label="흰색 균형으로 맞출 곳 누르기" />
                     )}
@@ -2067,7 +2615,7 @@ export function VideoConvertTool() {
             <Panel title="모션" bare scroll>
               {source ? (
                 <div className="p-3">
-                  <MotionPanel value={motion} onChange={setMotion} srcW={source.width} srcH={source.height} disabled={busy} />
+                  <MotionPanel value={motion} onChange={setMotion} srcW={(selClip ?? activeClip)?.source.width ?? source.width} srcH={(selClip ?? activeClip)?.source.height ?? source.height} disabled={busy} />
                 </div>
               ) : (
                 <EmptyNote>동영상을 가져오면 위치·비율·회전·자르기를 조절합니다.</EmptyNote>
@@ -2156,7 +2704,7 @@ export function VideoConvertTool() {
                   <ul className={mediaView === "grid" ? "grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2" : "flex flex-col gap-1"}>
                     {media.map((s, i) => {
                       const uses = clips.filter((c) => c.source === s).length
-                      const thumb = mediaThumb({ id: -1, source: s, start: 0, end: s.duration })
+                      const thumb = mediaThumb({ source: s, start: 0, end: s.duration })
                       return (
                         <li
                           key={s.url}
@@ -2217,8 +2765,9 @@ export function VideoConvertTool() {
                   <ListVideo className="size-4" />
                   타임라인
                   <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    클립 {clips.length}개 · {fmt(totalLength)}
+                    클립 {clips.length + layers.length}개 · {fmt(totalLength)}
                   </span>
+                  {fxNote && <span className="text-xs font-normal text-sky-500" aria-live="polite">{fxNote}</span>}
                 </span>
               }
               actions={
@@ -2271,7 +2820,12 @@ export function VideoConvertTool() {
                   <>
                     <SequenceTimeline
                       clips={clips}
-                      activeId={activeClip?.id ?? null}
+                      layers={layers}
+                      onSelectLayer={selectLayer}
+                      onLayerChange={changeLayer}
+                      onMoveClip={moveClipTrack}
+                      onDropMedia={dropOnTrack}
+                      activeId={selClip?.id ?? null}
                       now={now}
                       fps={Number(fps)}
                       disabled={busy}
