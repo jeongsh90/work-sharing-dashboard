@@ -3177,7 +3177,7 @@ function Panel({ title, actions, trailing, scroll, bare, className, children }: 
       {scroll ? (
         // 넘치면 오른쪽에 세로 스크롤 막대가 늘 보인다(트랙을 늘려 칸을 넘을 때 등)
         <div ref={scrollBox} className="relative flex min-h-0 flex-1 flex-col">
-          <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="h-full">
+          <SmoothScrollArea className="min-h-0 flex-1 overflow-auto" contentClassName="flex min-h-full flex-col">
             {children}
           </SmoothScrollArea>
           <OverlayScrollbar always target={() => scrollBox.current?.firstElementChild as HTMLElement | null} className="absolute top-1 right-0.5 bottom-1 w-1.5" />
@@ -3190,7 +3190,7 @@ function Panel({ title, actions, trailing, scroll, bare, className, children }: 
 }
 
 function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <p className="flex h-full min-h-24 items-center justify-center p-4 text-center text-xs break-keep text-muted-foreground">{children}</p>
+  return <p className="flex min-h-24 flex-1 items-center justify-center p-4 text-center text-xs break-keep text-muted-foreground">{children}</p>
 }
 
 // 내보내기 막대의 작은 고르기 칸(이름 위 · 칸 아래)
