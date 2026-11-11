@@ -135,8 +135,10 @@ function MyMenu({ session, settings, saved }: { session: Session; settings: Menu
       const visible = groups.find((g) => g.label === group)!.items.map((i) => i.id)
       const list = visible.filter((x) => x !== id)
       list.splice(Math.max(0, Math.min(to, list.length)), 0, id)
-      const hidden = d.order[group].filter((x) => !visible.includes(x))
-      return { ...d, order: { ...d.order, [group]: [...list, ...hidden] } }
+      // 보이는 메뉴가 있던 자리에만 새 순서를 채운다(순서를 함께 쓰는 다른 계정의 메뉴 자리는 그대로)
+      let k = 0
+      const full = d.order[group].map((x) => (visible.includes(x) ? list[k++] : x))
+      return { ...d, order: { ...d.order, [group]: full } }
     })
   const toggleButton = (id: string, on: boolean) => setDraft((d) => ({ ...d, buttons: on ? [...d.buttons, id] : d.buttons.filter((x) => x !== id) }))
   const setColor = (id: string, color: string) => setDraft((d) => ({ ...d, colors: { ...d.colors, [id]: color } }))
@@ -176,6 +178,12 @@ function MyMenu({ session, settings, saved }: { session: Session; settings: Menu
           내 사이드메뉴만 바뀝니다. 묶음 안에서 메뉴를 끌어 옮기거나 화살표로 순서를 바꾸고, "버튼"을 체크하면 디자인 요청처럼 사이드메뉴 맨 위에 큰
           버튼으로 보입니다. 버튼 색도 고를 수 있습니다.
         </p>
+        {saved.sharedOrder && (
+          <p className="rounded-lg bg-muted px-3 py-2 text-sm break-keep">
+            이 계정은 계정 전환으로 함께 쓰는 계정들과 <b>메뉴 순서</b>를 같이 씁니다. 여기서 순서를 바꾸면 그 계정들에도 같은 순서가 적용됩니다(버튼·버튼
+            색은 계정마다 따로).
+          </p>
+        )}
         <Message message={message} />
 
         {groups.map((g) => (

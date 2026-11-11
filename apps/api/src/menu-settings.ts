@@ -1,3 +1,4 @@
+import { SWITCH_ACCOUNTS } from './config.ts'
 import { db, get, run } from './db.ts'
 import { HttpError } from './requests.ts'
 import { ROLES, type PublicUser, type Role } from './users.ts'
@@ -6,6 +7,7 @@ import { ROLES, type PublicUser, type Role } from './users.ts'
 // - 메뉴 권한(슈퍼관리자, 모두에게 적용): 메뉴별로 보이는 역할. 화면(apps/web/src/lib/menu.ts)이 기본 메뉴 정의에 덮어 쓰고,
 //   기본으로 허용된 역할 안에서만 줄일 수 있다. 보기는 로그인한 누구나(사이드메뉴를 그려야 하므로), 저장은 슈퍼관리자만.
 // - 내 메뉴(계정마다 자기 것): 묶음 안 메뉴 순서, 맨 위 버튼으로 둘 메뉴, 버튼 색.
+//   계정 전환 묶음(SWITCH_ACCOUNTS)은 메뉴 순서를 함께 쓴다(한 줄 SHARED_ROW 에 저장). 버튼·색은 계정마다.
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -22,7 +24,10 @@ CREATE TABLE IF NOT EXISTS user_menu_prefs (
 `)
 
 export type MenuSettings = { roles: Record<string, Role[]>; updatedBy: string | null; updatedAt: number | null }
-export type MenuPrefs = { order: Record<string, string[]>; buttons: string[] | null; colors: Record<string, string>; updatedAt: number | null }
+export type MenuPrefs = { order: Record<string, string[]>; buttons: string[] | null; colors: Record<string, string>; updatedAt: number | null; sharedOrder: boolean }
+
+const SHARED_ROW = '@switch-accounts'
+const sharesOrder = (userId: string) => SWITCH_ACCOUNTS.includes(userId)
 
 const ID = /^[a-z0-9-]{1,40}$/
 const COLOR = /^[a-z]{1,20}$/
@@ -55,15 +60,23 @@ export function saveMenuSettings(user: PublicUser, body: Record<string, unknown>
   return getMenuSettings()
 }
 
-export function getMenuPrefs(user: PublicUser): MenuPrefs {
-  const row = get<{ value: string; updated_at: number }>('SELECT * FROM user_menu_prefs WHERE user_id = :id', { id: user.id })
-  if (!row) return { order: {}, buttons: null, colors: {}, updatedAt: null }
+function readRow(id: string) {
+  const row = get<{ value: string; updated_at: number }>('SELECT * FROM user_menu_prefs WHERE user_id = :id', { id })
+  if (!row) return null
   try {
-    const v = JSON.parse(row.value) as Partial<MenuPrefs>
-    return { order: v.order ?? {}, buttons: Array.isArray(v.buttons) ? v.buttons : null, colors: v.colors ?? {}, updatedAt: row.updated_at }
+    return { v: JSON.parse(row.value) as Partial<MenuPrefs>, at: row.updated_at }
   } catch {
-    return { order: {}, buttons: null, colors: {}, updatedAt: row.updated_at }
+    return { v: {} as Partial<MenuPrefs>, at: row.updated_at }
   }
+}
+
+export function getMenuPrefs(user: PublicUser): MenuPrefs {
+  const shared = sharesOrder(user.id)
+  const own = readRow(user.id)
+  const group = shared ? readRow(SHARED_ROW) : null
+  const order = (shared ? group?.v.order : own?.v.order) ?? {}
+  const at = Math.max(own?.at ?? 0, group?.at ?? 0) || null
+  return { order, buttons: Array.isArray(own?.v.buttons) ? own.v.buttons : null, colors: own?.v.colors ?? {}, updatedAt: at, sharedOrder: shared }
 }
 
 export function saveMenuPrefs(user: PublicUser, body: Record<string, unknown>) {
@@ -76,11 +89,16 @@ export function saveMenuPrefs(user: PublicUser, body: Record<string, unknown>) {
   const buttons = [...new Set(body.buttons.filter((id): id is string => typeof id === 'string' && ID.test(id)))].slice(0, 10)
   const colors: Record<string, string> = {}
   for (const [id, c] of Object.entries(body.colors).slice(0, 60)) if (ID.test(id) && typeof c === 'string' && COLOR.test(c)) colors[id] = c
-  run(
-    `INSERT INTO user_menu_prefs (user_id, value, updated_at) VALUES (:id, :value, :now)
-     ON CONFLICT(user_id) DO UPDATE SET value = :value, updated_at = :now`,
-    { id: user.id, value: JSON.stringify({ order, buttons, colors }), now: Date.now() },
-  )
+  const put = (id: string, value: unknown) =>
+    run(
+      `INSERT INTO user_menu_prefs (user_id, value, updated_at) VALUES (:id, :value, :now)
+       ON CONFLICT(user_id) DO UPDATE SET value = :value, updated_at = :now`,
+      { id, value: JSON.stringify(value), now: Date.now() },
+    )
+  if (sharesOrder(user.id)) {
+    put(SHARED_ROW, { order })
+    put(user.id, { buttons, colors })
+  } else put(user.id, { order, buttons, colors })
   return getMenuPrefs(user)
 }
 

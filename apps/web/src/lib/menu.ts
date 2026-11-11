@@ -113,7 +113,7 @@ export type MenuSettings = { roles: Record<string, Role[]>; updatedBy: string | 
 //   order: 묶음 이름 → 메뉴 id 순서. 없는 메뉴(새 메뉴)는 그 묶음 끝에 붙는다.
 //   buttons: 사이드메뉴 맨 위(로고 아래)에 큰 버튼으로 둘 메뉴. 버튼이 된 메뉴는 목록에서 빠진다. 정하지 않았으면 디자인 요청 하나.
 //   colors: 버튼 색(BUTTON_COLORS 의 key). 없으면 기본(primary)
-export type MenuPrefs = { order: Record<string, string[]>; buttons: string[] | null; colors: Record<string, string>; updatedAt: number | null }
+export type MenuPrefs = { order: Record<string, string[]>; buttons: string[] | null; colors: Record<string, string>; updatedAt: number | null; sharedOrder?: boolean }
 
 export const ALL_ROLES: Role[] = ["superadmin", "admin", "designer", "requester"]
 export const DEFAULT_BUTTONS = ["request"]
