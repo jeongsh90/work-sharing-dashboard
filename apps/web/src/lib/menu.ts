@@ -21,6 +21,7 @@ import {
   Network,
   Server,
   KeyRound,
+  ListOrdered,
   UserRound,
   Users,
   Zap,
@@ -28,7 +29,7 @@ import {
 } from "lucide-react"
 
 import type { Role } from "./auth"
-import { isDesignWorker } from "./store"
+import { isDesignWorker, useApi } from "./store"
 
 // designTeam: 디자인팀 작업자(작업자 + 디자인팀 관리자)에게만 보인다
 export type MenuItem = { id: string; title: string; icon: LucideIcon; roles?: Role[]; designTeam?: boolean }
@@ -70,6 +71,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
     label: "관리",
     items: [
       { id: "team", title: "팀 관리", icon: Users, roles: MANAGERS },
+      // 메뉴 관리(슈퍼관리자): 메뉴 순서, 메뉴별로 보이는 역할, 맨 위 버튼으로 둘 메뉴
+      { id: "menu-settings", title: "메뉴 관리", icon: ListOrdered, roles: ["superadmin"] },
       // 사내망 직통(슈퍼관리자): 같은 사무실 PC 의 IP 를 등록해 파일을 서버로 바로 주고받게 한다
       { id: "lan", title: "사내망 직통", icon: Zap, roles: ["superadmin"] },
       { id: "ftp-servers", title: "FTP 서버", icon: Server, roles: ["superadmin"] },
@@ -102,11 +105,59 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
   },
 ]
 
-export function menuFor(user: { role: Role; department: string }) {
-  const visible = (i: MenuItem) => (!i.roles || i.roles.includes(user.role)) && (!i.designTeam || isDesignWorker(user))
-  return MENU_GROUPS.map((g) => ({ ...g, items: g.items.filter(visible) })).filter(
-    (g) => g.items.length > 0,
-  )
+// ── 메뉴 관리 설정(서버 /menu-settings, 슈퍼관리자가 관리 → 메뉴 관리에서 바꾼다) ──
+// order: 묶음 이름 → 메뉴 id 순서. 설정에 없는 새 메뉴는 그 묶음 끝에 붙는다.
+// roles: 메뉴 id → 보이는 역할. 기본으로 허용된 역할 안에서만 줄일 수 있다(서버 API 도 같은 역할만 받으므로).
+// buttons: 사이드메뉴 맨 위(로고 아래)에 큰 버튼으로 둘 메뉴. 버튼이 된 메뉴는 목록에서 빠진다. 없으면 디자인 요청 하나.
+export type MenuSettings = {
+  order: Record<string, string[]>
+  roles: Record<string, Role[]>
+  buttons: string[] | null
+  updatedBy: string | null
+  updatedAt: number | null
+}
+
+export const ALL_ROLES: Role[] = ["superadmin", "admin", "designer", "requester"]
+export const DEFAULT_BUTTONS = ["request"]
+// 권한을 바꾸지 않는 묶음·메뉴: 개인 묶음(각자 자기 것), 홈(갈 곳이 없을 때 돌아가는 곳), 메뉴 관리(잠김 방지)
+export const PERSONAL_GROUP = "개인"
+export const LOCKED_ROLE_MENUS = ["home", "menu-settings"]
+// 버튼으로 둘 수 없는 메뉴: 홈은 로고가 버튼이다
+export const NO_BUTTON_MENUS = ["home"]
+
+export const defaultRoles = (i: MenuItem): Role[] => i.roles ?? ALL_ROLES
+export const canSetRoles = (group: string, id: string) => group !== PERSONAL_GROUP && !LOCKED_ROLE_MENUS.includes(id)
+
+// 설정의 순서대로 묶음 안 메뉴를 늘어놓는다
+export function orderedGroups(settings?: MenuSettings | null) {
+  return MENU_GROUPS.map((g) => {
+    const saved = settings?.order[g.label] ?? []
+    const rank = (id: string) => {
+      const i = saved.indexOf(id)
+      return i < 0 ? saved.length + g.items.findIndex((x) => x.id === id) : i
+    }
+    return { ...g, items: [...g.items].sort((a, b) => rank(a.id) - rank(b.id)) }
+  })
+}
+
+// 이 메뉴가 보이는 역할(설정 적용)
+export function rolesOf(group: string, item: MenuItem, settings?: MenuSettings | null): Role[] {
+  const base = defaultRoles(item)
+  const saved = canSetRoles(group, item.id) ? settings?.roles[item.id] : undefined
+  return saved ? base.filter((r) => saved.includes(r)) : base
+}
+
+export function menuFor(user: { role: Role; department: string }, settings?: MenuSettings | null) {
+  const visible = (group: string, i: MenuItem) => rolesOf(group, i, settings).includes(user.role) && (!i.designTeam || isDesignWorker(user))
+  return orderedGroups(settings)
+    .map((g) => ({ ...g, items: g.items.filter((i) => visible(g.label, i)) }))
+    .filter((g) => g.items.length > 0)
+}
+
+// 맨 위 버튼으로 둘 메뉴 id(설정 순서가 아니라 메뉴 순서대로)
+export function buttonIds(settings?: MenuSettings | null) {
+  const list = (settings?.buttons ?? DEFAULT_BUTTONS).filter((id) => !NO_BUTTON_MENUS.includes(id))
+  return new Set(list)
 }
 
 // 메뉴에 없는 화면의 제목
@@ -116,3 +167,6 @@ export const PAGE_TITLES: Record<string, string> = {
   "notice-detail": "공지사항",
   "notice-edit": "공지사항 작성",
 }
+
+// 메뉴 관리 설정(사이드메뉴·주소 막기에 함께 쓴다). 받기 전에는 기본 메뉴
+export const useMenuSettings = (enabled = true) => useApi<MenuSettings>(enabled ? "/menu-settings" : null, 60_000).data

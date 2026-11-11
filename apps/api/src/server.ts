@@ -60,6 +60,7 @@ import { renderDetail } from './detail-render.ts'
 import { addDetailDraft, deleteDetailDraft, getDetailDraft, listDetailDrafts, updateDetailDraft } from './detail-drafts.ts'
 import { deleteRequestDraft, getRequestDraft, saveRequestDraft } from './request-drafts.ts'
 import { deleteDeptApprover, listDeptApprovers, setDeptApprover } from './dept-approvers.ts'
+import { getMenuSettings, saveMenuSettings } from './menu-settings.ts'
 import { accountSecret, addAccount, deleteAccount, listAccounts, reorderAccounts, updateAccount } from './accounts.ts'
 import { addLanIp, deleteLanIp, ignoreLanMiss, lanAddress, lanExternalAddress, listLanIgnored, listLanIps, listLanMisses, reportLan, startLan, unignoreLanMiss, updateLanIp } from './lan.ts'
 import {
@@ -382,6 +383,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   const user = requireUser(req)
   touchSeen(user.id)
 
+  // 메뉴 관리(사이드메뉴 순서·메뉴별 역할). 보기는 누구나, 저장은 슈퍼관리자(menu-settings.ts)
+  if (path === '/api/menu-settings') {
+    if (method === 'GET') return sendJson(res, 200, getMenuSettings())
+    if (method === 'PUT') return sendJson(res, 200, saveMenuSettings(user, await readJson(req)))
+  }
   // ── 사내망 직통 PC(IP) 등록(관리 → 사내망 직통, 슈퍼관리자, lan.ts) ──
   // 부서별 최종 컨펌자(팀 관리, 슈퍼관리자가 정함. 보기는 로그인한 누구나)
   if (path === '/api/dept-approvers') {

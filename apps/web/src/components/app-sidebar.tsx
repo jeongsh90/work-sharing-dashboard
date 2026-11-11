@@ -1,10 +1,11 @@
-import { useEffect } from "react"
-import { FilePlus2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { ChevronDown, FilePlus2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 import { isManager, type Session } from "@/lib/auth"
-import { menuFor } from "@/lib/menu"
+import { buttonIds, menuFor, useMenuSettings } from "@/lib/menu"
 import type { NoticeSummary } from "@/lib/notices"
 import { useNotifications } from "@/lib/notifications"
 import { isRequesterOf, type RequestSummaryDto } from "@/lib/requests"
@@ -26,7 +27,10 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
+
+const CLOSED_KEY = "wsd:sidebar-closed-groups"
 
 // 메뉴 N 표시: 다른 사람이 새로 올린 내용이 있으면 하루 동안 N 을 띄운다. 그 메뉴를 열어 보면 꺼진다.
 // (버전 정보는 아직 보지 않은 새 버전이 있으면)
@@ -95,8 +99,31 @@ export function AppSidebar({
   onSwitched: OnSwitched
 }) {
   const fresh = useFreshMenus(session, activeId)
-  // "디자인 요청"은 메뉴 목록 대신 로고 아래 큰 버튼으로 둔다(작업자는 대신 작성)
-  const requestButton = true
+  // 메뉴 관리에서 "버튼"으로 고른 메뉴(기본: 디자인 요청)는 목록 대신 로고 아래 큰 버튼으로 둔다
+  const settings = useMenuSettings()
+  const groups = menuFor(session, settings)
+  const asButton = buttonIds(settings)
+  const buttons = groups.flatMap((g) => g.items).filter((i) => asButton.has(i.id))
+  // 1차 묶음(업무·관리·개인·지원) 접기: 접어 둔 묶음은 이 브라우저에 기억한다
+  const { state } = useSidebar()
+  const [closed, setClosed] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? "[]")
+      return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []
+    } catch {
+      return []
+    }
+  })
+  const toggleGroup = (label: string, open: boolean) =>
+    setClosed((prev) => {
+      const next = open ? prev.filter((x) => x !== label) : [...new Set([...prev, label])]
+      try {
+        localStorage.setItem(CLOSED_KEY, JSON.stringify(next))
+      } catch {
+        /* 저장 못 해도 화면은 그대로 */
+      }
+      return next
+    })
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -120,41 +147,69 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        {requestButton && (
+        {buttons.length > 0 && (
           <>
             {/* 펼친 메뉴: 큰 버튼 */}
-            <Button
-              size="xl"
-              className="mt-1 w-full group-data-[collapsible=icon]:hidden"
-              onClick={() => onNavigate("request")}
-            >
-              <FilePlus2 data-icon="inline-start" />
-              디자인 요청
-            </Button>
+            <div className="mt-1 flex flex-col gap-1.5 group-data-[collapsible=icon]:hidden">
+              {buttons.map((item) => (
+                <div key={item.id} className="relative">
+                  <Button size="xl" className="w-full" onClick={() => onNavigate(item.id)}>
+                    <item.icon data-icon="inline-start" />
+                    {item.title}
+                  </Button>
+                  {fresh.has(item.id) && (
+                    <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md bg-destructive px-1.5 text-[11px] leading-5 font-medium text-white">N</span>
+                  )}
+                </div>
+              ))}
+            </div>
             {/* 접힌 메뉴: 아래 메뉴 아이콘과 같은 크기·위치의 아이콘 버튼(기본 버튼 색) */}
             <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="디자인 요청"
-                  aria-label="디자인 요청"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
-                  onClick={() => onNavigate("request")}
-                >
-                  <FilePlus2 />
-                  <span>디자인 요청</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {buttons.map((item) => (
+                <SidebarMenuItem key={item.id}>
+                  <SidebarMenuButton
+                    tooltip={item.title}
+                    aria-label={item.title}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </>
         )}
       </SidebarHeader>
       <SidebarContent>
-        {menuFor(session).map((group) => (
-          <SidebarGroup key={group.label} className={group.bottom ? "mt-auto" : undefined}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+        {groups.map((group) => ({ ...group, items: group.items.filter((item) => !asButton.has(item.id)) })).filter((group) => group.items.length > 0 || group.bottom).map((group) => {
+          // 아이콘만 보이게 접힌 사이드메뉴에서는 묶음 제목이 없으므로 늘 펼친다
+          const open = state === "collapsed" || !closed.includes(group.label)
+          const hasFresh = group.items.some((item) => fresh.has(item.id))
+          const hasActive = group.items.some((item) => item.id === activeId)
+          return (
+          <Collapsible
+            key={group.label}
+            open={open}
+            onOpenChange={(o) => toggleGroup(group.label, o)}
+            className={`group/collapsible ${group.bottom ? "mt-auto" : ""}`}
+          >
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger className="w-full cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                {group.label}
+                {/* 접힌 묶음 안에 새 글(N)이나 지금 보는 메뉴가 있으면 점으로 알린다 */}
+                {!open && (hasFresh || hasActive) && (
+                  <span className={`ml-1.5 size-1.5 rounded-full ${hasFresh ? "bg-destructive" : "bg-sidebar-primary"}`} aria-label={hasFresh ? "새 내용 있음" : "보고 있는 메뉴"} />
+                )}
+                <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.filter((item) => !(requestButton && item.id === "request")).map((item) => (
+                {group.items.map((item) => (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       isActive={item.id === activeId}
@@ -175,8 +230,11 @@ export function AppSidebar({
               {/* 지원 아래: 서버 D 드라이브 용량(정상훈·슈퍼관리자만) */}
               {group.bottom && <DiskUsage />}
             </SidebarGroupContent>
+            </CollapsibleContent>
           </SidebarGroup>
-        ))}
+          </Collapsible>
+          )
+        })}
       </SidebarContent>
       <SidebarFooter>
         <NavUser session={session} onNavigate={onNavigate} onSessionChange={onSessionChange} onLogout={onLogout} onSwitched={onSwitched} />
