@@ -9,11 +9,12 @@ import { FONT, loadFonts } from "@/lib/canvas-text"
 import { useZoom, ZoomControl } from "@/components/tools/zoom-control"
 import patternUrl from "@/assets/tools/purchase-cert/point-pattern.png"
 import noroBgUrl from "@/assets/tools/noro-cert/noro-bg.jpg"
-import noroSandUrl from "@/assets/tools/noro-cert/noro-sand.png"
+import noroOverlayUrl from "@/assets/tools/noro-cert/noro-overlay.webp"
 
 // 디자인 툴 > 수매확인서: PDF(수산물 수매확인서)를 올리면 상세페이지용 이미지(860×1429 JPG)를 만든다.
 // 사양: docs/tools/수매확인서_툴_사양.md (Figma 셰프애찬 461:212). 고칠 수 있는 건 생산일자뿐이다.
-// 디자인 툴 > 노로 비검출해역 확인서는 바다 배경 틀(Figma 729:441, 860×1400, 파란 강조)이다(CERTS.noro, 사양 docs/tools/노로비검출_툴_사양.md).
+// 디자인 툴 > 노로 비검출해역 확인서는 바다 배경 틀(Figma 744:17397, 860×1400, 파란 강조)이다(CERTS.noro, 사양 docs/tools/노로비검출_툴_사양.md).
+// 노로는 말풍선 둘('생식용 굴' · '노로 비검출해역', 75 높이)이고 날짜 말풍선이 없다. 맨 위에 덮개(종이 오른쪽 위 흰 그라데이션 · 모래 · 굴 · 풀)를 얹는다.
 // 말풍선은 '생산일자' + PDF 표 첫 칸(생산일자)에 적힌 값 그대로(예 10.22). 서버가 OCR 로 읽어 채운다.
 // 왼쪽 미리보기 캔버스가 그대로 내려받는 이미지다. PDF 분석(이미지·OCR·위치)은 서버가 한다(apps/api/src/purchase-cert.ts).
 
@@ -25,6 +26,8 @@ type Layout = {
   produced: string | null
   highlight: Box | null
   tag: { left: number; top: number } | null
+  highlight2: Box | null // 노로만: 본문 '생식용 굴'
+  tag2: { left: number; top: number } | null
   dateBox: { left: number; top: number } | null
   warnings: string[]
 }
@@ -48,7 +51,7 @@ type CertConfig = {
   desc: [Seg[], Seg[]]
   tagLabel: string
   tagWidth: number
-  dateLabel: string
+  dateLabel: string | null // 날짜 말풍선 머리(노로는 없음)
   acceptImage: boolean // 스캔 이미지(JPG·PNG)도 받는다
   fileName: string
   defaultDateBox: { left: number; top: number } // 표를 못 찾았을 때 날짜 말풍선 기본 위치
@@ -90,7 +93,7 @@ const CERTS: Record<"purchase" | "noro", CertConfig> = {
     accent: ORANGE,
     theme: "pattern",
   },
-  // 노로 비검출해역 확인서(Figma 729:441): 표 채취해역 칸의 '노로 비검출해역' + 수매일자
+  // 노로 비검출해역 확인서(Figma 744:17397): 본문 '생식용 굴' + 표 채취해역 칸의 '노로 비검출해역'
   noro: {
     endpoint: "/tools/noro-cert",
     name: "노로 비검출해역 확인서",
@@ -109,12 +112,12 @@ const CERTS: Record<"purchase" | "noro", CertConfig> = {
       ],
     ],
     tagLabel: "노로 비검출해역",
-    tagWidth: 220,
-    dateLabel: "수매일자",
+    tagWidth: 330,
+    dateLabel: null,
     acceptImage: true,
     fileName: "noro.jpg",
     defaultDateBox: { left: 58, top: 385 },
-    findText: "'노로 비검출해역'·수매일자",
+    findText: "'생식용 굴'·'노로 비검출해역'",
     height: 1400,
     paper: { x: 120, y: 1400 - 120 - 877, w: 620, h: 877 }, // 아래 여백 120, 종이 아래쪽은 모래에 묻힌다
     docTop: 10,
@@ -124,7 +127,8 @@ const CERTS: Record<"purchase" | "noro", CertConfig> = {
 }
 
 // PDF 를 올리기 전에는 강조(형광펜·말풍선)를 그리지 않는다
-const NO_MARKS: Pick<Layout, "highlight" | "tag" | "dateBox"> = { highlight: null, tag: null, dateBox: null }
+type Marks = Pick<Layout, "highlight" | "tag" | "highlight2" | "tag2" | "dateBox">
+const NO_MARKS: Marks = { highlight: null, tag: null, highlight2: null, tag2: null, dateBox: null }
 
 const loadImage = (src: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
@@ -189,12 +193,12 @@ async function draw(
   canvas: HTMLCanvasElement,
   cfg: CertConfig,
   page: HTMLImageElement | null,
-  layout: Pick<Layout, "highlight" | "tag" | "dateBox">,
+  layout: Marks,
   value: string,
 ) {
   await loadFonts()
   const sea = cfg.theme === "sea"
-  const [back, sand] = sea ? await Promise.all([loadImage(noroBgUrl), loadImage(noroSandUrl)]) : [await loadImage(patternUrl), null]
+  const [back, cover] = sea ? await Promise.all([loadImage(noroBgUrl), loadImage(noroOverlayUrl)]) : [await loadImage(patternUrl), null]
   const H = cfg.height
   const PAPER = cfg.paper
   const ctx = canvas.getContext("2d")!
@@ -225,13 +229,15 @@ async function draw(
     ctx.fillRect(0, 392, W, 1037)
   }
 
-  // 종이(그림자: 수매확인서 y8 blur24 10% / 노로 y5 blur5 15%) + 확인서 첫 장(노로는 종이 위 10 아래로 내려 놓는다)
+  // 종이: 수매확인서는 흰 종이(그림자 y8 blur24 10%) / 노로는 그림자가 바탕에 들어 있고 확인서 첫 장만 종이 위 10 아래에 놓는다
   ctx.save()
-  ctx.shadowColor = sea ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.10)"
-  ctx.shadowBlur = sea ? 5 : 24
-  ctx.shadowOffsetY = sea ? 5 : 8
+  if (!sea) {
+    ctx.shadowColor = "rgba(0,0,0,0.10)"
+    ctx.shadowBlur = 24
+    ctx.shadowOffsetY = 8
+  }
   ctx.fillStyle = "#ffffff"
-  ctx.fillRect(PAPER.x, PAPER.y, PAPER.w, PAPER.h)
+  ctx.fillRect(PAPER.x, PAPER.y + cfg.docTop, PAPER.w, PAPER.h)
   ctx.restore()
   if (page) {
     ctx.drawImage(page, PAPER.x, PAPER.y + cfg.docTop, PAPER.w, PAPER.h)
@@ -249,39 +255,85 @@ async function draw(
   ctx.translate(PAPER.x, PAPER.y + cfg.docTop)
   const { highlight: hl, tag, dateBox } = layout
 
-  // 형광펜 + 연결(강조색 30% · 곱하기)
-  // 연결: 수매확인서는 형광펜 폭 → 말풍선 폭(양쪽 7 안쪽), 노로(Figma 729:441)는 형광펜 가운데 60% → 말풍선 가운데 150
-  if (hl) {
-    ctx.save()
-    ctx.globalCompositeOperation = "multiply"
-    ctx.fillStyle = cfg.accent
-    ctx.globalAlpha = 0.3
-    ctx.fillRect(hl.l, hl.t, hl.r - hl.l, hl.b - hl.t)
-    if (tag) {
-      const mid = (hl.l + hl.r) / 2
-      const top = sea ? [mid - (hl.r - hl.l) * 0.3, mid + (hl.r - hl.l) * 0.3] : [hl.l, hl.r]
-      const tagMid = tag.left + cfg.tagWidth / 2
-      const bottom = sea ? [tagMid - 75, tagMid + 75] : [tag.left + 7, tag.left + cfg.tagWidth - 7]
-      ctx.beginPath()
-      ctx.moveTo(top[0], hl.b)
-      ctx.lineTo(top[1], hl.b)
-      ctx.lineTo(bottom[1], tag.top)
-      ctx.lineTo(bottom[0], tag.top)
-      ctx.closePath()
-      ctx.fill()
+  if (sea) {
+    // 노로(Figma 744:17397): 형광펜 + 연결(파랑 30% · 곱하기, 형광펜 폭 → 말풍선 양쪽 11 안쪽) + 말풍선(75 높이, 테두리 3, 글 36 Black 파랑)
+    const marks: [Box | null, { left: number; top: number } | null, string, number][] = [
+      [layout.highlight2, layout.tag2, "생식용 굴", 204],
+      [hl, tag, cfg.tagLabel, cfg.tagWidth],
+    ]
+    for (const [h, t, , w] of marks) {
+      if (!h) continue
+      ctx.save()
+      ctx.globalCompositeOperation = "multiply"
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = cfg.accent
+      ctx.fillRect(h.l, h.t, h.r - h.l, h.b - h.t)
+      if (t) {
+        ctx.beginPath()
+        ctx.moveTo(h.l, h.b)
+        ctx.lineTo(h.r, h.b)
+        ctx.lineTo(t.left + w - 11, t.top)
+        ctx.lineTo(t.left + 11, t.top)
+        ctx.closePath()
+        ctx.fill()
+      }
+      ctx.restore()
     }
-    ctx.restore()
-  }
+    for (const [h, t, label, w] of marks) {
+      if (!h || !t) continue
+      ctx.save()
+      ctx.shadowColor = "rgba(0,0,0,0.12)"
+      ctx.shadowBlur = 18
+      ctx.shadowOffsetY = 6
+      ctx.fillStyle = "#ffffff"
+      ctx.beginPath()
+      ctx.roundRect(t.left, t.top, w, 75, 12)
+      ctx.fill()
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = cfg.accent
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.roundRect(t.left + 1.5, t.top + 1.5, w - 3, 72, 10.5)
+      ctx.stroke()
+      ctx.font = `900 36px ${FONT}`
+      ctx.letterSpacing = "-0.72px"
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+      ctx.fillStyle = cfg.accent
+      ctx.fillText(label, t.left + w / 2, t.top + 3 + 34.5)
+      ctx.restore()
+    }
+  } else {
+    // 형광펜 + 연결(주황 30% · 곱하기, 형광펜 폭 → 말풍선 폭 양쪽 7 안쪽)
+    if (hl) {
+      ctx.save()
+      ctx.globalCompositeOperation = "multiply"
+      ctx.fillStyle = cfg.accent
+      ctx.globalAlpha = 0.3
+      ctx.fillRect(hl.l, hl.t, hl.r - hl.l, hl.b - hl.t)
+      if (tag) {
+        ctx.beginPath()
+        ctx.moveTo(hl.l, hl.b)
+        ctx.lineTo(hl.r, hl.b)
+        ctx.lineTo(tag.left + cfg.tagWidth - 7, tag.top)
+        ctx.lineTo(tag.left + 7, tag.top)
+        ctx.closePath()
+        ctx.fill()
+      }
+      ctx.restore()
+    }
 
-  // 강조 말풍선('생식용 굴' 164×50 / '노로 비검출해역' 220×50)
-  if (tag) {
-    bubble(ctx, tag.left, tag.top, cfg.tagWidth, 50)
-    bubbleBorder(ctx, tag.left, tag.top, cfg.tagWidth, 50, cfg.accent)
-    centerText(ctx, cfg.tagLabel, 24, -0.02, tag.left + cfg.tagWidth / 2, tag.top + 2 + 23)
+    // 강조 말풍선('생식용 굴' 164×50)
+    if (tag) {
+      bubble(ctx, tag.left, tag.top, cfg.tagWidth, 50)
+      bubbleBorder(ctx, tag.left, tag.top, cfg.tagWidth, 50, cfg.accent)
+      centerText(ctx, cfg.tagLabel, 24, -0.02, tag.left + cfg.tagWidth / 2, tag.top + 2 + 23)
+    }
   }
 
   // '생산일자' 말풍선 164×112: 머리 칸 160×50(#f5f5f5, 아래 선 2px 주황) + 날짜 칸 160×58
-  if (dateBox) {
+  if (dateBox && cfg.dateLabel) {
     const { left: x, top: y } = dateBox
     bubble(ctx, x, y, 164, 112)
     ctx.save()
@@ -299,8 +351,8 @@ async function draw(
   }
   ctx.restore()
 
-  // 노로: 맨 위에 모래(종이 아래쪽을 덮는다)
-  if (sand) ctx.drawImage(sand, 0, H - sand.height, W, sand.height)
+  // 노로: 맨 위에 덮개(860×1400 — 종이 오른쪽 위 흰 그라데이션, 아래 모래·굴, 오른쪽 풀)
+  if (cover) ctx.drawImage(cover, 0, 0, W, H)
 }
 
 export function PurchaseCertTool() {
@@ -344,7 +396,7 @@ function CertTool({ cfg }: { cfg: CertConfig }) {
       if (!res.ok) throw new ApiError(res.status, body.error ?? "파일을 읽지 못했습니다.")
       const next = body as Layout
       setPage(await loadImage(next.pageImage))
-      setLayout({ ...next, dateBox: next.dateBox ?? cfg.defaultDateBox })
+      setLayout({ ...next, highlight2: next.highlight2 ?? null, tag2: next.tag2 ?? null, dateBox: cfg.dateLabel ? (next.dateBox ?? cfg.defaultDateBox) : null })
       setDate(next.produced ?? "")
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "파일을 읽지 못했습니다.")
@@ -354,7 +406,7 @@ function CertTool({ cfg }: { cfg: CertConfig }) {
     }
   }
 
-  const ready = !!page && !!date.trim()
+  const ready = !!page && (!cfg.dateLabel || !!date.trim())
   const fileName = cfg.fileName
 
   const download = () => {
@@ -427,6 +479,7 @@ function CertTool({ cfg }: { cfg: CertConfig }) {
           </p>
         ))}
 
+        {cfg.dateLabel && (
         <Field>
           <FieldLabel htmlFor="cert-date">{cfg.dateLabel}</FieldLabel>
           <Input id="cert-date" value={date} onChange={(e) => setDate(e.target.value)} maxLength={20} placeholder={`확인서를 올리면 표의 ${cfg.dateLabel}로 채워집니다`} className="tabular-nums" />
@@ -436,6 +489,7 @@ function CertTool({ cfg }: { cfg: CertConfig }) {
               : `PDF 표의 ${cfg.dateLabel} 칸에 적힌 그대로 들어갑니다(예 10.22). 잘못 읽혔을 때만 고쳐 주세요.`}
           </FieldDescription>
         </Field>
+        )}
 
         <Button size="lg" disabled={!ready || busy} onClick={download}>
           <Download data-icon="inline-start" />

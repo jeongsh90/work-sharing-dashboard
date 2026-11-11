@@ -28,8 +28,11 @@ export type CertLayout = {
   issued: string | null // PDF 발행일 yyyy-MM-dd (못 읽으면 null)
   produced: string | null // 표 첫 칸 생산일자 값, PDF 에 적힌 그대로(예 10.22). 말풍선에 이 값을 쓴다
   highlight: Box | null
-  tag: { left: number; top: number } | null // 강조 말풍선('생식용 굴' 164×50 / '노로 비검출해역' 220×50)
-  dateBox: { left: number; top: number } | null // '수매일자' 말풍선(164×112)
+  tag: { left: number; top: number } | null // 강조 말풍선('생식용 굴' 164×50 / '노로 비검출해역' 330×75)
+  // 노로 확인서만: 본문 '생식용 굴' 형광펜 + 말풍선(204×75). 수매확인서는 늘 null
+  highlight2: Box | null
+  tag2: { left: number; top: number } | null
+  dateBox: { left: number; top: number } | null // '생산일자' 말풍선(164×112). 노로 확인서(Figma 744:17397)는 날짜 말풍선이 없어 늘 null
   warnings: string[]
 }
 
@@ -115,22 +118,33 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
 
     // 7-3. 강조 형광펜
     let highlight: Box | null = null
-    let noroWord: Word | null = null // 노로 확인서: 표 값 줄의 '노로' 낱말(같은 줄 맨 앞이 수매일자)
     let tag: CertLayout['tag'] = null
+    let highlight2: Box | null = null
+    let tag2: CertLayout['tag2'] = null
+    // 노로 말풍선(Figma 744:17397): 형광펜 가운데 아래 29px. 종이 밖으로 40 까지는 나가도 된다(Figma 도 오른쪽으로 18 나가 있음)
+    const noroTag = (hl: Box, w: number) => ({ left: Math.max(-40, Math.min(PAPER_WIDTH - w + 40, (hl.l + hl.r) / 2 - w / 2)), top: hl.b + 29 })
     if (kind === 'noro') {
-      // 표 채취해역 칸의 '노로 비검출해역'(아래 '노로검출지역' 줄은 빼고). 말풍선 220×50 은 형광펜 가운데 아래, 종이 밖으로 나가지 않게
+      // 표 채취해역 칸의 '노로 비검출해역'(아래 '노로검출지역' 줄은 빼고). 말풍선 330×75
       const n1 = words.find((w) => /^노로/.test(w.t) && /비검출/.test(w.line) && !/검출지역/.test(w.line))
       if (n1) {
-        noroWord = n1
         const rest = words.filter((w) => w.line === n1.line && w.x > n1.x && Math.abs(w.y - n1.y) < 40).sort((a, b) => a.x - b.x)
         const end = rest.find((w) => /해역/.test(w.t)) ?? rest[rest.length - 1] ?? n1
         const top = Math.min(n1.y, end.y)
         const bottom = Math.max(n1.y + n1.h, end.y + end.h)
         highlight = { l: (n1.x - 8) * s, t: (top - 8) * sy, r: (end.x + end.w + 8) * s, b: (bottom + 8) * sy }
-        const left = (highlight.l + highlight.r) / 2 - 110
-        tag = { left: Math.max(4, Math.min(PAPER_WIDTH - 224, left)), top: highlight.b + 14 }
+        tag = noroTag(highlight, 330)
       } else {
         warnings.push("확인서에서 '노로 비검출해역' 글자를 찾지 못해 형광펜을 넣지 않았습니다.")
+      }
+      // 본문 '생식용 굴'(…생식용 굴은 수매하였음을 증명합니다). 말풍선 204×75
+      const g1 = words.find((w) => /^생식용/.test(w.t) && /수매|증명/.test(w.line)) ?? words.find((w) => /^생식용/.test(w.t))
+      if (g1) {
+        const g2 = words.filter((w) => w.line === g1.line && w.x > g1.x).sort((a, b) => a.x - b.x)[0]
+        const right = g2 && /^굴/.test(g2.t) ? g2.x + g2.w / [...g2.t].length : g1.x + g1.w
+        highlight2 = { l: (g1.x - 8) * s, t: (g1.y - 8) * sy, r: (right + 8) * s, b: (g1.y + g1.h + 8) * sy }
+        tag2 = noroTag(highlight2, 204)
+      } else {
+        warnings.push("확인서에서 '생식용 굴' 글자를 찾지 못해 형광펜을 넣지 않았습니다.")
       }
     }
     const w1 = kind === 'purchase' ? (words.find((w) => /^생식용/.test(w.t) && w.line.includes('증명')) ?? words.find((w) => /^생식용/.test(w.t))) : undefined
@@ -146,25 +160,17 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
       warnings.push("PDF 에서 '생식용' 글자를 찾지 못해 형광펜을 넣지 않았습니다.")
     }
 
-    // 7-5. 표 첫 칸(생산일자) → 수매일자 말풍선
+    // 7-5. 표 첫 칸(생산일자) → 생산일자 말풍선(수매확인서만. 노로 확인서는 날짜 말풍선이 없다 — Figma 744:17397)
     let dateBox: CertLayout['dateBox'] = null
     let produced: string | null = null
-    const hd = words.find((w) => /^(중량|품목|수량)/.test(w.t))
+    const hd = kind === 'noro' ? undefined : words.find((w) => /^(중량|품목|수량)/.test(w.t))
     if (hd) {
       const c1 = words.filter((w) => Math.abs(w.y - hd.y) < 40).sort((a, b) => a.x - b.x)[0]
       const cy = Math.round(c1.y + c1.h / 2)
       const cx = Math.round(c1.x + c1.w / 2)
       const T = scanY(cx, c1.y - 3, -1)
-      // 노로 확인서(팩스 스캔)는 머리 글자를 일부만 읽어(수매일자 → '수 자') 글자 줄에서 옆으로 찾으면 글자에 걸린다.
-      // 칸 위 선 바로 아래(글자 위) 줄에서 왼쪽·오른쪽 선을 찾는다. 선 두께를 지나 첫 밝은 줄을 쓴다
-      let rowY = cy
-      if (kind === 'noro') {
-        rowY = T + 1
-        while (rowY < c1.y && dark(cx, rowY)) rowY++
-        rowY = Math.min(rowY + 4, c1.y - 2)
-      }
-      const L = scanX(c1.x - 3, rowY, -1)
-      const R = scanX(c1.x + c1.w + 3, rowY, 1)
+      const L = scanX(c1.x - 3, cy, -1)
+      const R = scanX(c1.x + c1.w + 3, cy, 1)
       const vx = L + 10 // 칸 안 왼쪽(날짜 글자를 피한다)
       const mid = scanY(vx, c1.y + c1.h + 3, 1)
       let y = mid
@@ -185,34 +191,10 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
         .replace(/\s*([./-])\s*/g, '$1')
         .trim()
       produced = text || null
-      // 노로 확인서는 표에 2026.11.06 처럼 연도까지 적혀 있어 말풍선에는 월.일만(11.06)
-      const ymd = kind === 'noro' && produced ? /^\d{4}\.(\d{1,2})\.(\d{1,2})$/.exec(produced) : null
-      if (ymd) produced = `${ymd[1].padStart(2, '0')}.${ymd[2].padStart(2, '0')}`
-    } else {
-      warnings.push(kind === 'noro' ? '확인서에서 표(수매일자 칸)를 찾지 못해 수매일자 말풍선을 기본 위치에 넣었습니다.' : 'PDF 에서 표(생산일자 칸)를 찾지 못해 생산일자 말풍선을 기본 위치에 넣었습니다.')
+    } else if (kind === 'purchase') {
+      warnings.push('PDF 에서 표(생산일자 칸)를 찾지 못해 생산일자 말풍선을 기본 위치에 넣었습니다.')
     }
-    if (kind === 'noro') {
-      // 수매일자: 표 칸을 못 찾거나 칸에서 못 읽어도, '노로 비검출해역'과 같은 줄 왼쪽 글자에서 날짜(2026.11.06)를 찾는다
-      if (noroWord && !(produced && /^\d{2}\.\d{2}$/.test(produced))) {
-        const nw = noroWord
-        const cy = nw.y + nw.h / 2
-        const row = words
-          .filter((w) => w.x < nw.x && Math.abs(w.y + w.h / 2 - cy) < 45)
-          .sort((a, b) => a.x - b.x)
-          .map((w) => w.t)
-          .join('')
-        const m = /(20\d{2})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})/.exec(row)
-        if (m) produced = `${m[2].padStart(2, '0')}.${m[3].padStart(2, '0')}`
-      }
-      // 말풍선 위치: 표 칸 계산은 PDF·이미지마다 흔들려서, '노로 비검출해역' 값 줄 가운데에 맞춘다(어떤 파일이든 같은 자리).
-      // 가로는 표 첫 칸 오른쪽 선에 맞추되, 못 찾았거나 엉뚱하면 기본값 58
-      if (noroWord) {
-        const cy = noroWord.y + noroWord.h / 2
-        const left = dateBox && dateBox.left >= 20 && dateBox.left <= 150 ? dateBox.left : 58
-        dateBox = { left, top: cy * sy - 56 }
-      }
-    }
-    if (dateBox && !produced) warnings.push(kind === 'noro' ? '확인서에서 수매일자 값을 읽지 못했습니다. 직접 입력해 주세요.' : 'PDF 에서 생산일자 값을 읽지 못했습니다. 직접 입력해 주세요.')
+    if (dateBox && !produced) warnings.push('PDF 에서 생산일자 값을 읽지 못했습니다. 직접 입력해 주세요.')
 
     return {
       pageImage: `data:image/jpeg;base64,${jpg.toString('base64')}`,
@@ -221,6 +203,8 @@ async function analyzeCert(file: Buffer, kind: CertKind): Promise<CertLayout> {
       produced,
       highlight,
       tag,
+      highlight2,
+      tag2,
       dateBox,
       warnings,
     }
