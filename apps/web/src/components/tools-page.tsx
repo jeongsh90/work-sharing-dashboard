@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, useState } from "react"
-import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, ShieldCheck, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, ShieldCheck, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, QrCode, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -20,6 +20,7 @@ const VideoConvertTool = lazy(() => import("@/components/tools/video-to-gif").th
 const DetailPageTool = lazy(() => import("@/components/tools/detail-page/detail-page-tool").then((m) => ({ default: m.DetailPageTool })))
 const ShipTool = lazy(() => import("@/components/tools/detail-page/ship-tool").then((m) => ({ default: m.ShipTool })))
 const TalkMessageTool = lazy(() => import("@/components/tools/talk-message").then((m) => ({ default: m.TalkMessageTool })))
+const QrCodeTool = lazy(() => import("@/components/tools/qr-code").then((m) => ({ default: m.QrCodeTool })))
 const SectionApp = lazy(() => import("@/components/tools/detail-page/section-app").then((m) => ({ default: m.SectionApp })))
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
@@ -141,6 +142,14 @@ const TOOLS: Tool[] = [
     color: "from-fuchsia-400 to-purple-600",
     body: <VideoConvertTool />,
     fill: true,
+  },
+  {
+    id: "qr-code",
+    name: "QR코드",
+    description: "URL 을 넣어 QR 코드를 만들고 PNG·SVG 로 내려받는 도구",
+    icon: QrCode,
+    color: "from-neutral-500 to-neutral-900",
+    body: <QrCodeTool />,
   },
   {
     id: "mail-signature",
