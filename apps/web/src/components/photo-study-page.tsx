@@ -162,7 +162,7 @@ function TopicView({ id, session, onEdit }: { id: number; session: Session; onEd
   return (
     <>
       {/* 공지 */}
-      <article className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 p-4 md:p-5">
+      <article className="flex min-w-0 flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 p-4 md:p-5">
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-primary tabular-nums">{dayLabel(data.day)}</p>
@@ -188,9 +188,9 @@ function TopicView({ id, session, onEdit }: { id: number; session: Session; onEd
             </DropdownMenu>
           )}
         </div>
-        {data.body && <p className="text-sm break-keep whitespace-pre-line">{data.body}</p>}
+        {data.body && <p className="text-sm break-keep whitespace-pre-line [overflow-wrap:anywhere]">{data.body}</p>}
         {data.link && (
-          <a href={data.link} target="_blank" rel="noreferrer noopener" className="flex min-w-0 items-center gap-1.5 self-start rounded-lg border bg-background px-3 py-2 text-sm hover:bg-muted">
+          <a href={data.link} target="_blank" rel="noreferrer noopener" className="flex max-w-full min-w-0 items-center gap-1.5 self-start rounded-lg border bg-background px-3 py-2 text-sm hover:bg-muted">
             <ExternalLink className="size-4 shrink-0 text-primary" aria-hidden />
             <span className="truncate">{data.link}</span>
           </a>
@@ -337,7 +337,7 @@ function PostCard({ post, session }: { post: Post; session: Session }) {
         </div>
       ) : (
         <>
-          {post.body && <p className="text-sm break-keep whitespace-pre-line">{post.body}</p>}
+          {post.body && <p className="text-sm break-keep whitespace-pre-line [overflow-wrap:anywhere]">{post.body}</p>}
           {error && <FieldError>{error}</FieldError>}
         </>
       )}
@@ -388,7 +388,7 @@ function Comments({ post, session }: { post: Post; session: Session }) {
                   <span className="font-medium">{c.authorName}</span>
                   <span className="text-muted-foreground tabular-nums">{formatDateTime(new Date(c.createdAt))}</span>
                 </p>
-                <p className="mt-0.5 text-sm break-keep whitespace-pre-line">{c.body}</p>
+                <p className="mt-0.5 text-sm break-keep whitespace-pre-line [overflow-wrap:anywhere]">{c.body}</p>
               </div>
               {(c.authorId === session.id || isManager(session)) && (
                 <Button variant="ghost" size="icon-xs" className="shrink-0 sm:opacity-0 sm:group-hover/c:opacity-100 sm:focus-visible:opacity-100" aria-label="댓글 지우기" onClick={() => void remove(c)}>
