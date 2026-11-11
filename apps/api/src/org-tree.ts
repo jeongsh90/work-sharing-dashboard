@@ -10,7 +10,8 @@ import { DATA_DIR } from './config.ts'
 const TREE_FILE = join(DATA_DIR, 'org-tree.json')
 const PHOTO_DIR = join(DATA_DIR, 'org-photos')
 
-export type OrgTreeMember = { id: string; name: string; position: string; job: string; rest: boolean; photo: boolean }
+// 연락처: 휴대폰(하이웍스에서 공개로 둔 사람만) · 내선(회사 전화) · 메일
+export type OrgTreeMember = { id: string; name: string; position: string; job: string; rest: boolean; photo: boolean; cell: string; phone: string; email: string }
 export type OrgTreeNode = { id: string; name: string; parent: string | null; members: OrgTreeMember[] }
 export type OrgTree = { updatedAt: number; source: string; nodes: OrgTreeNode[] }
 
@@ -42,7 +43,9 @@ export async function saveOrgTree(body: Record<string, unknown>) {
       const p = (m ?? {}) as Record<string, unknown>
       const mid = str(p.id, 40)
       if (!ID.test(mid)) throw new Error('사람 id 가 올바르지 않습니다.')
-      return { id: mid, name: str(p.name, 40), position: str(p.position, 40), job: str(p.job, 40), rest: p.rest === true, photo: typeof photos[mid] === 'string' }
+      const tel = (v: unknown) => str(v, 30).replace(/[^0-9+()\- ]/g, '')
+      const email = str(p.email, 120)
+      return { id: mid, name: str(p.name, 40), position: str(p.position, 40), job: str(p.job, 40), rest: p.rest === true, photo: typeof photos[mid] === 'string', cell: tel(p.cell), phone: tel(p.phone), email: /^[^\s@]+@[^\s@]+$/.test(email) ? email : '' }
     })
     return { id, name: str(o.name, 60), parent: o.parent ? str(o.parent, 40) : null, members }
   })

@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react"
-import { MessageCircle, Search } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Mail, MessageCircle, Phone, Search, Smartphone } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { Section } from "@/components/home/home-page"
+import { OverlayScrollbar } from "@/components/overlay-scrollbar"
+import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { PageState } from "@/components/page-state"
 import { UserAvatar } from "@/components/user-avatar"
 import { apiFetch } from "@/lib/api"
@@ -35,7 +38,7 @@ type OrgMember = {
   online?: boolean
   lastSeenAt?: number | null
 }
-type TreeMember = { id: string; name: string; position: string; job: string; rest: boolean; photo: boolean }
+type TreeMember = { id: string; name: string; position: string; job: string; rest: boolean; photo: boolean; cell?: string; phone?: string; email?: string }
 type TreeNode = { id: string; name: string; parent: string | null; members: TreeMember[] }
 type OrgTree = { updatedAt: number; source: string; nodes: TreeNode[] }
 type OrgData = { canSeeOnline: boolean; members: OrgMember[]; tree?: OrgTree | null; canEditTree?: boolean }
@@ -176,31 +179,6 @@ function Person({ m, canSeeOnline, className }: { m: OrgMember; canSeeOnline: bo
   )
 }
 
-// 회사 조직도의 한 사람: 사진 · 이름 · 직급 · 직무(+ 사이트 계정이면 상태·접속·채팅)
-function TreePerson({ p, site, canSeeOnline, size = "md" }: { p: TreeMember; site?: OrgMember; canSeeOnline: boolean; size?: "md" | "lg" }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="relative shrink-0">
-        <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className={size === "lg" ? "size-11" : "size-9"} />
-        {canSeeOnline && site && <OnlineDot online={site.online} />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-1.5">
-          <span className="truncate font-medium">{p.name}</span>
-          {p.position && <span className="shrink-0 text-xs text-muted-foreground">{p.position}</span>}
-          {p.rest && (
-            <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-              휴직
-            </Badge>
-          )}
-        </div>
-        {site ? <StatusLine m={site} canSeeOnline={canSeeOnline} /> : p.job ? <div className="truncate text-xs text-muted-foreground">{p.job}</div> : null}
-      </div>
-      {site && <ChatButton m={site} />}
-    </div>
-  )
-}
-
 type Built = { node: TreeNode; children: Built[]; total: number }
 
 // 부서 나무 만들기(검색어가 있으면 맞는 사람만 남기고, 사람이 없는 부서는 뺀다. 부서 이름이 맞으면 그 부서 사람은 모두 남긴다)
@@ -221,79 +199,259 @@ function buildTree(nodes: TreeNode[], q: string): Built | null {
   return root ? walk(root, false) : null
 }
 
-// 본부 안에 보일 카드: 팀마다 한 장. 팀이 하나뿐이고(F4·F3) 그 아래 파트가 있으면 파트마다 한 장씩 나눈다(한 카드가 너무 길어지지 않게)
-function cardsOf(d: Built): Built[] {
-  if (d.children.length === 0) return [d]
-  if (d.children.length === 1 && d.children[0].children.length > 0) {
-    const only = d.children[0]
-    const own = only.node.members.length ? [{ node: only.node, children: [], total: only.node.members.length }] : []
-    return [...own, ...only.children]
-  }
-  return d.children
+type SiteOf = (name: string) => OrgMember | undefined
+
+// 전화번호 보기 좋게: 01040668653 → 010-4066-8653, 0212345678 → 02-1234-5678 (모양을 모르면 그대로)
+function fmtTel(v: string) {
+  const d = v.replace(/[^0-9]/g, "")
+  if (/^02\d{7,8}$/.test(d)) return d.replace(/^(02)(\d{3,4})(\d{4})$/, "$1-$2-$3")
+  if (/^0\d{9,10}$/.test(d)) return d.replace(/^(0\d{2})(\d{3,4})(\d{4})$/, "$1-$2-$3")
+  if (/^1\d{7}$/.test(d)) return d.replace(/^(\d{4})(\d{4})$/, "$1-$2")
+  return v
 }
 
-// 팀 카드: 팀 사람 + 아래 파트(구내식당·전처리 …)는 카드 안에 작은 제목으로
-function TeamCard({ t, siteOf, canSeeOnline }: { t: Built; siteOf: (name: string) => OrgMember | undefined; canSeeOnline: boolean }) {
-  const parts: { b: Built; depth: number }[] = []
-  const collect = (b: Built, depth: number) => {
-    for (const c of b.children) {
-      parts.push({ b: c, depth })
-      collect(c, depth + 1)
-    }
-  }
-  collect(t, 0)
-  const design = deptKey(t.node.name) === DESIGN_TEAM
+// 조직도 속 한 사람 카드(홈 디자인팀 카드처럼): 사진 · 이름 · 직급·직무 · 연락처(휴대폰·내선·메일).
+// 사이트 계정이 있는 디자인팀은 작업 상태, 접속을 볼 수 있으면 접속 점도. lead = 대표·본부장(조금 크게, 테두리 강조)
+function PersonBox({ p, site, canSeeOnline, lead }: { p: TreeMember; site?: OrgMember; canSeeOnline: boolean; lead?: boolean }) {
+  const designer = site && (site.role === "designer" || deptKey(site.department) === DESIGN_TEAM)
+  const sub = [p.position, p.job].filter(Boolean).join(" · ")
+  const contacts = [
+    p.cell && { icon: Smartphone, text: fmtTel(p.cell), href: `tel:${p.cell.replace(/[^0-9+]/g, "")}`, label: "휴대폰" },
+    p.phone && { icon: Phone, text: fmtTel(p.phone), href: `tel:${p.phone.replace(/[^0-9+]/g, "")}`, label: "회사 전화" },
+    p.email && { icon: Mail, text: p.email, href: `mailto:${p.email}`, label: "메일" },
+  ].filter(Boolean) as { icon: typeof Phone; text: string; href: string; label: string }[]
   return (
-    <li className={cn("col-span-12 flex flex-col rounded-xl border bg-card sm:col-span-6 xl:col-span-4 2xl:col-span-3", design && "border-primary/50")}>
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <h4 className="font-semibold">{t.node.name}</h4>
-        <span className="text-sm text-muted-foreground tabular-nums">{t.total}명</span>
-      </div>
-      {t.node.members.length > 0 && (
-        <ul className="flex flex-col divide-y">
-          {t.node.members.map((p, i) => (
-            <li key={p.id} className={cn("px-4 py-3", i === 0 && t.node.members.length > 1 && "bg-muted/40")}>
-              <TreePerson p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
-            </li>
-          ))}
-        </ul>
+    <div className={cn("relative flex w-52 flex-col items-center rounded-xl border bg-card px-3 pt-4 pb-3 text-center shadow-xs", lead && "w-56 border-primary/60")}>
+      {designer && site && (
+        <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className={cn("size-1.5 rounded-full", PRESENCE_DOT[site.presence] ?? PRESENCE_DOT.off)} aria-hidden />
+          {PRESENCE_LABEL[site.presence] ?? PRESENCE_LABEL.off}
+        </span>
       )}
-      {parts.map(({ b, depth }) => (
-        <div key={b.node.id} className="border-t">
-          <div className="flex items-center gap-1.5 bg-muted/30 px-4 py-1.5 text-xs font-semibold text-muted-foreground" style={{ paddingLeft: 16 + depth * 12 }}>
-            {b.node.name}
-            <span className="font-normal tabular-nums">{b.node.members.length}명</span>
-          </div>
-          {b.node.members.length > 0 && (
-            <ul className="flex flex-col divide-y">
-              {b.node.members.map((p) => (
-                <li key={p.id} className="px-4 py-2.5" style={{ paddingLeft: 16 + depth * 12 }}>
-                  <TreePerson p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
-                </li>
-              ))}
-            </ul>
-          )}
+      {site && (
+        <span className="absolute top-1 right-1">
+          <ChatButton m={site} />
+        </span>
+      )}
+      <span className="relative">
+        <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className={lead ? "size-16" : "size-14"} />
+        {canSeeOnline && site && <OnlineDot online={site.online} />}
+      </span>
+      <div className="mt-2 flex items-center gap-1">
+        <span className={cn("font-semibold", lead ? "text-base" : "text-sm")}>{p.name}</span>
+        {p.rest && (
+          <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+            휴직
+          </Badge>
+        )}
+      </div>
+      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+      {contacts.length > 0 && (
+        <div className="mt-2.5 flex w-full flex-col gap-1 border-t pt-2.5">
+          {contacts.map((c) => (
+            <a
+                key={c.label}
+                href={c.href}
+                className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={`${p.name} ${c.label} ${c.text}`}
+              >
+                <c.icon className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate tabular-nums">{c.text}</span>
+              </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 부서 이름 상자(팀·파트 머리)
+function DeptLabel({ name, count, strong, onClick }: { name: string; count: number; strong?: boolean; onClick?: () => void }) {
+  const cls = cn(
+    "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm whitespace-nowrap",
+    strong ? "border-primary/50 bg-primary/10 font-semibold" : "bg-muted font-medium",
+    onClick && "cursor-pointer transition-colors hover:border-primary hover:bg-primary/15",
+  )
+  const body = (
+    <>
+      {name}
+      <span className="text-xs font-normal text-muted-foreground tabular-nums">{count}명</span>
+    </>
+  )
+  return onClick ? (
+    <button type="button" className={cls} onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <span className={cls}>{body}</span>
+  )
+}
+
+// 한 줄(열) 안에 사람들을 위에서 아래로. 그 아래 파트(구내식당 등)는 작은 제목 + 사람
+function MemberStack({ b, siteOf, canSeeOnline }: { b: Built; siteOf: SiteOf; canSeeOnline: boolean }) {
+  const parts: Built[] = []
+  const collect = (x: Built) => x.children.forEach((c) => (parts.push(c), collect(c)))
+  collect(b)
+  return (
+    <div className="mt-3 flex flex-col items-center gap-2">
+      {b.node.members.map((p) => (
+        <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+      ))}
+      {parts.map((c) => (
+        <div key={c.node.id} className="mt-2 flex flex-col items-center gap-2">
+          <DeptLabel name={c.node.name} count={c.node.members.length} />
+          {c.node.members.map((p) => (
+            <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+          ))}
         </div>
       ))}
+    </div>
+  )
+}
+
+// 가로로 넓으면 옆으로 넘겨 본다(부드러운 스크롤 + 아래 스크롤 막대)
+function ChartScroll({ children }: { children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  // 처음에는 가운데(맨 위 상자)가 보이게
+  useEffect(() => {
+    const el = box.current?.firstElementChild as HTMLElement | null
+    if (!el) return
+    const id = requestAnimationFrame(() => el.scrollTo({ left: Math.max(0, (el.scrollWidth - el.clientWidth) / 2), behavior: "instant" as ScrollBehavior }))
+    return () => cancelAnimationFrame(id)
+  }, [])
+  return (
+    <div ref={box} className="relative">
+      <SmoothScrollArea orientation="horizontal" className="overflow-x-auto pb-4" contentClassName="org-tree mx-auto w-max min-w-full py-2">
+        {children}
+      </SmoothScrollArea>
+      <OverlayScrollbar always orientation="horizontal" target={() => box.current?.firstElementChild as HTMLElement | null} className="absolute right-1 bottom-0.5 left-1 h-1.5" />
+    </div>
+  )
+}
+
+// 전체보기: 대표 → 본부·사업부(본부장) → 그 아래 팀 이름. 본부·팀을 누르면 그 탭으로
+function OverviewChart({ root, siteOf, canSeeOnline, onOpen }: { root: Built; siteOf: SiteOf; canSeeOnline: boolean; onOpen: (id: string) => void }) {
+  return (
+    <ChartScroll>
+      <ul>
+        <li>
+          <div className="flex flex-col items-center gap-2">
+            <DeptLabel name={root.node.name} count={root.total} strong />
+            <div className="flex flex-wrap justify-center gap-3">
+              {root.node.members.map((p) => (
+                <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} lead />
+              ))}
+            </div>
+          </div>
+          <ul>
+            {root.children.map((d) => (
+              <li key={d.node.id}>
+                <div className="flex flex-col items-center gap-2">
+                  <DeptLabel name={d.node.name} count={d.total} strong onClick={() => onOpen(d.node.id)} />
+                  {d.node.members.slice(0, d.children.length ? 2 : 0).map((p) => (
+                    <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+                  ))}
+                  <div className="mt-1 flex flex-col items-center gap-1.5">
+                    {(d.children.length === 1 && d.children[0].children.length ? d.children[0].children : d.children).map((t) => (
+                      <DeptLabel key={t.node.id} name={t.node.name} count={t.total} onClick={() => onOpen(d.node.id)} />
+                    ))}
+                    {d.children.length === 0 && <span className="text-xs text-muted-foreground">{d.node.members.length}명</span>}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </li>
+      </ul>
+    </ChartScroll>
+  )
+}
+
+// 본부·사업부 탭: 본부장 → 팀(열) → 팀원. 팀이 하나뿐이고 그 아래 파트가 있으면(F4·F3) 그 팀을 가운데 두고 파트를 열로
+function DivisionChart({ d, siteOf, canSeeOnline }: { d: Built; siteOf: SiteOf; canSeeOnline: boolean }) {
+  const only = d.children.length === 1 && d.children[0].children.length > 0 ? d.children[0] : null
+  const columns = only ? only.children : d.children
+  const column = (t: Built) => (
+    <li key={t.node.id}>
+      <DeptLabel name={t.node.name} count={t.total} strong={deptKey(t.node.name) === DESIGN_TEAM} />
+      <MemberStack b={t} siteOf={siteOf} canSeeOnline={canSeeOnline} />
     </li>
+  )
+  return (
+    <ChartScroll>
+      <ul>
+        <li>
+          <div className="flex flex-col items-center gap-2">
+            <DeptLabel name={d.node.name} count={d.total} strong />
+            {d.node.members.length > 0 && d.children.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-3">
+                {d.node.members.map((p) => (
+                  <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} lead />
+                ))}
+              </div>
+            )}
+          </div>
+          {d.children.length === 0 ? (
+            // 아래 팀이 없는 부서(본부): 사람을 여러 줄로
+            <div className="mt-4 grid grid-cols-[repeat(auto-fill,13rem)] justify-center gap-2">
+              {d.node.members.map((p) => (
+                <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+              ))}
+            </div>
+          ) : only ? (
+            <ul>
+              <li>
+                <DeptLabel name={only.node.name} count={only.total} />
+                {only.node.members.length > 0 && (
+                  <div className="mt-3 grid grid-cols-[repeat(auto-fit,13rem)] justify-center gap-2" style={{ maxWidth: "calc(13rem * 4 + 1.5rem)" }}>
+                    {only.node.members.map((p) => (
+                      <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+                    ))}
+                  </div>
+                )}
+                <ul>{columns.map(column)}</ul>
+              </li>
+            </ul>
+          ) : (
+            <ul>{columns.map(column)}</ul>
+          )}
+        </li>
+      </ul>
+    </ChartScroll>
   )
 }
 
 function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
   const { canSeeOnline, members } = data
   const [q, setQ] = useState("")
-  const built = useMemo(() => buildTree(tree.nodes, q), [tree, q])
+  const [tab, setTab] = useState("all")
+  const full = useMemo(() => buildTree(tree.nodes, ""), [tree])
+  const found = useMemo(() => (q.trim() ? buildTree(tree.nodes, q) : null), [tree, q])
   // 같은 이름의 사이트 계정(이름이 겹치는 계정이 둘 이상이면 붙이지 않는다)
   const siteByName = useMemo(() => {
     const m = new Map<string, OrgMember | null>()
     for (const u of members) m.set(u.name.trim(), m.has(u.name.trim()) ? null : u)
     return m
   }, [members])
-  const siteOf = (name: string) => siteByName.get(name.trim()) ?? undefined
+  const siteOf: SiteOf = (name) => siteByName.get(name.trim()) ?? undefined
   const allNames = useMemo(() => new Set(tree.nodes.flatMap((n) => n.members.map((m) => m.name.trim()))), [tree])
   const notInTree = data.canEditTree ? members.filter((u) => !allNames.has(u.name.trim())) : []
   const totalPeople = tree.nodes.reduce((s, n) => s + n.members.length, 0)
   const updated = new Date(tree.updatedAt)
+  // 찾기 결과: 사람마다 부서 경로(본부 › 팀 › 파트)
+  const results = useMemo(() => {
+    if (!found) return []
+    const out: { p: TreeMember; path: string }[] = []
+    const walk = (b: Built, path: string[]) => {
+      const here = b.node.parent ? [...path, b.node.name] : path
+      for (const p of b.node.members) out.push({ p, path: here.join(" › ") || b.node.name })
+      b.children.forEach((c) => walk(c, here))
+    }
+    walk(found, [])
+    return out
+  }, [found])
+  if (!full) return null
+  const division = full.children.find((d) => d.node.id === tab)
 
   return (
     <>
@@ -314,52 +472,36 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
         <p className="-mt-1 text-xs text-muted-foreground">
           하이웍스 조직도 기준 · {updated.getFullYear()}.{updated.getMonth() + 1}.{updated.getDate()} 가져옴
         </p>
-        {!built ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">찾는 사람이 없습니다.</p>
+        {found !== null || q.trim() ? (
+          results.length === 0 ? (
+            <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">찾는 사람이 없습니다.</p>
+          ) : (
+            <ul className="flex flex-wrap gap-3">
+              {results.map(({ p, path }) => (
+                <li key={p.id} className="flex flex-col items-center gap-1">
+                  <span className="max-w-52 truncate text-xs text-muted-foreground">{path}</span>
+                  <PersonBox p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+                </li>
+              ))}
+            </ul>
+          )
         ) : (
-          <div className="flex flex-col gap-8">
-            {/* 대표 */}
-            {built.node.members.length > 0 && (
-              <div className="flex flex-col items-center gap-2">
-                <h3 className="text-sm font-semibold text-muted-foreground">{built.node.name}</h3>
-                <ul className="flex flex-wrap justify-center gap-3">
-                  {built.node.members.map((p) => (
-                    <li key={p.id} className="w-64 rounded-xl border bg-card px-4 py-3">
-                      <TreePerson p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} size="lg" />
-                    </li>
-                  ))}
-                </ul>
-              </div>
+          <Tabs value={division ? tab : "all"} onValueChange={setTab} className="gap-4">
+            <TabsList className="h-auto flex-wrap justify-start">
+              <TabsTrigger value="all">전체보기</TabsTrigger>
+              {full.children.map((d) => (
+                <TabsTrigger key={d.node.id} value={d.node.id}>
+                  {d.node.name}
+                  <span className="text-xs text-muted-foreground tabular-nums">{d.total}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {division ? (
+              <DivisionChart key={division.node.id} d={division} siteOf={siteOf} canSeeOnline={canSeeOnline} />
+            ) : (
+              <OverviewChart root={full} siteOf={siteOf} canSeeOnline={canSeeOnline} onOpen={setTab} />
             )}
-            {/* 본부·사업부마다: 맡은 사람 + 팀 카드 */}
-            {built.children.map((d) => (
-              <section key={d.node.id} className="flex flex-col gap-3" aria-label={d.node.name}>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-2">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="text-base font-semibold">{d.node.name}</h3>
-                    <span className="text-sm text-muted-foreground tabular-nums">{d.total}명</span>
-                  </div>
-                  {d.children.length > 0 &&
-                    d.node.members.map((p) => (
-                      <div key={p.id} className="min-w-0 rounded-full border bg-card py-1 pr-2 pl-1">
-                        <div className="flex items-center gap-2">
-                          <span className="relative shrink-0">
-                            <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={siteOf(p.name)?.avatarId ?? null} className="size-7" />
-                          </span>
-                          <span className="text-sm font-medium">{p.name}</span>
-                          <span className="text-xs text-muted-foreground">{[p.position, p.job].filter(Boolean).join(" · ")}</span>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-                <ul className="grid w-full grid-cols-12 items-start gap-4 md:gap-6">
-                  {cardsOf(d).map((t) => (
-                    <TeamCard key={t.node.id} t={t} siteOf={siteOf} canSeeOnline={canSeeOnline} />
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
+          </Tabs>
         )}
       </Section>
       {notInTree.length > 0 && !q && (
