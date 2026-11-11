@@ -26,8 +26,18 @@ const SectionApp = lazy(() => import("@/components/tools/detail-page/section-app
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
 // 누르면 전체 화면 창이 열린다. 도구를 만들면 TOOLS 에 하나씩 추가하고 body 에 화면을 넣는다.
 
+// 분류(목록에서 이 순서로 묶어 보여 준다)
+const CATEGORIES = [
+  { id: "cert", name: "인증·고시", description: "확인서·상품정보고시 이미지" },
+  { id: "detail", name: "상세페이지", description: "상세페이지 전체와 섹션별 이미지" },
+  { id: "marketing", name: "마케팅·영상", description: "메시지 이미지·움짤·QR" },
+  { id: "office", name: "사내 업무", description: "메일 서명·명찰" },
+] as const
+type CategoryId = (typeof CATEGORIES)[number]["id"]
+
 type Tool = {
   id: string
+  category: CategoryId
   name: string
   description: string
   icon: LucideIcon
@@ -39,6 +49,7 @@ type Tool = {
 const TOOLS: Tool[] = [
   {
     id: "purchase-confirm",
+    category: "cert",
     name: "수매확인서",
     description: "수매확인서 PDF 로 상세페이지 이미지를 만드는 도구",
     icon: FileCheck2,
@@ -47,6 +58,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "noro-cert",
+    category: "cert",
     name: "노로 비검출해역 확인서",
     description: "노로바이러스 비검출해역 확인서(PDF·스캔 JPG)로 상세페이지 최상단 강조 이미지를 만드는 도구",
     icon: ShieldCheck,
@@ -55,6 +67,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "product-notice",
+    category: "cert",
     name: "상품정보고시",
     description: "고시 항목·주의사항·영양정보로 상세페이지 고시 이미지를 만드는 도구",
     icon: ClipboardList,
@@ -62,15 +75,8 @@ const TOOLS: Tool[] = [
     body: <ProductNoticeTool />,
   },
   {
-    id: "ship",
-    name: "이렇게 보내드려요",
-    description: "내용량·아이스박스 포장 사진(정사각형 최대 4개)과 글로 상세페이지 \"이렇게 보내드려요\" 이미지를 만드는 도구",
-    icon: Package,
-    color: "from-lime-400 to-green-600",
-    body: <ShipTool />,
-  },
-  {
     id: "detail-page",
+    category: "detail",
     name: "상세페이지",
     description: "섹션(썸네일·타이틀·이미지·움짤·Q&A 등)을 더해 상세페이지 이미지와 관리자용 HTML 을 만드는 도구",
     icon: LayoutTemplate,
@@ -80,6 +86,7 @@ const TOOLS: Tool[] = [
   // 상세페이지 섹션 하나만 따로 만드는 앱(상세페이지 도구와 같은 입력·디자인, 각자 히스토리)
   {
     id: "dp-thumb",
+    category: "detail",
     name: "썸네일",
     description: "상품 대표 사진을 가운데 기준 정사각 1200×1200 JPG 로 만드는 도구",
     icon: Square,
@@ -88,6 +95,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "dp-hero",
+    category: "detail",
     name: "인트로",
     description: "배경 사진 + 윗줄·상품명·설명(강조)·그라데이션으로 상세페이지 인트로(860 폭) 이미지를 만드는 도구",
     icon: PanelTop,
@@ -96,6 +104,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "dp-point",
+    category: "detail",
     name: "타이틀",
     description: "POINT 번호·제목·설명으로 상세페이지 타이틀(860 폭) 이미지를 만드는 도구",
     icon: Type,
@@ -104,6 +113,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "dp-qa",
+    category: "detail",
     name: "Q&A",
     description: "질문·답변(강조·사진)으로 상세페이지 Q&A(860 폭) 이미지를 만드는 도구",
     icon: HelpCircle,
@@ -112,6 +122,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "dp-recipe",
+    category: "detail",
     name: "레시피",
     description: "번호·레시피 이름·설명으로 상세페이지 레시피(860 폭) 이미지를 만드는 도구",
     icon: UtensilsCrossed,
@@ -120,6 +131,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "dp-why",
+    category: "detail",
     name: "WHY",
     description: "사진 카드(번호·제목·설명)로 상세페이지 WHY(860 폭) 이미지를 만드는 도구",
     icon: ListChecks,
@@ -127,7 +139,17 @@ const TOOLS: Tool[] = [
     body: <SectionApp kind="why" />,
   },
   {
+    id: "ship",
+    category: "detail",
+    name: "이렇게 보내드려요",
+    description: "내용량·아이스박스 포장 사진(정사각형 최대 4개)과 글로 상세페이지 \"이렇게 보내드려요\" 이미지를 만드는 도구",
+    icon: Package,
+    color: "from-lime-400 to-green-600",
+    body: <ShipTool />,
+  },
+  {
     id: "talk",
+    category: "marketing",
     name: "톡메세지",
     description: "타이틀·배경 사진·아래 띠 글을 넣어 카카오톡 메시지용 800×800 이미지를 만드는 도구",
     icon: MessageSquareText,
@@ -136,6 +158,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "video",
+    category: "marketing",
     name: "동영상 → WebP·GIF",
     description: "동영상 파일(MP4·MOV·WebM)을 구간·크기·속도를 정해 움직이는 WebP 또는 GIF 로 바꾸는 도구(위 토글로 형식 선택)",
     icon: Clapperboard,
@@ -145,6 +168,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "qr-code",
+    category: "marketing",
     name: "QR코드",
     description: "URL 을 넣어 QR 코드를 만들고 PNG·SVG 로 내려받는 도구",
     icon: QrCode,
@@ -153,6 +177,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "mail-signature",
+    category: "office",
     name: "메일 서명",
     description: "회사 메일 서명을 만들고 복사하는 도구",
     icon: Mail,
@@ -161,6 +186,7 @@ const TOOLS: Tool[] = [
   },
   {
     id: "desk-nameplate",
+    category: "office",
     name: "데스크 명찰",
     description: "팀 이름·직급(직책)·이름을 넣어 8.5cm × 5.5cm 데스크 명찰을 인쇄하는 도구",
     icon: IdCard,
@@ -216,7 +242,7 @@ export function ToolsPage() {
 function ToolsList({ onOpen }: { onOpen: (t: Tool) => void }) {
   const [query, setQuery] = useState("")
   const q = query.trim().toLowerCase()
-  const list = TOOLS.filter((t) => !q || `${t.name} ${t.description}`.toLowerCase().includes(q))
+  const list = TOOLS.filter((t) => !q || `${t.name} ${t.description} ${CATEGORIES.find((c) => c.id === t.category)?.name ?? ""}`.toLowerCase().includes(q))
 
   return (
     <div className={PAGE_GRID}>
@@ -237,33 +263,46 @@ function ToolsList({ onOpen }: { onOpen: (t: Tool) => void }) {
           </div>
         </div>
 
-        {/* 앱 목록: 아이폰 홈 화면처럼 아이콘 + 이름 */}
+        {/* 분류별 앱 목록: 아이폰 홈 화면처럼 아이콘 + 이름(검색하면 맞는 도구가 있는 분류만) */}
         {list.length === 0 ? (
           <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
             찾는 도구가 없습니다.
           </p>
         ) : (
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-x-4 gap-y-6">
-            {list.map((t) => (
-              <li key={t.id}>
-                <Tip content={t.description}><button
-                  type="button"
-                  className="group flex w-full flex-col items-center gap-2 rounded-xl p-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                  onClick={() => onOpen(t)}
-                >
-                  <span className="relative transition-transform group-hover:scale-105 group-active:scale-95">
-                    <AppIcon tool={t} />
-                    {!t.body && (
-                      <span className="absolute -top-1.5 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-medium text-white ring-2 ring-background">
-                        준비 중
-                      </span>
-                    )}
-                  </span>
-                  <span className="w-full truncate text-center text-sm">{t.name}</span>
-                </button></Tip>
-              </li>
-            ))}
-          </ul>
+          CATEGORIES.map((c) => {
+            const tools = list.filter((t) => t.category === c.id)
+            if (tools.length === 0) return null
+            return (
+              <div key={c.id} className="flex flex-col gap-3">
+                <div className="flex items-baseline gap-2 border-b pb-2">
+                  <h3 className="text-sm font-semibold">{c.name}</h3>
+                  <span className="text-xs text-muted-foreground tabular-nums">{tools.length}</span>
+                  <span className="truncate text-xs text-muted-foreground">{c.description}</span>
+                </div>
+                <ul className="grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-x-4 gap-y-6">
+                  {tools.map((t) => (
+                    <li key={t.id}>
+                      <Tip content={t.description}><button
+                        type="button"
+                        className="group flex w-full flex-col items-center gap-2 rounded-xl p-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                        onClick={() => onOpen(t)}
+                      >
+                        <span className="relative transition-transform group-hover:scale-105 group-active:scale-95">
+                          <AppIcon tool={t} />
+                          {!t.body && (
+                            <span className="absolute -top-1.5 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-medium text-white ring-2 ring-background">
+                              준비 중
+                            </span>
+                          )}
+                        </span>
+                        <span className="w-full truncate text-center text-sm">{t.name}</span>
+                      </button></Tip>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })
         )}
       </section>
     </div>
