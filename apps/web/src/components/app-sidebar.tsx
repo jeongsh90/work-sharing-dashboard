@@ -30,7 +30,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
-const CLOSED_KEY = "wsd:sidebar-closed-groups"
 
 // 메뉴 N 표시: 다른 사람이 새로 올린 내용이 있으면 하루 동안 N 을 띄운다. 그 메뉴를 열어 보면 꺼진다.
 // (버전 정보는 아직 보지 않은 새 버전이 있으면)
@@ -104,26 +103,16 @@ export function AppSidebar({
   const groups = menuFor(session, settings)
   const asButton = buttonIds(settings)
   const buttons = groups.flatMap((g) => g.items).filter((i) => asButton.has(i.id))
-  // 1차 묶음(업무·관리·개인·지원) 접기: 접어 둔 묶음은 이 브라우저에 기억한다
+  // 1차 묶음(업무·관리·개인·지원) 아코디언: 기본은 모두 접힘, 지금 보는 메뉴의 묶음만 펼친다.
+  // 다른 묶음 제목을 누르면 그 묶음이 펼쳐지고 나머지는 접힌다
   const { state } = useSidebar()
-  const [closed, setClosed] = useState<string[]>(() => {
-    try {
-      const v = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? "[]")
-      return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []
-    } catch {
-      return []
-    }
-  })
-  const toggleGroup = (label: string, open: boolean) =>
-    setClosed((prev) => {
-      const next = open ? prev.filter((x) => x !== label) : [...new Set([...prev, label])]
-      try {
-        localStorage.setItem(CLOSED_KEY, JSON.stringify(next))
-      } catch {
-        /* 저장 못 해도 화면은 그대로 */
-      }
-      return next
-    })
+  const activeGroup = groups.find((g) => g.items.some((i) => i.id === activeId))?.label ?? null
+  const [openGroup, setOpenGroup] = useState<string | null>(activeGroup)
+  // 다른 묶음의 메뉴로 옮겨 가면(버튼·헤더·주소로 이동 포함) 그 묶음을 펼친다
+  useEffect(() => {
+    if (activeGroup) setOpenGroup(activeGroup)
+  }, [activeGroup, activeId])
+  const toggleGroup = (label: string, open: boolean) => setOpenGroup(open ? label : null)
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -185,7 +174,7 @@ export function AppSidebar({
       <SidebarContent>
         {groups.map((group) => ({ ...group, items: group.items.filter((item) => !asButton.has(item.id)) })).filter((group) => group.items.length > 0 || group.bottom).map((group) => {
           // 아이콘만 보이게 접힌 사이드메뉴에서는 묶음 제목이 없으므로 늘 펼친다
-          const open = state === "collapsed" || !closed.includes(group.label)
+          const open = state === "collapsed" || openGroup === group.label
           const hasFresh = group.items.some((item) => fresh.has(item.id))
           const hasActive = group.items.some((item) => item.id === activeId)
           return (
@@ -227,10 +216,10 @@ export function AppSidebar({
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
-              {/* 지원 아래: 서버 D 드라이브 용량(정상훈·슈퍼관리자만) */}
-              {group.bottom && <DiskUsage />}
             </SidebarGroupContent>
             </CollapsibleContent>
+            {/* 지원 아래: 서버 D 드라이브 용량(슈퍼관리자만). 묶음을 접어도 보인다 */}
+            {group.bottom && <DiskUsage />}
           </SidebarGroup>
           </Collapsible>
           )
