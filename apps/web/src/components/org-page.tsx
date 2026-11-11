@@ -266,11 +266,12 @@ function PersonBox({ p, site, canSeeOnline, lead }: { p: TreeMember; site?: OrgM
 }
 
 // 부서 이름 상자(팀·파트 머리)
-function DeptLabel({ name, count, strong, onClick }: { name: string; count: number; strong?: boolean; onClick?: () => void }) {
+function DeptLabel({ name, count, strong, onClick, className }: { name: string; count: number; strong?: boolean; onClick?: () => void; className?: string }) {
   const cls = cn(
     "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm whitespace-nowrap",
     strong ? "border-primary/50 bg-primary/10 font-semibold" : "bg-muted font-medium",
     onClick && "cursor-pointer transition-colors hover:border-primary hover:bg-primary/15",
+    className,
   )
   const body = (
     <>
@@ -351,12 +352,14 @@ function OverviewChart({ root, siteOf, canSeeOnline, onOpen }: { root: Built; si
                   {d.node.members.slice(0, d.children.length ? 2 : 0).map((p) => (
                     <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
                   ))}
-                  <div className="mt-1 flex flex-col items-center gap-1.5">
-                    {(d.children.length === 1 && d.children[0].children.length ? d.children[0].children : d.children).map((t) => (
-                      <DeptLabel key={t.node.id} name={t.node.name} count={t.total} onClick={() => onOpen(d.node.id)} />
-                    ))}
-                    {d.children.length === 0 && <span className="text-xs text-muted-foreground">{d.node.members.length}명</span>}
-                  </div>
+                  {/* 팀 이름: 위 카드와 같은 너비. 아래 팀이 없는 부서(본부)는 칸을 넓히지 않는다 */}
+                  {d.children.length > 0 && (
+                    <div className="mt-1 flex w-52 flex-col gap-1.5">
+                      {(d.children.length === 1 && d.children[0].children.length ? d.children[0].children : d.children).map((t) => (
+                        <DeptLabel key={t.node.id} name={t.node.name} count={t.total} onClick={() => onOpen(d.node.id)} className="w-full justify-between" />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
