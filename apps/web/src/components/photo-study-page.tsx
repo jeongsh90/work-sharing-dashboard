@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { DateRangePicker } from "@/components/date-range-picker"
-import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { AuthImage } from "@/components/requests/file-list"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
@@ -69,7 +68,7 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
   if (id) {
     return (
       <div className={PAGE_GRID}>
-        <div className="col-span-12 flex min-w-0 flex-col gap-4 xl:col-span-10 xl:col-start-2">
+        <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-8 lg:col-start-3">
           <Button variant="ghost" size="sm" className="self-start" onClick={() => navigate("photo-study")}>
             <ArrowLeft data-icon="inline-start" />
             목록으로
@@ -85,61 +84,67 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
   const q = query.trim().toLowerCase()
   const list = topics.filter((t) => !q || `${t.title}\n${t.body}\n${t.day}`.toLowerCase().includes(q))
 
-  // 처음: 날짜별 공지 목록만. 누르면 그 공지 페이지로
+  // 처음: 날짜별 공지 목록만(가운데 8칸). 위 검색 영역 / 아래 목록 영역. 누르면 그 공지 페이지로
   return (
     <div className={PAGE_GRID}>
-      <Section
-        title="날짜별 공지"
-        aside={<span className="text-sm text-muted-foreground tabular-nums">{topics.length}개</span>}
-        action={
-          manager && (
-            <Button size="sm" onClick={() => setEditing("new")}>
-              <Plus data-icon="inline-start" />새 공지
-            </Button>
-          )
-        }
-        className="col-span-12"
-      >
-        <div className="relative max-w-md">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="제목·내용·날짜 검색" aria-label="공지 검색" className="pl-8" />
-        </div>
-        {topics.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center text-sm break-keep text-muted-foreground">
-            <Camera className="size-8" aria-hidden />
-            {manager ? "아직 공지가 없습니다. 새 공지를 올리면 직원들이 사진을 올릴 수 있습니다." : "아직 공지가 없습니다. 관리자가 공지를 올리면 여기에 날짜별로 쌓입니다."}
+      <div className="col-span-12 flex min-w-0 flex-col gap-6 lg:col-span-8 lg:col-start-3">
+        {/* 검색 영역 */}
+        <section className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-label="공지 검색">
+          <div className="flex min-h-8 items-center gap-2">
+            <h2 className="text-base font-semibold">날짜별 공지</h2>
+            <span className="text-sm text-muted-foreground tabular-nums">{topics.length}개</span>
+            {manager && (
+              <Button size="sm" className="ml-auto" onClick={() => setEditing("new")}>
+                <Plus data-icon="inline-start" />새 공지
+              </Button>
+            )}
           </div>
-        ) : list.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">"{query}" 와 맞는 공지가 없습니다.</p>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {list.map((t) => (
-              <li key={t.id} className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => navigate("photo-study", String(t.id))}
-                  className="flex h-full w-full flex-col gap-1.5 rounded-xl border bg-card p-4 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <span className="text-xs font-medium text-primary tabular-nums">{dayShort(t.day)}</span>
-                  <span className="line-clamp-2 font-medium break-keep">{t.title}</span>
-                  {t.body && <span className="line-clamp-2 text-sm break-keep text-muted-foreground [overflow-wrap:anywhere]">{t.body}</span>}
-                  <span className="mt-auto flex items-center gap-3 pt-1 text-xs text-muted-foreground tabular-nums">
-                    <span className="flex items-center gap-1">
-                      <ImageIcon className="size-3.5" aria-hidden />
-                      사진 {t.photos}
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="제목·내용·날짜 검색" aria-label="공지 검색" className="pl-8" />
+          </div>
+          {q && <p className="text-xs text-muted-foreground tabular-nums">검색 결과 {list.length}개</p>}
+        </section>
+
+        {/* 목록 영역 */}
+        <section className="flex min-w-0 flex-col gap-2" aria-label="공지 목록">
+          {topics.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center text-sm break-keep text-muted-foreground">
+              <Camera className="size-8" aria-hidden />
+              {manager ? "아직 공지가 없습니다. 새 공지를 올리면 직원들이 사진을 올릴 수 있습니다." : "아직 공지가 없습니다. 관리자가 공지를 올리면 여기에 날짜별로 쌓입니다."}
+            </div>
+          ) : list.length === 0 ? (
+            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">"{query}" 와 맞는 공지가 없습니다.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {list.map((t) => (
+                <li key={t.id} className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate("photo-study", String(t.id))}
+                    className="flex w-full flex-col gap-1.5 rounded-xl border bg-card p-4 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <span className="text-xs font-medium text-primary tabular-nums">{dayShort(t.day)}</span>
+                    <span className="line-clamp-2 font-medium break-keep">{t.title}</span>
+                    {t.body && <span className="line-clamp-2 text-sm break-keep text-muted-foreground [overflow-wrap:anywhere]">{t.body}</span>}
+                    <span className="flex items-center gap-3 pt-1 text-xs text-muted-foreground tabular-nums">
+                      <span className="flex items-center gap-1">
+                        <ImageIcon className="size-3.5" aria-hidden />
+                        사진 {t.photos}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Users className="size-3.5" aria-hidden />
+                        {t.people}명
+                      </span>
+                      {t.lastPostAt && <span className="ml-auto">마지막 글 {formatDateTime(new Date(t.lastPostAt))}</span>}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <Users className="size-3.5" aria-hidden />
-                      {t.people}명
-                    </span>
-                    {t.lastPostAt && <span className="ml-auto">{formatDateTime(new Date(t.lastPostAt))}</span>}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
       {dialog}
     </div>
   )
