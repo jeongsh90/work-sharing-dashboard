@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 import { isManager, type Session } from "@/lib/auth"
-import { buttonIds, menuFor, useMenuSettings } from "@/lib/menu"
+import { buttonColor, buttonIds, menuFor, useMenuPrefs, useMenuSettings } from "@/lib/menu"
 import type { NoticeSummary } from "@/lib/notices"
 import { useNotifications } from "@/lib/notifications"
 import { isRequesterOf, type RequestSummaryDto } from "@/lib/requests"
@@ -98,10 +98,11 @@ export function AppSidebar({
   onSwitched: OnSwitched
 }) {
   const fresh = useFreshMenus(session, activeId)
-  // 메뉴 관리에서 "버튼"으로 고른 메뉴(기본: 디자인 요청)는 목록 대신 로고 아래 큰 버튼으로 둔다
+  // 메뉴 권한(슈퍼관리자) + 내 메뉴(순서·버튼·색). "버튼"으로 고른 메뉴(기본: 디자인 요청)는 목록 대신 로고 아래 큰 버튼으로 둔다
   const settings = useMenuSettings()
-  const groups = menuFor(session, settings)
-  const asButton = buttonIds(settings)
+  const prefs = useMenuPrefs()
+  const groups = menuFor(session, settings, prefs)
+  const asButton = buttonIds(prefs)
   const buttons = groups.flatMap((g) => g.items).filter((i) => asButton.has(i.id))
   // 1차 묶음(업무·관리·개인·지원) 아코디언: 기본은 모두 접힘, 지금 보는 메뉴의 묶음만 펼친다.
   // 다른 묶음 제목을 누르면 그 묶음이 펼쳐지고 나머지는 접힌다
@@ -142,7 +143,7 @@ export function AppSidebar({
             <div className="mt-1 flex flex-col gap-1.5 group-data-[collapsible=icon]:hidden">
               {buttons.map((item) => (
                 <div key={item.id} className="relative">
-                  <Button size="xl" className="w-full" onClick={() => onNavigate(item.id)}>
+                  <Button size="xl" className={`w-full ${buttonColor(prefs?.colors[item.id]).button}`} onClick={() => onNavigate(item.id)}>
                     <item.icon data-icon="inline-start" />
                     {item.title}
                   </Button>
@@ -152,14 +153,14 @@ export function AppSidebar({
                 </div>
               ))}
             </div>
-            {/* 접힌 메뉴: 아래 메뉴 아이콘과 같은 크기·위치의 아이콘 버튼(기본 버튼 색) */}
+            {/* 접힌 메뉴: 아래 메뉴 아이콘과 같은 크기·위치의 아이콘 버튼(고른 버튼 색) */}
             <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
               {buttons.map((item) => (
                 <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     tooltip={item.title}
                     aria-label={item.title}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+                    className={buttonColor(prefs?.colors[item.id]).button || "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"}
                     onClick={() => onNavigate(item.id)}
                   >
                     <item.icon />

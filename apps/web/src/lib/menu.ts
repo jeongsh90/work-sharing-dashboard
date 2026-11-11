@@ -71,8 +71,6 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
     label: "관리",
     items: [
       { id: "team", title: "팀 관리", icon: Users, roles: MANAGERS },
-      // 메뉴 관리(슈퍼관리자): 메뉴 순서, 메뉴별로 보이는 역할, 맨 위 버튼으로 둘 메뉴
-      { id: "menu-settings", title: "메뉴 관리", icon: ListOrdered, roles: ["superadmin"] },
       // 사내망 직통(슈퍼관리자): 같은 사무실 PC 의 IP 를 등록해 파일을 서버로 바로 주고받게 한다
       { id: "lan", title: "사내망 직통", icon: Zap, roles: ["superadmin"] },
       { id: "ftp-servers", title: "FTP 서버", icon: Server, roles: ["superadmin"] },
@@ -92,6 +90,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "memo", title: "메모", icon: StickyNote },
       // 업무일지: 디자인팀 작업자(작업자 + 정상훈 등 디자인팀 관리자)
       { id: "worklog", title: "업무일지", icon: NotebookPen, designTeam: true },
+      // 메뉴 관리: 내 메뉴 순서·버튼·버튼 색(누구나 자기 것). 메뉴 권한 탭은 슈퍼관리자만
+      { id: "menu-settings", title: "메뉴 관리", icon: ListOrdered },
       { id: "me", title: "내 정보", icon: UserRound },
     ],
   },
@@ -105,33 +105,47 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
   },
 ]
 
-// ── 메뉴 관리 설정(서버 /menu-settings, 슈퍼관리자가 관리 → 메뉴 관리에서 바꾼다) ──
-// order: 묶음 이름 → 메뉴 id 순서. 설정에 없는 새 메뉴는 그 묶음 끝에 붙는다.
-// roles: 메뉴 id → 보이는 역할. 기본으로 허용된 역할 안에서만 줄일 수 있다(서버 API 도 같은 역할만 받으므로).
-// buttons: 사이드메뉴 맨 위(로고 아래)에 큰 버튼으로 둘 메뉴. 버튼이 된 메뉴는 목록에서 빠진다. 없으면 디자인 요청 하나.
-export type MenuSettings = {
-  order: Record<string, string[]>
-  roles: Record<string, Role[]>
-  buttons: string[] | null
-  updatedBy: string | null
-  updatedAt: number | null
-}
+// ── 메뉴 관리(개인 → 메뉴 관리) ──
+// 메뉴 권한(서버 /menu-settings, 슈퍼관리자가 정해 모두에게 적용): 메뉴 id → 보이는 역할.
+//   기본으로 허용된 역할 안에서만 줄일 수 있다(서버 API 도 같은 역할만 받으므로).
+export type MenuSettings = { roles: Record<string, Role[]>; updatedBy: string | null; updatedAt: number | null }
+// 내 메뉴(서버 /menu-prefs, 계정마다 자기 것)
+//   order: 묶음 이름 → 메뉴 id 순서. 없는 메뉴(새 메뉴)는 그 묶음 끝에 붙는다.
+//   buttons: 사이드메뉴 맨 위(로고 아래)에 큰 버튼으로 둘 메뉴. 버튼이 된 메뉴는 목록에서 빠진다. 정하지 않았으면 디자인 요청 하나.
+//   colors: 버튼 색(BUTTON_COLORS 의 key). 없으면 기본(primary)
+export type MenuPrefs = { order: Record<string, string[]>; buttons: string[] | null; colors: Record<string, string>; updatedAt: number | null }
 
 export const ALL_ROLES: Role[] = ["superadmin", "admin", "designer", "requester"]
 export const DEFAULT_BUTTONS = ["request"]
-// 권한을 바꾸지 않는 묶음·메뉴: 개인 묶음(각자 자기 것), 홈(갈 곳이 없을 때 돌아가는 곳), 메뉴 관리(잠김 방지)
+// 권한을 바꾸지 않는 묶음·메뉴: 개인 묶음(각자 자기 것), 홈(갈 곳이 없을 때 돌아가는 곳)
 export const PERSONAL_GROUP = "개인"
 export const LOCKED_ROLE_MENUS = ["home", "menu-settings"]
 // 버튼으로 둘 수 없는 메뉴: 홈은 로고가 버튼이다
 export const NO_BUTTON_MENUS = ["home"]
 
+// 버튼 색: button 은 펼친 메뉴 큰 버튼, icon 은 접힌 메뉴 아이콘 버튼, swatch 는 고르는 칸
+export const BUTTON_COLORS: { key: string; label: string; button: string; swatch: string }[] = [
+  { key: "default", label: "기본", button: "", swatch: "bg-primary" },
+  { key: "blue", label: "파랑", button: "bg-blue-600 text-white hover:bg-blue-600/90 hover:text-white active:bg-blue-600/90 active:text-white", swatch: "bg-blue-600" },
+  { key: "sky", label: "하늘", button: "bg-sky-500 text-white hover:bg-sky-500/90 hover:text-white active:bg-sky-500/90 active:text-white", swatch: "bg-sky-500" },
+  { key: "emerald", label: "초록", button: "bg-emerald-600 text-white hover:bg-emerald-600/90 hover:text-white active:bg-emerald-600/90 active:text-white", swatch: "bg-emerald-600" },
+  { key: "amber", label: "노랑", button: "bg-amber-500 text-black hover:bg-amber-500/90 hover:text-black active:bg-amber-500/90 active:text-black", swatch: "bg-amber-500" },
+  { key: "orange", label: "주황", button: "bg-orange-500 text-white hover:bg-orange-500/90 hover:text-white active:bg-orange-500/90 active:text-white", swatch: "bg-orange-500" },
+  { key: "rose", label: "빨강", button: "bg-rose-600 text-white hover:bg-rose-600/90 hover:text-white active:bg-rose-600/90 active:text-white", swatch: "bg-rose-600" },
+  { key: "pink", label: "분홍", button: "bg-pink-500 text-white hover:bg-pink-500/90 hover:text-white active:bg-pink-500/90 active:text-white", swatch: "bg-pink-500" },
+  { key: "violet", label: "보라", button: "bg-violet-600 text-white hover:bg-violet-600/90 hover:text-white active:bg-violet-600/90 active:text-white", swatch: "bg-violet-600" },
+  { key: "slate", label: "회색", button: "bg-slate-600 text-white hover:bg-slate-600/90 hover:text-white active:bg-slate-600/90 active:text-white", swatch: "bg-slate-600" },
+  { key: "outline", label: "테두리", button: "border border-sidebar-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent", swatch: "border-2 border-foreground/40 bg-background" },
+]
+export const buttonColor = (key?: string) => BUTTON_COLORS.find((c) => c.key === key) ?? BUTTON_COLORS[0]
+
 export const defaultRoles = (i: MenuItem): Role[] => i.roles ?? ALL_ROLES
 export const canSetRoles = (group: string, id: string) => group !== PERSONAL_GROUP && !LOCKED_ROLE_MENUS.includes(id)
 
-// 설정의 순서대로 묶음 안 메뉴를 늘어놓는다
-export function orderedGroups(settings?: MenuSettings | null) {
+// 내 순서대로 묶음 안 메뉴를 늘어놓는다
+export function orderedGroups(prefs?: Pick<MenuPrefs, "order"> | null) {
   return MENU_GROUPS.map((g) => {
-    const saved = settings?.order[g.label] ?? []
+    const saved = prefs?.order[g.label] ?? []
     const rank = (id: string) => {
       const i = saved.indexOf(id)
       return i < 0 ? saved.length + g.items.findIndex((x) => x.id === id) : i
@@ -140,24 +154,23 @@ export function orderedGroups(settings?: MenuSettings | null) {
   })
 }
 
-// 이 메뉴가 보이는 역할(설정 적용)
-export function rolesOf(group: string, item: MenuItem, settings?: MenuSettings | null): Role[] {
+// 이 메뉴가 보이는 역할(권한 설정 적용)
+export function rolesOf(group: string, item: MenuItem, settings?: Pick<MenuSettings, "roles"> | null): Role[] {
   const base = defaultRoles(item)
   const saved = canSetRoles(group, item.id) ? settings?.roles[item.id] : undefined
   return saved ? base.filter((r) => saved.includes(r)) : base
 }
 
-export function menuFor(user: { role: Role; department: string }, settings?: MenuSettings | null) {
+export function menuFor(user: { role: Role; department: string }, settings?: Pick<MenuSettings, "roles"> | null, prefs?: Pick<MenuPrefs, "order"> | null) {
   const visible = (group: string, i: MenuItem) => rolesOf(group, i, settings).includes(user.role) && (!i.designTeam || isDesignWorker(user))
-  return orderedGroups(settings)
+  return orderedGroups(prefs)
     .map((g) => ({ ...g, items: g.items.filter((i) => visible(g.label, i)) }))
     .filter((g) => g.items.length > 0)
 }
 
-// 맨 위 버튼으로 둘 메뉴 id(설정 순서가 아니라 메뉴 순서대로)
-export function buttonIds(settings?: MenuSettings | null) {
-  const list = (settings?.buttons ?? DEFAULT_BUTTONS).filter((id) => !NO_BUTTON_MENUS.includes(id))
-  return new Set(list)
+// 맨 위 버튼으로 둘 메뉴 id
+export function buttonIds(prefs?: Pick<MenuPrefs, "buttons"> | null) {
+  return new Set((prefs?.buttons ?? DEFAULT_BUTTONS).filter((id) => !NO_BUTTON_MENUS.includes(id)))
 }
 
 // 메뉴에 없는 화면의 제목
@@ -168,5 +181,6 @@ export const PAGE_TITLES: Record<string, string> = {
   "notice-edit": "공지사항 작성",
 }
 
-// 메뉴 관리 설정(사이드메뉴·주소 막기에 함께 쓴다). 받기 전에는 기본 메뉴
+// 메뉴 권한(사이드메뉴·주소 막기에 함께 쓴다)과 내 메뉴. 받기 전에는 기본 메뉴
 export const useMenuSettings = (enabled = true) => useApi<MenuSettings>(enabled ? "/menu-settings" : null, 60_000).data
+export const useMenuPrefs = (enabled = true) => useApi<MenuPrefs>(enabled ? "/menu-prefs" : null, 300_000).data
