@@ -1,5 +1,6 @@
 import {
   Bell,
+  Camera,
   ClipboardCheck,
   StickyNote,
   CalendarDays,
@@ -54,6 +55,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
       { id: "files", title: "최종 파일 보관함", icon: FolderArchive },
       // 파일공유자료실: 누구나 글·파일을 올려 함께 본다
       { id: "share", title: "파일공유자료실", icon: FolderOpen },
+      // 사진공부방: 관리자가 날짜별 공지(내용·링크)를 올리면 직원들이 사진과 피드백을 올리고 댓글로 이야기한다
+      { id: "photo-study", title: "사진공부방", icon: Camera },
       // 디자인팀 자료실: 작업에 쓰는 자료(PSD·AI·FIG 등)를 올려 두고 함께 쓴다. 작업자·관리자
       { id: "library", title: "디자인팀 자료실", icon: Library, roles: TEAM },
       // FTP: 슈퍼관리자가 등록한 FTP(카페24 등)를 사이트 안에서 보고 올리고 받는다

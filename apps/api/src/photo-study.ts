@@ -1,0 +1,310 @@
+import { unlink } from 'node:fs/promises'
+import { join } from 'node:path'
+
+import { UPLOAD_DIR } from './config.ts'
+import { all, db, get, run, transaction } from './db.ts'
+import { HttpError, notifyLink } from './requests.ts'
+import { isManager, listUsers, type PublicUser } from './users.ts'
+
+// 사진공부방: 관리자가 날짜마다 공지(제목·내용·링크)를 올리면, 직원들이 그 아래에 사진과 사진 설명·피드백을 올리고
+// 서로 댓글로 이야기한다. 날짜별로 남겨 두고 지난 공지도 다시 본다.
+// 사진은 uploads 에 두고(files.kind = 'photo') photo_files 로 글에 묶는다. 올리기는 /api/uploads 로 먼저 올린 뒤 id 를 보낸다.
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS photo_topics (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  day        TEXT NOT NULL,
+  title      TEXT NOT NULL,
+  body       TEXT NOT NULL DEFAULT '',
+  link       TEXT NOT NULL DEFAULT '',
+  author_id  TEXT NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS photo_topics_day ON photo_topics(day);
+CREATE TABLE IF NOT EXISTS photo_posts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic_id   INTEGER NOT NULL REFERENCES photo_topics(id) ON DELETE CASCADE,
+  author_id  TEXT NOT NULL REFERENCES users(id),
+  body       TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS photo_posts_topic ON photo_posts(topic_id);
+CREATE TABLE IF NOT EXISTS photo_files (
+  post_id INTEGER NOT NULL REFERENCES photo_posts(id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  PRIMARY KEY (post_id, file_id)
+);
+CREATE TABLE IF NOT EXISTS photo_comments (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id    INTEGER NOT NULL REFERENCES photo_posts(id) ON DELETE CASCADE,
+  author_id  TEXT NOT NULL REFERENCES users(id),
+  body       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS photo_comments_post ON photo_comments(post_id);
+`)
+
+// 사진공부방 사진은 로그인한 누구나 본다
+export const canSeePhotoFile = (_u: PublicUser) => true
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+const FILES_MAX = 30
+
+function text(value: unknown, label: string, max: number) {
+  const v = typeof value === 'string' ? value.trim() : ''
+  if (v.length > max) throw new HttpError(400, `${label}은(는) ${max}자까지 입력할 수 있습니다.`)
+  return v
+}
+const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+const manager = (user: PublicUser) => {
+  if (!isManager(user)) throw new HttpError(403, '공지는 관리자만 올리고 고칠 수 있습니다.')
+}
+
+type TopicRow = { id: number; day: string; title: string; body: string; link: string; author_id: string; author_name: string | null; created_at: number; updated_at: number }
+type PostRow = { id: number; topic_id: number; author_id: string; author_name: string | null; avatar_id: string | null; body: string; created_at: number; updated_at: number }
+type FileRow = { post_id: number; id: string; name: string; mime: string; size: number }
+type CommentRow = { id: number; post_id: number; author_id: string; author_name: string | null; avatar_id: string | null; body: string; created_at: number }
+
+const topicDto = (t: TopicRow) => ({
+  id: t.id,
+  day: t.day,
+  title: t.title,
+  body: t.body,
+  link: t.link,
+  authorId: t.author_id,
+  authorName: t.author_name ?? t.author_id,
+  createdAt: t.created_at,
+  updatedAt: t.updated_at,
+})
+
+const TOPIC_SELECT = `SELECT t.*, u.name AS author_name FROM photo_topics t LEFT JOIN users u ON u.id = t.author_id`
+
+function loadTopic(id: number) {
+  const row = get<TopicRow>(`${TOPIC_SELECT} WHERE t.id = :id`, { id })
+  if (!row) throw new HttpError(404, '공지를 찾을 수 없습니다.')
+  return row
+}
+
+// 목록: 날짜 최신순. 글 수·사진 수·참여한 사람 수·마지막 글 시각을 함께
+export function listPhotoTopics(_user: PublicUser) {
+  const stats = new Map(
+    all<{ topic_id: number; posts: number; people: number; last: number }>(
+      'SELECT topic_id, COUNT(*) AS posts, COUNT(DISTINCT author_id) AS people, MAX(created_at) AS last FROM photo_posts GROUP BY topic_id',
+    ).map((r) => [r.topic_id, r]),
+  )
+  const photos = new Map(
+    all<{ topic_id: number; n: number }>('SELECT p.topic_id, COUNT(*) AS n FROM photo_files f JOIN photo_posts p ON p.id = f.post_id GROUP BY p.topic_id').map((r) => [r.topic_id, r.n]),
+  )
+  return all<TopicRow>(`${TOPIC_SELECT} ORDER BY t.day DESC, t.id DESC`).map((t) => ({
+    ...topicDto(t),
+    posts: stats.get(t.id)?.posts ?? 0,
+    people: stats.get(t.id)?.people ?? 0,
+    photos: photos.get(t.id) ?? 0,
+    lastPostAt: stats.get(t.id)?.last ?? null,
+  }))
+}
+
+// 공지 하나 + 그 아래 글(오래된 순) · 사진 · 댓글
+export function photoTopicDetail(_user: PublicUser, id: number) {
+  const topic = topicDto(loadTopic(id))
+  const posts = all<PostRow>(
+    `SELECT p.*, u.name AS author_name, u.avatar_id FROM photo_posts p LEFT JOIN users u ON u.id = p.author_id WHERE p.topic_id = :id ORDER BY p.created_at, p.id`,
+    { id },
+  )
+  const postIds = posts.map((p) => p.id).join(',')
+  const files = new Map<number, Omit<FileRow, 'post_id'>[]>()
+  const comments = new Map<number, ReturnType<typeof commentDto>[]>()
+  if (postIds) {
+    for (const f of all<FileRow>(
+      `SELECT pf.post_id, f.id, f.name, f.mime, f.size FROM photo_files pf JOIN files f ON f.id = pf.file_id WHERE pf.post_id IN (${postIds}) ORDER BY f.created_at, f.name`,
+    )) {
+      const { post_id, ...file } = f
+      files.set(post_id, [...(files.get(post_id) ?? []), file])
+    }
+    for (const c of all<CommentRow>(
+      `SELECT c.*, u.name AS author_name, u.avatar_id FROM photo_comments c LEFT JOIN users u ON u.id = c.author_id WHERE c.post_id IN (${postIds}) ORDER BY c.created_at, c.id`,
+    )) {
+      comments.set(c.post_id, [...(comments.get(c.post_id) ?? []), commentDto(c)])
+    }
+  }
+  return {
+    ...topic,
+    posts: posts.map((p) => ({
+      id: p.id,
+      authorId: p.author_id,
+      authorName: p.author_name ?? p.author_id,
+      avatarId: p.avatar_id,
+      body: p.body,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      files: files.get(p.id) ?? [],
+      comments: comments.get(p.id) ?? [],
+    })),
+  }
+}
+
+const commentDto = (c: CommentRow) => ({
+  id: c.id,
+  authorId: c.author_id,
+  authorName: c.author_name ?? c.author_id,
+  avatarId: c.avatar_id,
+  body: c.body,
+  createdAt: c.created_at,
+})
+
+function topicFields(body: Record<string, unknown>) {
+  const day = text(body.day, '날짜', 10)
+  if (!DAY.test(day)) throw new HttpError(400, '날짜를 골라 주세요.')
+  const title = text(body.title, '제목', 100)
+  if (!title) throw new HttpError(400, '제목을 입력해 주세요.')
+  const link = text(body.link, '링크', 500)
+  if (link && !/^https?:\/\/\S+$/i.test(link)) throw new HttpError(400, '링크는 http:// 또는 https:// 로 시작하는 주소를 넣어 주세요.')
+  return { day, title, body: text(body.body, '공지 내용', 5000), link }
+}
+
+// 새 공지: 관리자. 로그인할 수 있는 모든 직원에게 알린다(올린 사람 빼고)
+export function createPhotoTopic(user: PublicUser, body: Record<string, unknown>) {
+  manager(user)
+  const f = topicFields(body)
+  const now = Date.now()
+  const id = Number(
+    run(
+      `INSERT INTO photo_topics (day, title, body, link, author_id, created_at, updated_at) VALUES (:day, :title, :body, :link, :me, :now, :now)`,
+      { ...f, me: user.id, now },
+    ).lastInsertRowid,
+  )
+  const receivers = listUsers()
+    .filter((u) => u.active && u.approved && u.id !== user.id)
+    .map((u) => u.id)
+  notifyLink(receivers, `사진공부방 새 공지: ${f.title}`, `photo-study/${id}`)
+  return photoTopicDetail(user, id)
+}
+
+export function updatePhotoTopic(user: PublicUser, id: number, body: Record<string, unknown>) {
+  manager(user)
+  loadTopic(id)
+  run('UPDATE photo_topics SET day = :day, title = :title, body = :body, link = :link, updated_at = :now WHERE id = :id', {
+    ...topicFields(body),
+    id,
+    now: Date.now(),
+  })
+  return photoTopicDetail(user, id)
+}
+
+const removeFiles = async (fileIds: string[]) => {
+  for (const fileId of fileIds) run('DELETE FROM files WHERE id = :fileId', { fileId })
+  await Promise.all(fileIds.map((f) => unlink(join(UPLOAD_DIR, f)).catch(() => {})))
+}
+
+// 공지 지우기: 관리자. 그 아래 글·사진·댓글도 함께 지운다(사진 파일은 백업에는 남는다)
+export async function deletePhotoTopic(user: PublicUser, id: number) {
+  manager(user)
+  loadTopic(id)
+  const fileIds = all<{ file_id: string }>('SELECT f.file_id FROM photo_files f JOIN photo_posts p ON p.id = f.post_id WHERE p.topic_id = :id', { id }).map((r) => r.file_id)
+  run('DELETE FROM photo_topics WHERE id = :id', { id })
+  await removeFiles(fileIds)
+  return { ok: true }
+}
+
+// 올린 사람 본인의, 아직 어디에도 붙지 않은 이미지 파일만 붙인다
+function attach(user: PublicUser, postId: number, fileIds: string[]) {
+  for (const id of fileIds) {
+    const file = get<{ uploader_id: string; request_id: number | null; kind: string | null; mime: string }>(
+      'SELECT uploader_id, request_id, kind, mime FROM files WHERE id = :id',
+      { id },
+    )
+    if (!file || file.uploader_id !== user.id || file.request_id !== null || file.kind !== null) {
+      throw new HttpError(400, '올린 사진을 찾을 수 없습니다. 다시 올려 주세요.')
+    }
+    if (!file.mime.startsWith('image/')) throw new HttpError(400, '사진(이미지) 파일만 올릴 수 있습니다.')
+    run("UPDATE files SET kind = 'photo' WHERE id = :id", { id })
+    run('INSERT INTO photo_files (post_id, file_id) VALUES (:postId, :id)', { postId, id })
+  }
+}
+
+// 사진 글 올리기: 누구나. body = { body, fileIds }. 사진이나 글 중 하나는 있어야 한다
+// 공지 올린 사람과 이 공지에 글·댓글을 남긴 사람에게 알린다
+export function createPhotoPost(user: PublicUser, topicId: number, body: Record<string, unknown>) {
+  const topic = loadTopic(topicId)
+  const content = text(body.body, '내용', 5000)
+  const fileIds = [...new Set(ids(body.fileIds))]
+  if (fileIds.length > FILES_MAX) throw new HttpError(400, `사진은 한 번에 ${FILES_MAX}장까지 올릴 수 있습니다.`)
+  if (!content && fileIds.length === 0) throw new HttpError(400, '사진을 올리거나 내용을 적어 주세요.')
+  const now = Date.now()
+  transaction(() => {
+    const postId = Number(
+      run('INSERT INTO photo_posts (topic_id, author_id, body, created_at, updated_at) VALUES (:topicId, :me, :body, :now, :now)', {
+        topicId,
+        me: user.id,
+        body: content,
+        now,
+      }).lastInsertRowid,
+    )
+    attach(user, postId, fileIds)
+  })
+  notifyLink(participants(topicId, topic.author_id, user.id), `사진공부방 「${topic.title}」에 ${user.name}님이 사진을 올렸습니다`, `photo-study/${topicId}`)
+  return photoTopicDetail(user, topicId)
+}
+
+function participants(topicId: number, topicAuthor: string, except: string) {
+  const people = new Set([
+    topicAuthor,
+    ...all<{ author_id: string }>('SELECT DISTINCT author_id FROM photo_posts WHERE topic_id = :topicId', { topicId }).map((r) => r.author_id),
+    ...all<{ author_id: string }>('SELECT DISTINCT c.author_id FROM photo_comments c JOIN photo_posts p ON p.id = c.post_id WHERE p.topic_id = :topicId', { topicId }).map((r) => r.author_id),
+  ])
+  people.delete(except)
+  return [...people]
+}
+
+function loadPost(id: number) {
+  const row = get<{ id: number; topic_id: number; author_id: string }>('SELECT id, topic_id, author_id FROM photo_posts WHERE id = :id', { id })
+  if (!row) throw new HttpError(404, '글을 찾을 수 없습니다.')
+  return row
+}
+const ownOrManager = (user: PublicUser, authorId: string) => {
+  if (authorId !== user.id && !isManager(user)) throw new HttpError(403, '올린 사람이나 관리자만 고칠 수 있습니다.')
+}
+
+// 글 고치기(내용만, 사진 빼기): 올린 사람 또는 관리자. body = { body, removeFileIds }
+export async function updatePhotoPost(user: PublicUser, id: number, body: Record<string, unknown>) {
+  const post = loadPost(id)
+  ownOrManager(user, post.author_id)
+  const content = text(body.body, '내용', 5000)
+  const current = all<{ file_id: string }>('SELECT file_id FROM photo_files WHERE post_id = :id', { id }).map((r) => r.file_id)
+  const removed = ids(body.removeFileIds).filter((f) => current.includes(f))
+  if (!content && removed.length === current.length) throw new HttpError(400, '사진이나 내용 중 하나는 남겨 주세요.')
+  run('UPDATE photo_posts SET body = :body, updated_at = :now WHERE id = :id', { id, body: content, now: Date.now() })
+  for (const fileId of removed) run('DELETE FROM photo_files WHERE post_id = :id AND file_id = :fileId', { id, fileId })
+  await removeFiles(removed)
+  return photoTopicDetail(user, post.topic_id)
+}
+
+export async function deletePhotoPost(user: PublicUser, id: number) {
+  const post = loadPost(id)
+  ownOrManager(user, post.author_id)
+  const fileIds = all<{ file_id: string }>('SELECT file_id FROM photo_files WHERE post_id = :id', { id }).map((r) => r.file_id)
+  run('DELETE FROM photo_posts WHERE id = :id', { id })
+  await removeFiles(fileIds)
+  return photoTopicDetail(user, post.topic_id)
+}
+
+// 댓글: 누구나. 글 올린 사람(과 이 공지 참여자)에게 알린다
+export function createPhotoComment(user: PublicUser, postId: number, body: Record<string, unknown>) {
+  const post = loadPost(postId)
+  const content = text(body.body, '댓글', 2000)
+  if (!content) throw new HttpError(400, '댓글을 입력해 주세요.')
+  run('INSERT INTO photo_comments (post_id, author_id, body, created_at) VALUES (:postId, :me, :body, :now)', { postId, me: user.id, body: content, now: Date.now() })
+  const topic = loadTopic(post.topic_id)
+  notifyLink(participants(post.topic_id, topic.author_id, user.id), `사진공부방 「${topic.title}」에 ${user.name}님이 댓글을 남겼습니다`, `photo-study/${post.topic_id}`)
+  return photoTopicDetail(user, post.topic_id)
+}
+
+export function deletePhotoComment(user: PublicUser, id: number) {
+  const row = get<{ post_id: number; author_id: string }>('SELECT post_id, author_id FROM photo_comments WHERE id = :id', { id })
+  if (!row) throw new HttpError(404, '댓글을 찾을 수 없습니다.')
+  ownOrManager(user, row.author_id)
+  run('DELETE FROM photo_comments WHERE id = :id', { id })
+  return photoTopicDetail(user, loadPost(row.post_id).topic_id)
+}

@@ -77,6 +77,7 @@ import {
   updateFtpServer,
 } from './ftp.ts'
 import { readOrgPhoto, readOrgTree, saveOrgTree } from './org-tree.ts'
+import { canSeePhotoFile, createPhotoComment, createPhotoPost, createPhotoTopic, deletePhotoComment, deletePhotoPost, deletePhotoTopic, listPhotoTopics, photoTopicDetail, updatePhotoPost, updatePhotoTopic } from './photo-study.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -259,7 +260,7 @@ async function handleFile(
   // 디자인팀 자료실 파일(kind 'library')은 디자인팀·관리자가 본다
   // 메모 첨부(kind 'memo')는 올린 사람과 같은 계정 묶음(계정 전환)만 본다
   const memoFile = file?.kind === 'memo' && (JSON.parse(personalGroup(user.id)) as string[]).includes(file.uploader_id)
-  const libraryFile = (file?.kind === 'library' && canUseLibrary(user)) || (file?.kind === 'notice' && canSeeNoticeFile(user)) || (file?.kind === 'share' && canSeeShareFile(user))
+  const libraryFile = (file?.kind === 'library' && canUseLibrary(user)) || (file?.kind === 'notice' && canSeeNoticeFile(user)) || (file?.kind === 'share' && canSeeShareFile(user)) || (file?.kind === 'photo' && canSeePhotoFile(user))
   if (!file || (file.request_id === null && file.kind !== 'avatar' && !toolFile && !libraryFile && !memoFile && file.uploader_id !== user.id)) {
     throw new HttpError(404, '파일을 찾을 수 없습니다.')
   }
@@ -687,6 +688,23 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
 
   // ── 파일공유자료실 ──
+  // 사진공부방: 공지(관리자) · 사진 글 · 댓글(누구나)
+  if (path === '/api/photo-study') {
+    if (method === 'GET') return sendJson(res, 200, listPhotoTopics(user))
+    if (method === 'POST') return sendJson(res, 201, createPhotoTopic(user, await readJson(req)))
+  }
+  if ((m = path.match(/^\/api\/photo-study\/(\d+)$/))) {
+    if (method === 'GET') return sendJson(res, 200, photoTopicDetail(user, Number(m[1])))
+    if (method === 'PATCH') return sendJson(res, 200, updatePhotoTopic(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, await deletePhotoTopic(user, Number(m[1])))
+  }
+  if ((m = path.match(/^\/api\/photo-study\/(\d+)\/posts$/)) && method === 'POST') return sendJson(res, 201, createPhotoPost(user, Number(m[1]), await readJson(req)))
+  if ((m = path.match(/^\/api\/photo-study\/posts\/(\d+)$/))) {
+    if (method === 'PATCH') return sendJson(res, 200, await updatePhotoPost(user, Number(m[1]), await readJson(req)))
+    if (method === 'DELETE') return sendJson(res, 200, await deletePhotoPost(user, Number(m[1])))
+  }
+  if ((m = path.match(/^\/api\/photo-study\/posts\/(\d+)\/comments$/)) && method === 'POST') return sendJson(res, 201, createPhotoComment(user, Number(m[1]), await readJson(req)))
+  if ((m = path.match(/^\/api\/photo-study\/comments\/(\d+)$/)) && method === 'DELETE') return sendJson(res, 200, deletePhotoComment(user, Number(m[1])))
   if (path === '/api/share') {
     if (method === 'GET') return sendJson(res, 200, listShare(user))
     if (method === 'POST') return sendJson(res, 201, createSharePost(user, await readJson(req)))
