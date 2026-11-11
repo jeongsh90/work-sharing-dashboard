@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Mail, MessageCircle, Phone, Search, Smartphone } from "lucide-react"
+import { Contact, Mail, MessageCircle, Phone, PhoneCall, Search, Send, Smartphone } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -210,29 +211,104 @@ function fmtTel(v: string) {
   return v
 }
 
-// 조직도 속 한 사람 카드(홈 디자인팀 카드처럼): 사진 · 이름 · 직급·직무 · 연락처(휴대폰·내선·메일).
+// 연락처 메뉴(사이드 메뉴의 계정 메뉴와 같은 모양): 위에 사진·이름·직급, 아래 휴대폰·회사 전화·메일.
+// 줄을 누르면 복사(메뉴는 열린 채 "복사됨"), 전화 줄 오른쪽 버튼은 바로 걸기, 메일은 메일 쓰기
+function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
+  const [copied, setCopied] = useState<string | null>(null)
+  const sub = [p.position, p.job].filter(Boolean).join(" · ")
+  const rows = [
+    p.cell && { key: "cell", icon: Smartphone, label: "휴대폰", text: fmtTel(p.cell), href: `tel:${p.cell.replace(/[^0-9+]/g, "")}` },
+    p.phone && { key: "phone", icon: Phone, label: "회사 전화", text: fmtTel(p.phone), href: `tel:${p.phone.replace(/[^0-9+]/g, "")}` },
+    p.email && { key: "email", icon: Mail, label: "메일", text: p.email, href: `mailto:${p.email}` },
+  ].filter(Boolean) as { key: string; icon: typeof Phone; label: string; text: string; href: string }[]
+  const copy = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+      setTimeout(() => setCopied((k) => (k === key ? null : k)), 1500)
+    } catch {
+      // 복사가 막힌 브라우저면 아무 일도 하지 않는다
+    }
+  }
+  return (
+    <DropdownMenu onOpenChange={(o) => !o && setCopied(null)}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" aria-label={`${p.name} 연락처 보기`}>
+              <Contact />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>연락처</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent className="min-w-64 rounded-lg" side="right" align="start" sideOffset={4}>
+        <DropdownMenuLabel className="p-0 font-normal">
+          <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+            <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className="size-8" />
+            <div className="grid flex-1 leading-tight">
+              <span className="truncate font-medium">{p.name}</span>
+              {sub && <span className="truncate text-xs text-muted-foreground">{sub}</span>}
+            </div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs text-muted-foreground">연락처</DropdownMenuLabel>
+        {rows.length === 0 ? (
+          <DropdownMenuItem disabled>등록된 연락처가 없습니다</DropdownMenuItem>
+        ) : (
+          <DropdownMenuGroup>
+            {rows.map((r) => (
+              <DropdownMenuItem
+                key={r.key}
+                onSelect={(e) => {
+                  e.preventDefault()
+                  void copy(r.key, r.text)
+                }}
+                className="pr-1"
+              >
+                <r.icon />
+                <div className="grid min-w-0 flex-1 leading-tight">
+                  <span className="truncate tabular-nums">{r.text}</span>
+                  <span className={cn("text-xs text-muted-foreground", copied === r.key && "text-emerald-600 dark:text-emerald-400")}>
+                    {copied === r.key ? "복사됨" : `${r.label} · 눌러서 복사`}
+                  </span>
+                </div>
+                <a
+                  href={r.href}
+                  onClick={(e) => e.stopPropagation()}
+                  className="ml-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
+                  aria-label={r.key === "email" ? `${p.name}에게 메일 쓰기` : `${p.name} ${r.label}로 전화 걸기`}
+                  title={r.key === "email" ? "메일 쓰기" : "전화 걸기"}
+                >
+                  {r.key === "email" ? <Send className="size-3.5" /> : <PhoneCall className="size-3.5" />}
+                </a>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+// 조직도 속 한 사람 카드(홈 디자인팀 카드처럼): 사진 · 이름 · 직급·직무. 오른쪽 위에 채팅(사이트 계정) · 그 아래 연락처 메뉴.
 // 사이트 계정이 있는 디자인팀은 작업 상태, 접속을 볼 수 있으면 접속 점도. lead = 대표·본부장(조금 크게, 테두리 강조)
 function PersonBox({ p, site, canSeeOnline, lead }: { p: TreeMember; site?: OrgMember; canSeeOnline: boolean; lead?: boolean }) {
   const designer = site && (site.role === "designer" || deptKey(site.department) === DESIGN_TEAM)
   const sub = [p.position, p.job].filter(Boolean).join(" · ")
-  const contacts = [
-    p.cell && { icon: Smartphone, text: fmtTel(p.cell), href: `tel:${p.cell.replace(/[^0-9+]/g, "")}`, label: "휴대폰" },
-    p.phone && { icon: Phone, text: fmtTel(p.phone), href: `tel:${p.phone.replace(/[^0-9+]/g, "")}`, label: "회사 전화" },
-    p.email && { icon: Mail, text: p.email, href: `mailto:${p.email}`, label: "메일" },
-  ].filter(Boolean) as { icon: typeof Phone; text: string; href: string; label: string }[]
   return (
-    <div className={cn("relative flex w-52 flex-col items-center rounded-xl border bg-card px-3 pt-4 pb-3 text-center shadow-xs", lead && "w-56 border-primary/60")}>
+    <div className={cn("relative flex w-52 flex-col items-center rounded-xl border bg-card px-3 pt-4 pb-3.5 text-center shadow-xs", lead && "w-56 border-primary/60")}>
       {designer && site && (
         <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
           <span className={cn("size-1.5 rounded-full", PRESENCE_DOT[site.presence] ?? PRESENCE_DOT.off)} aria-hidden />
           {PRESENCE_LABEL[site.presence] ?? PRESENCE_LABEL.off}
         </span>
       )}
-      {site && (
-        <span className="absolute top-1 right-1">
-          <ChatButton m={site} />
-        </span>
-      )}
+      <span className="absolute top-1 right-1 flex flex-col">
+        {site && <ChatButton m={site} />}
+        <ContactMenu p={p} site={site} />
+      </span>
       <span className="relative">
         <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className={lead ? "size-16" : "size-14"} />
         {canSeeOnline && site && <OnlineDot online={site.online} />}
@@ -246,21 +322,6 @@ function PersonBox({ p, site, canSeeOnline, lead }: { p: TreeMember; site?: OrgM
         )}
       </div>
       {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
-      {contacts.length > 0 && (
-        <div className="mt-2.5 flex w-full flex-col gap-1 border-t pt-2.5">
-          {contacts.map((c) => (
-            <a
-                key={c.label}
-                href={c.href}
-                className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label={`${p.name} ${c.label} ${c.text}`}
-              >
-                <c.icon className="size-3.5 shrink-0" aria-hidden />
-                <span className="truncate tabular-nums">{c.text}</span>
-              </a>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
