@@ -11,7 +11,6 @@ import { ToolHeaderActions, useToolDirty } from "@/components/tools/tool-chrome"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
@@ -21,7 +20,8 @@ import { invalidate } from "@/lib/store"
 import { ToolHistory, type HistoryItem } from "@/components/tools/tool-history"
 import type { GifWorkerIn, GifWorkerOut } from "@/components/tools/gif-worker"
 import type { WebpWorkerIn, WebpWorkerOut } from "@/components/tools/webp-worker"
-import { applyAdjust, isNoAdjust, neutralize, normalizeAdjust, NO_ADJUST, type Adjust } from "@/components/tools/video-adjust"
+import { applyAdjust, histogramOf, isDefaultAdjust, isNoAdjust, neutralize, normalizeAdjust, NO_ADJUST, pickPointColor, type Adjust, type Histogram } from "@/components/tools/video-adjust"
+import { CameraRawPanels, Scrub, SectionBox } from "@/components/tools/video-color-panels"
 import { isNoMotion, NO_MOTION, type Motion } from "@/components/tools/video-motion"
 import { Tip } from "@/components/tip"
 
@@ -245,7 +245,7 @@ async function measurePerFrame(
       await seek(video, t)
       drawFramed(ctx, video, video.videoWidth, video.videoHeight, w, h, motion)
       const img = ctx.getImageData(0, 0, w, h)
-      applyAdjust(img.data, adjust)
+      applyAdjust(img, adjust)
       const data = img.data.buffer
       worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
     }
@@ -1099,6 +1099,18 @@ export function VideoConvertTool() {
   const [speed, setSpeed] = useState("1")
   const [repeat, setRepeat] = useState("0")
   const adjustCanvas = useRef<HTMLCanvasElement>(null)
+  // 곡선 칸 바탕 히스토그램: 미리보기를 그릴 때마다 잠깐 뒤에 한 번 센다(재생 중에는 0.25초마다)
+  const [colorHist, setColorHist] = useState<Histogram | null>(null)
+  const histTimer = useRef<number | null>(null)
+  const queueHist = () => {
+    if (histTimer.current !== null) return
+    histTimer.current = window.setTimeout(() => {
+      histTimer.current = null
+      const c = adjustCanvas.current
+      if (!c || !c.width || !c.height) return
+      setColorHist(histogramOf(c.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height)))
+    }, 250)
+  }
   // 위 트랙(V2·V3) 클립과 고른 클립. 모션·색 보정 칸은 고른 클립의 값을 보이고 바꾼다
   const [layers, setLayers] = useState<Clip[]>([])
   // 위 트랙 수(V2 부터 몇 줄). 불러온 기록이 더 높은 트랙을 쓰면 그만큼 보인다
@@ -1529,7 +1541,7 @@ export function VideoConvertTool() {
     }
     if (v1 && !isNoAdjust(v1.adjust)) {
       const img = ctx.getImageData(0, 0, w, h)
-      applyAdjust(img.data, v1.adjust)
+      applyAdjust(img, v1.adjust)
       ctx.putImageData(img, 0, 0)
     }
     for (const tr of usedTracks(ls)) {
@@ -1547,12 +1559,13 @@ export function VideoConvertTool() {
       drawFramed(tctx, el, el.videoWidth, el.videoHeight, w, h, c.motion, false)
       if (!isNoAdjust(c.adjust)) {
         const img = tctx.getImageData(0, 0, w, h)
-        applyAdjust(img.data, c.adjust)
+        applyAdjust(img, c.adjust)
         tctx.putImageData(img, 0, 0)
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.drawImage(tmp, 0, 0)
     }
+    queueHist()
   }
   // 위 트랙 동영상을 재생 헤드에 맞춘다(재생 중이면 같이 재생, 멈춰 있으면 그 장면으로)
   const syncLayers = (playingNow: boolean) => {
@@ -1855,7 +1868,7 @@ export function VideoConvertTool() {
           drawFramed(tctx, el, l!.source.width, l!.source.height, outW, outH, l!.motion, false)
           if (!isNoAdjust(l!.adjust)) {
             const li = tctx.getImageData(0, 0, outW, outH)
-            applyAdjust(li.data, l!.adjust)
+            applyAdjust(li, l!.adjust)
             tctx.putImageData(li, 0, 0)
           }
           ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -1874,7 +1887,7 @@ export function VideoConvertTool() {
           await seek(video, Math.min(c.start + i / Number(fps), c.end - 0.001, c.source.duration - 0.001))
           drawFramed(ctx, video, c.source.width, c.source.height, outW, outH, c.motion)
           let img = ctx.getImageData(0, 0, outW, outH)
-          applyAdjust(img.data, c.adjust)
+          applyAdjust(img, c.adjust)
           img = await overlay(img, seqAt + i / Number(fps))
           const data = img.data.buffer
           worker.postMessage({ type: "frame", data } satisfies GifWorkerIn, [data])
@@ -2216,6 +2229,30 @@ export function VideoConvertTool() {
     }
     if (!n) return
     setAdjust((a) => ({ ...a, ...neutralize(sr / n, sg / n, sb / n) }))
+  }
+  // 포인트 색상 스포이트: 미리보기를 눌러 그 자리 색(색상 혼합 바로 앞 단계, 5×5 평균)을 포인트로 더한다(최대 8개)
+  const [pointPick, setPointPick] = useState(false)
+  const pickPoint = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = selIsLayer && selClip ? layerVid(selClip.track ?? 1) : preview.current
+    const c = adjustCanvas.current
+    setPointPick(false)
+    if (!v || !c || !v.videoWidth) return
+    const r = c.getBoundingClientRect()
+    const k = Math.min(r.width / c.width, r.height / c.height)
+    const x = Math.round((e.clientX - (r.left + (r.width - c.width * k) / 2)) / k)
+    const y = Math.round((e.clientY - (r.top + (r.height - c.height * k) / 2)) / k)
+    if (x < 0 || y < 0 || x >= c.width || y >= c.height) return
+    const tmp = document.createElement("canvas")
+    tmp.width = c.width
+    tmp.height = c.height
+    const tctx = tmp.getContext("2d", { willReadFrequently: true })!
+    drawFramed(tctx, v, v.videoWidth, v.videoHeight, c.width, c.height, motion)
+    const hsl = pickPointColor(tctx.getImageData(0, 0, c.width, c.height), x, y, adjust)
+    if (!hsl) return
+    setAdjust((a) => {
+      const n = normalizeAdjust(a)
+      return n.points.length >= 8 ? n : { ...n, points: [...n.points, { ...hsl, hue: 0, sat: 0, lum: 0, range: 50 }] }
+    })
   }
   const [saveOpen, setSaveOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false) // 동영상 설정 칸
@@ -2813,6 +2850,9 @@ export function VideoConvertTool() {
                     {wbPick && (
                       <div className="absolute inset-0 z-20 cursor-crosshair" onClick={pickWhite} role="button" aria-label="흰색 균형으로 맞출 곳 누르기" />
                     )}
+                    {pointPick && (
+                      <div className="absolute inset-0 z-20 cursor-crosshair" onClick={pickPoint} role="button" aria-label="포인트 색상으로 바꿀 색 누르기" />
+                    )}
                     {/* 모션·색 보정 미리보기(바꾼 것이 있을 때만). 누르면 아래 동영상이 받는다 */}
                     <canvas
                       ref={adjustCanvas}
@@ -3095,10 +3135,25 @@ export function VideoConvertTool() {
         <Panel title="색 보정" bare scroll>
           {source ? (
             <div className="p-3">
-              <AdjustPanel value={adjust} onChange={setAdjust} disabled={busy} picking={wbPick} onPick={() => setWbPick((p) => !p)} />
+              <AdjustPanel
+                value={adjust}
+                onChange={setAdjust}
+                disabled={busy}
+                picking={wbPick}
+                onPick={() => {
+                  setPointPick(false)
+                  setWbPick((p) => !p)
+                }}
+                hist={colorHist}
+                pickingPoint={pointPick}
+                onPickPoint={() => {
+                  setWbPick(false)
+                  setPointPick((p) => !p)
+                }}
+              />
             </div>
           ) : (
-            <EmptyNote>동영상을 가져오면 노출·감마·색조·채도·명도를 보정합니다.</EmptyNote>
+            <EmptyNote>동영상을 가져오면 기본 교정·곡선·효과·색상 혼합·색 보정(컬러 휠)으로 색을 맞춥니다.</EmptyNote>
           )}
         </Panel>
       </div>
@@ -3222,7 +3277,7 @@ function DropZone({
 }
 
 // ── 색 보정 칸: 프리미어 프로 Lumetri 색상 "기본 교정"처럼 — 색상(흰색 균형·온도·색조·채도) · 조명(노출·대비·밝은/어두운 영역·흰색·검정) ──
-type AdjustKey = keyof Adjust
+type AdjustKey = "temperature" | "tint" | "saturation" | "exposure" | "contrast" | "highlights" | "shadows" | "whites" | "blacks"
 type AdjustRow = { key: AdjustKey; label: string; min: number; max: number; step: number; digits: number; track?: string }
 const COLOR_ROWS: AdjustRow[] = [
   { key: "temperature", label: "온도", min: -100, max: 100, step: 0.1, digits: 1, track: "linear-gradient(90deg,#2f7bff,#9a9a9a 50%,#ff8a1f)" },
@@ -3244,13 +3299,20 @@ function AdjustPanel({
   disabled,
   picking,
   onPick,
+  hist,
+  pickingPoint,
+  onPickPoint,
 }: {
   value: Adjust
   onChange: (a: Adjust) => void
   disabled?: boolean
   picking?: boolean
   onPick?: () => void
+  hist: Histogram | null
+  pickingPoint?: boolean
+  onPickPoint?: () => void
 }) {
+  value = normalizeAdjust(value)
   const [open, setOpen] = useState({ color: true, light: true })
   const set = (key: AdjustKey, v: number) => onChange({ ...value, [key]: v })
   const row = (r: AdjustRow) => (
@@ -3298,13 +3360,20 @@ function AdjustPanel({
     <Field>
       <FieldLabel>
         <SlidersHorizontal className="size-4" />
-        색 보정
-        <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={disabled || isNoAdjust(value)} onClick={() => onChange(NO_ADJUST)}>
+        보정 전체
+        <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={disabled || isDefaultAdjust(value)} onClick={() => onChange(NO_ADJUST)}>
           <RotateCcw data-icon="inline-start" />
-          기본값
+          모두 기본값
         </Button>
       </FieldLabel>
-      <div className="flex flex-col gap-4 rounded-lg border p-3">
+      <SectionBox
+        id="basic"
+        title="기본 교정"
+        value={value}
+        onChange={onChange}
+        reset={{ temperature: 0, tint: 0, saturation: 100, exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0 }}
+        disabled={disabled}
+      >
         {section(
           "color",
           "색상",
@@ -3322,94 +3391,13 @@ function AdjustPanel({
           </>,
         )}
         {section("light", "조명", <>{LIGHT_ROWS.map(row)}</>)}
-      </div>
+      </SectionBox>
+      <CameraRawPanels value={value} onChange={onChange} hist={hist} disabled={disabled} pickingPoint={pickingPoint} onPickPoint={onPickPoint} />
     </Field>
   )
 }
 
 // ── 모션 칸: 프리미어 프로 효과 컨트롤의 "모션"·"불투명도"와 같은 칸. 파란 숫자를 좌우로 끌면 바뀌고(Shift = 10배), 누르면 직접 입력 ──
-function Scrub({
-  value,
-  onChange,
-  step,
-  digits,
-  min = -Infinity,
-  max = Infinity,
-  suffix = "",
-  label,
-  disabled,
-}: {
-  value: number
-  onChange: (v: number) => void
-  step: number
-  digits: number
-  min?: number
-  max?: number
-  suffix?: string
-  label: string
-  disabled?: boolean
-}) {
-  const [edit, setEdit] = useState<string | null>(null)
-  const drag = useRef<{ x: number; v: number; moved: boolean } | null>(null)
-  const clamp = (v: number) => Math.min(max, Math.max(min, Number(v.toFixed(digits))))
-  const commit = () => {
-    const n = Number(edit)
-    if (edit !== null && edit.trim() !== "" && Number.isFinite(n)) onChange(clamp(n))
-    setEdit(null)
-  }
-  if (edit !== null)
-    return (
-      <Input
-        autoFocus
-        aria-label={label}
-        value={edit}
-        inputMode="decimal"
-        className="h-7 w-20 px-1.5 text-right text-sm tabular-nums"
-        onChange={(e) => setEdit(e.target.value)}
-        onFocus={(e) => e.currentTarget.select()}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit()
-          if (e.key === "Escape") setEdit(null)
-        }}
-      />
-    )
-  return (
-    <button
-      type="button"
-      aria-label={`${label} ${value.toFixed(digits)}${suffix}`}
-      disabled={disabled}
-      className="cursor-ew-resize rounded px-1 text-sm text-sky-600 tabular-nums select-none hover:underline disabled:cursor-default disabled:opacity-50 dark:text-sky-400"
-      onPointerDown={(e) => {
-        if (disabled || e.button !== 0) return
-        e.currentTarget.setPointerCapture(e.pointerId)
-        drag.current = { x: e.clientX, v: value, moved: false }
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current
-        if (!d) return
-        const dx = e.clientX - d.x
-        if (Math.abs(dx) > 2) d.moved = true
-        if (d.moved) onChange(clamp(d.v + dx * step * (e.shiftKey ? 10 : 1)))
-      }}
-      onPointerUp={() => {
-        const d = drag.current
-        drag.current = null
-        if (d && !d.moved) setEdit(value.toFixed(digits))
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "ArrowRight" || e.key === "ArrowUp") onChange(clamp(value + step * (e.shiftKey ? 10 : 1)))
-        else if (e.key === "ArrowLeft" || e.key === "ArrowDown") onChange(clamp(value - step * (e.shiftKey ? 10 : 1)))
-        else return
-        e.preventDefault()
-      }}
-    >
-      {value.toFixed(digits)}
-      {suffix}
-    </button>
-  )
-}
-
 function MotionPanel({
   value,
   onChange,
