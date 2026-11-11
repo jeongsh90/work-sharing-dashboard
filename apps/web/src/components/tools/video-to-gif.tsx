@@ -890,8 +890,7 @@ function SequenceTimeline({
         ref={boxRef}
         id="timeline"
         onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)}
-        className="relative overflow-x-auto overflow-y-hidden rounded-md border bg-muted/30 select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        data-lenis-prevent
+        className="relative overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-md border bg-muted/30 select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="relative" style={{ width }}>
           {/* 시간 눈금 */}
