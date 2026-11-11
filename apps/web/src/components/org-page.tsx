@@ -242,7 +242,7 @@ function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
         </TooltipTrigger>
         <TooltipContent>연락처</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent className="min-w-64 rounded-lg" side="right" align="start" sideOffset={4}>
+      <DropdownMenuContent className="min-w-72 rounded-lg" side="right" align="start" sideOffset={4}>
         <DropdownMenuLabel className="p-0 font-normal">
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
             <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className="size-8" />
@@ -268,12 +268,10 @@ function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
                 className="pr-1"
               >
                 <r.icon />
-                <div className="grid min-w-0 flex-1 leading-tight">
-                  <span className="truncate tabular-nums">{r.text}</span>
-                  <span className={cn("text-xs text-muted-foreground", copied === r.key && "text-emerald-600 dark:text-emerald-400")}>
-                    {copied === r.key ? "복사됨" : `${r.label} · 눌러서 복사`}
-                  </span>
-                </div>
+                <span className="min-w-0 flex-1 truncate tabular-nums" title={`${r.label} · 눌러서 복사`}>
+                  {r.text}
+                </span>
+                {copied === r.key && <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400">복사됨</span>}
                 <a
                   href={r.href}
                   onClick={(e) => e.stopPropagation()}
