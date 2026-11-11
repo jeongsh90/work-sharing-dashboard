@@ -5,6 +5,7 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { HomePage } from '@/components/home/home-page'
 import { OverlayScrollbar } from '@/components/overlay-scrollbar'
 import { LoginForm } from '@/components/login-form'
+import { Particles } from '@/components/ui/particles'
 import { PageState } from '@/components/page-state'
 import { dockItemCount, FloatingDock, FloatingScrollEdge } from '@/components/home/floating-dock'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -45,7 +46,6 @@ const OrgPage = lazyPage(() => import('@/components/org-page'), (m) => m.OrgPage
 const SignupForm = lazy(() => import('@/components/signup-form').then((m) => ({ default: m.SignupForm })))
 const TeamPage = lazyPage(() => import('@/components/team-page'), (m) => m.TeamPage)
 const ToolsPage = lazyPage(() => import('@/components/tools-page'), (m) => m.ToolsPage)
-const LoginBackground = lazy(() => import('@/components/login-background'))
 const WorklogPage = lazyPage(() => import('@/components/worklog-page'), (m) => m.WorklogPage)
 const ChecklistPage = lazyPage(() => import('@/components/checklist-page'), (m) => m.ChecklistPage)
 const MemoPage = lazyPage(() => import('@/components/memo-page'), (m) => m.MemoPage)
@@ -166,11 +166,9 @@ export default function App() {
 
   if (!session) {
     return (
-      <div className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-muted p-6 md:p-10">
-        {/* 배경 그림(gsap 을 쓰므로 따로 불러온다) */}
-        <Suspense fallback={null}>
-          <LoginBackground />
-        </Suspense>
+      <div className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-[#000] p-6 md:p-10">
+        {/* 배경: 테마와 상관없이 검정 + 흰 파티클 */}
+        <Particles className="absolute inset-0" quantity={150} color="#ffffff" />
         <div className="relative z-10 w-full max-w-sm md:max-w-4xl">
           {/* 로그인 전에는 회원가입(#/signup)과 로그인만 있다. */}
           {route.page === 'signup' ? (

@@ -435,7 +435,8 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
   }, [members])
   const siteOf: SiteOf = (name) => siteByName.get(name.trim()) ?? undefined
   const allNames = useMemo(() => new Set(tree.nodes.flatMap((n) => n.members.map((m) => m.name.trim()))), [tree])
-  const notInTree = data.canEditTree ? members.filter((u) => !allNames.has(u.name.trim())) : []
+  // 회사 조직도에 없는 사이트 계정(애찬_Ai 같은 AI 계정): "Ai" 탭에 따로
+  const notInTree = members.filter((u) => !allNames.has(u.name.trim()))
   const totalPeople = tree.nodes.reduce((s, n) => s + n.members.length, 0)
   const updated = new Date(tree.updatedAt)
   // 찾기 결과: 사람마다 부서 경로(본부 › 팀 › 파트)
@@ -486,7 +487,7 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
             </ul>
           )
         ) : (
-          <Tabs value={division ? tab : "all"} onValueChange={setTab} className="gap-4">
+          <Tabs value={division || (tab === "ai" && notInTree.length) ? tab : "all"} onValueChange={setTab} className="gap-4">
             <TabsList className="h-auto flex-wrap justify-start">
               <TabsTrigger value="all">전체보기</TabsTrigger>
               {full.children.map((d) => (
@@ -495,8 +496,25 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
                   <span className="text-xs text-muted-foreground tabular-nums">{d.total}</span>
                 </TabsTrigger>
               ))}
+              {notInTree.length > 0 && (
+                <TabsTrigger value="ai">
+                  Ai
+                  <span className="text-xs text-muted-foreground tabular-nums">{notInTree.length}</span>
+                </TabsTrigger>
+              )}
             </TabsList>
-            {division ? (
+            {tab === "ai" && notInTree.length > 0 ? (
+              <div className="flex flex-wrap justify-center gap-3 py-2">
+                {notInTree.map((m) => (
+                  <PersonBox
+                    key={m.id}
+                    p={{ id: m.id, name: m.name, position: m.rank, job: m.department.trim(), rest: false, photo: false }}
+                    site={m}
+                    canSeeOnline={canSeeOnline}
+                  />
+                ))}
+              </div>
+            ) : division ? (
               <DivisionChart key={division.node.id} d={division} siteOf={siteOf} canSeeOnline={canSeeOnline} />
             ) : (
               <OverviewChart root={full} siteOf={siteOf} canSeeOnline={canSeeOnline} onOpen={setTab} />
@@ -504,17 +522,6 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
           </Tabs>
         )}
       </Section>
-      {notInTree.length > 0 && !q && (
-        <Section title="회사 조직도에 없는 사이트 계정" aside={<span className="text-sm text-muted-foreground tabular-nums">{notInTree.length}명</span>}>
-          <ul className="grid w-full grid-cols-12 gap-4 md:gap-6">
-            {notInTree.map((m) => (
-              <li key={m.id} className="col-span-12 rounded-xl border bg-card px-4 py-3 sm:col-span-6 xl:col-span-4 2xl:col-span-3">
-                <Person m={m} canSeeOnline={canSeeOnline} />
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
     </>
   )
 }

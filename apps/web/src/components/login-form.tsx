@@ -14,6 +14,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { LoginSide } from "@/components/login-side"
 
 export function LoginForm({
   className,
@@ -105,10 +106,7 @@ export function LoginForm({
               </FieldDescription>
             </FieldGroup>
           </form>
-          <div className="relative hidden flex-col justify-end gap-1 bg-muted p-8 md:flex">
-            <p className="text-sm text-muted-foreground">DESIGN REQUEST &amp; WORK</p>
-            <p className="text-xl font-bold">디자인 요청·작업 관리 시스템</p>
-          </div>
+          <LoginSide />
         </CardContent>
       </Card>
     </div>

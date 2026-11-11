@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { LoginSide } from "@/components/login-side"
 import { CircleCheck } from "lucide-react"
 
 import { cn } from "cn"
@@ -165,11 +166,7 @@ export function SignupForm({ className, ...props }: React.ComponentProps<"div">)
               </FieldGroup>
             </form>
           )}
-          <div className="relative hidden flex-col justify-end gap-1 bg-muted p-8 md:flex">
-            <p className="text-sm text-muted-foreground">DESIGN REQUEST &amp; WORK</p>
-            <p className="text-xl font-bold">디자인 요청·작업 관리 시스템</p>
-            <p className="mt-2 text-sm text-muted-foreground">가입 신청은 슈퍼관리자가 확인한 뒤 승인합니다.</p>
-          </div>
+          <LoginSide note="가입 신청은 슈퍼관리자가 확인한 뒤 승인합니다." />
         </CardContent>
       </Card>
     </div>
