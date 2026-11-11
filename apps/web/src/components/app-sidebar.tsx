@@ -190,10 +190,14 @@ export function AppSidebar({
               <CollapsibleTrigger className="w-full cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
                 {group.label}
                 {/* 접힌 묶음 안에 새 글(N)이나 지금 보는 메뉴가 있으면 점으로 알린다 */}
-                {!open && (hasFresh || hasActive) && (
-                  <span className={`ml-1.5 size-1.5 rounded-full ${hasFresh ? "bg-destructive" : "bg-sidebar-primary"}`} aria-label={hasFresh ? "새 내용 있음" : "보고 있는 메뉴"} />
+                {!open && hasActive && !hasFresh && <span className="ml-1.5 size-1.5 rounded-full bg-sidebar-primary" aria-label="보고 있는 메뉴" />}
+                {/* 접힌 묶음 안에 새 글이 있으면 메뉴와 같은 N 표시(예: 관리 → 구글 색인 보고서 새 보고서) */}
+                {!open && hasFresh && (
+                  <span className="ml-auto rounded-md bg-destructive px-1.5 text-[11px] leading-5 font-medium text-white" aria-label="새 글 있음">
+                    N
+                  </span>
                 )}
-                <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                <ChevronDown className={`${!open && hasFresh ? "ml-1" : "ml-auto"} transition-transform group-data-[state=open]/collapsible:rotate-180`} />
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
