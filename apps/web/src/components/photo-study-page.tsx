@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
-import { Camera, EllipsisVertical, ExternalLink, ImageIcon, ImagePlus, LoaderCircle, MessageCircle, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react"
+import { ArrowLeft, Camera, EllipsisVertical, ExternalLink, ImageIcon, ImagePlus, LoaderCircle, MessageCircle, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -15,7 +15,6 @@ import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { AuthImage } from "@/components/requests/file-list"
 import { ImageLightbox } from "@/components/requests/image-lightbox"
-import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Tip } from "@/components/tip"
 import { UserAvatar } from "@/components/user-avatar"
 import { api, ApiError, uploadFile } from "@/lib/api"
@@ -27,7 +26,7 @@ import { invalidate, useApi } from "@/lib/store"
 
 // 사진공부방(서버 apps/api/src/photo-study.ts): 관리자가 날짜마다 공지(제목·내용·링크)를 올리면
 // 직원들이 그 아래에 사진과 사진에 대한 설명·피드백을 올리고, 서로 댓글로 이야기한다.
-// 왼쪽: 날짜별 공지 목록 / 오른쪽: 고른 공지 + 올라온 사진 글(오래된 순) + 맨 아래 올리기 칸
+// 처음: 날짜별 공지 목록 / 공지를 누르면: 공지 + 올라온 사진 글(오래된 순) + 맨 아래 올리기 칸
 
 type PhotoFile = { id: string; name: string; mime: string; size: number }
 type Comment = { id: number; authorId: string; authorName: string; avatarId: string | null; body: string; createdAt: number }
@@ -54,14 +53,41 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
   const [query, setQuery] = useState("")
   const [editing, setEditing] = useState<Topic | "new" | null>(null)
 
+  const dialog = (
+    <TopicDialog
+      topic={editing}
+      onClose={() => setEditing(null)}
+      onSaved={(t) => {
+        setEditing(null)
+        invalidate()
+        navigate("photo-study", String(t.id))
+      }}
+    />
+  )
+
+  // 공지 하나: 목록으로 돌아가기 + 공지·사진 글
+  if (id) {
+    return (
+      <div className={PAGE_GRID}>
+        <div className="col-span-12 flex min-w-0 flex-col gap-4 xl:col-span-10 xl:col-start-2">
+          <Button variant="ghost" size="sm" className="self-start" onClick={() => navigate("photo-study")}>
+            <ArrowLeft data-icon="inline-start" />
+            목록으로
+          </Button>
+          <TopicView key={id} id={Number(id)} session={session} onEdit={setEditing} />
+        </div>
+        {dialog}
+      </div>
+    )
+  }
+
   if (!topics) return <PageState error={error} />
-  const selectedId = id ? Number(id) : topics[0]?.id
   const q = query.trim().toLowerCase()
   const list = topics.filter((t) => !q || `${t.title}\n${t.body}\n${t.day}`.toLowerCase().includes(q))
 
+  // 처음: 날짜별 공지 목록만. 누르면 그 공지 페이지로
   return (
     <div className={PAGE_GRID}>
-      {/* 왼쪽: 날짜별 공지 */}
       <Section
         title="날짜별 공지"
         aside={<span className="text-sm text-muted-foreground tabular-nums">{topics.length}개</span>}
@@ -72,9 +98,9 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
             </Button>
           )
         }
-        className="col-span-12 lg:col-span-4"
+        className="col-span-12"
       >
-        <div className="relative">
+        <div className="relative max-w-md">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="제목·내용·날짜 검색" aria-label="공지 검색" className="pl-8" />
         </div>
@@ -86,58 +112,35 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
         ) : list.length === 0 ? (
           <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">"{query}" 와 맞는 공지가 없습니다.</p>
         ) : (
-          <SmoothScrollArea className="max-h-[calc(100svh-14rem)] overflow-y-auto pr-1">
-            <ul className="flex flex-col gap-2">
-              {list.map((t) => {
-                const active = t.id === selectedId
-                return (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={() => navigate("photo-study", String(t.id))}
-                      aria-current={active ? "true" : undefined}
-                      className={`flex w-full flex-col gap-1 rounded-xl border p-3 text-left transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${active ? "border-primary bg-accent" : "bg-card hover:bg-muted/50"}`}
-                    >
-                      <span className="text-xs font-medium text-primary tabular-nums">{dayShort(t.day)}</span>
-                      <span className="line-clamp-2 font-medium break-keep">{t.title}</span>
-                      <span className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-                        <span className="flex items-center gap-1">
-                          <ImageIcon className="size-3.5" aria-hidden />
-                          사진 {t.photos}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="size-3.5" aria-hidden />
-                          {t.people}명
-                        </span>
-                        {t.lastPostAt && <span className="ml-auto">{formatDateTime(new Date(t.lastPostAt))}</span>}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </SmoothScrollArea>
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {list.map((t) => (
+              <li key={t.id} className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => navigate("photo-study", String(t.id))}
+                  className="flex h-full w-full flex-col gap-1.5 rounded-xl border bg-card p-4 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <span className="text-xs font-medium text-primary tabular-nums">{dayShort(t.day)}</span>
+                  <span className="line-clamp-2 font-medium break-keep">{t.title}</span>
+                  {t.body && <span className="line-clamp-2 text-sm break-keep text-muted-foreground [overflow-wrap:anywhere]">{t.body}</span>}
+                  <span className="mt-auto flex items-center gap-3 pt-1 text-xs text-muted-foreground tabular-nums">
+                    <span className="flex items-center gap-1">
+                      <ImageIcon className="size-3.5" aria-hidden />
+                      사진 {t.photos}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Users className="size-3.5" aria-hidden />
+                      {t.people}명
+                    </span>
+                    {t.lastPostAt && <span className="ml-auto">{formatDateTime(new Date(t.lastPostAt))}</span>}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </Section>
-
-      {/* 오른쪽: 공지 + 사진 글 */}
-      <div className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-8">
-        {selectedId ? (
-          <TopicView key={selectedId} id={selectedId} session={session} onEdit={setEditing} />
-        ) : (
-          <div className="flex min-h-60 items-center justify-center rounded-xl border border-dashed p-10 text-sm text-muted-foreground">왼쪽에서 공지를 골라 주세요.</div>
-        )}
-      </div>
-
-      <TopicDialog
-        topic={editing}
-        onClose={() => setEditing(null)}
-        onSaved={(t) => {
-          setEditing(null)
-          invalidate()
-          navigate("photo-study", String(t.id))
-        }}
-      />
+      {dialog}
     </div>
   )
 }
