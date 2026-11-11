@@ -212,7 +212,8 @@ function CurveSection({ value, onChange, hist, disabled }: { value: Adjust; onCh
   const [mode, setMode] = useState<CurveMode>("param")
   const set = (patch: Partial<Adjust>) => onChange({ ...value, ...patch })
   const svg = useRef<SVGSVGElement>(null)
-  const drag = useRef<{ idx: number } | null>(null)
+  // 끄는 동안의 점 목록은 여기서 이어 간다(다시 그리기 전에 다음 움직임이 와도 맞게)
+  const drag = useRef<{ idx: number; ch: Exclude<CurveMode, "param">; list: Pt[] } | null>(null)
   const pts: Pt[] = mode === "param" ? [] : value.curves[mode]
   const table = useMemo(() => (mode === "param" ? parametricTable(value) : pointTable(pts)), [mode, value, pts])
 
@@ -238,38 +239,50 @@ function CurveSection({ value, onChange, hist, disabled }: { value: Adjust; onCh
   }
   const setPts = (next: Pt[]) => mode !== "param" && set({ curves: { ...value.curves, [mode]: next } })
   const near = (x: number, y: number) => pts.findIndex(([px, py]) => Math.hypot(px - x, py - y) < 10)
+  // 곡선을 누르면 핀(점)을 놓는다: 그 자리 곡선 높이에(곡선에서 멀리 누르면 누른 높이에). 파라메트릭 화면에서 누르면 포인트 곡선(RGB)으로 넘어가며 놓는다
   const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (disabled || mode === "param" || e.button !== 0) return
+    if (disabled || e.button !== 0) return
+    const ch = mode === "param" ? "rgb" : mode
+    let list = value.curves[ch]
     const [x, y] = toPt(e)
-    let idx = near(x, y)
+    let idx = mode === "param" ? -1 : near(x, y)
     if (idx < 0) {
       const nx = Math.round(Math.min(255, Math.max(0, x)))
-      if (pts.some((p) => p[0] === nx)) return
-      const next = [...pts, [nx, Math.round(Math.min(255, Math.max(0, y)))] as Pt].sort((a, b) => a[0] - b[0])
-      idx = next.findIndex((p) => p[0] === nx)
-      setPts(next)
+      idx = list.findIndex((p) => p[0] === nx)
+      if (idx < 0) {
+        const cy = pointTable(list)[nx] * 255
+        const ny = Math.round(Math.min(255, Math.max(0, mode === "param" || Math.abs(cy - y) < 24 ? cy : y)))
+        const next = [...list, [nx, ny] as Pt].sort((p, q) => p[0] - q[0])
+        idx = next.findIndex((p) => p[0] === nx)
+        list = next
+        set({ curves: { ...value.curves, [ch]: next } })
+      }
     }
+    if (mode === "param") setMode("rgb")
     e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = { idx }
+    drag.current = { idx, ch, list }
   }
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const d = drag.current
-    if (!d || mode === "param") return
+    if (!d) return
     const [x, y] = toPt(e)
-    const cur = value.curves[mode]
+    const cur = d.list
     const i = d.idx
     if (i < 0 || i >= cur.length) return
+    const put = (next: Pt[]) => {
+      d.list = next
+      set({ curves: { ...value.curves, [d.ch]: next } })
+    }
     // 양 끝이 아닌 점은 칸 밖으로 멀리 끌면 지운다
     const out = x < -24 || x > 280 || y < -24 || y > 280
     if (out && i > 0 && i < cur.length - 1) {
       drag.current = null
-      setPts(cur.filter((_, k) => k !== i))
+      put(cur.filter((_, k) => k !== i))
       return
     }
     const lo = i > 0 ? cur[i - 1][0] + 1 : 0
     const hi = i < cur.length - 1 ? cur[i + 1][0] - 1 : 255
-    const next = cur.map((p, k) => (k === i ? ([Math.round(Math.min(hi, Math.max(lo, x))), Math.round(Math.min(255, Math.max(0, y)))] as Pt) : p))
-    setPts(next)
+    put(cur.map((p, k) => (k === i ? ([Math.round(Math.min(hi, Math.max(lo, x))), Math.round(Math.min(255, Math.max(0, y)))] as Pt) : p)))
   }
   const onDbl = (e: React.MouseEvent<SVGSVGElement>) => {
     if (disabled || mode === "param") return
@@ -307,7 +320,7 @@ function CurveSection({ value, onChange, hist, disabled }: { value: Adjust; onCh
       <svg
         ref={svg}
         viewBox="0 0 256 256"
-        className={`aspect-square w-full touch-none rounded border bg-neutral-900 ${mode === "param" ? "" : "cursor-crosshair"}`}
+        className="aspect-square w-full cursor-crosshair touch-none rounded border bg-neutral-900"
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={() => (drag.current = null)}
@@ -330,6 +343,7 @@ function CurveSection({ value, onChange, hist, disabled }: { value: Adjust; onCh
       </svg>
       {mode === "param" ? (
         <>
+          <p className="text-xs break-keep text-muted-foreground">곡선을 누르면 핀(점)이 생기고 포인트 곡선으로 바뀝니다. 아래 막대로는 구간별로 올리고 내립니다.</p>
           {/* 나눔점: 어두운 영역 | 어두움 | 밝음 | 밝은 영역 */}
           <div className="flex flex-col gap-1">
             <div className="h-2 rounded-sm" style={{ background: "linear-gradient(90deg,#000,#fff)" }} aria-hidden />
@@ -352,7 +366,7 @@ function CurveSection({ value, onChange, hist, disabled }: { value: Adjust; onCh
         </>
       ) : (
         <div className="flex items-center gap-2 text-xs break-keep text-muted-foreground">
-          <span className="min-w-0 flex-1">곡선을 누르면 점이 생기고 끌어서 옮깁니다. 점을 두 번 누르거나 칸 밖으로 끌면 지웁니다.</span>
+          <span className="min-w-0 flex-1">곡선을 누르면 핀(점)이 생기고 끌어서 옮깁니다. 핀을 두 번 누르거나 칸 밖으로 끌면 지웁니다.</span>
           <Button type="button" variant="ghost" size="xs" disabled={disabled || pts.length === 2 && pts[0][0] === 0 && pts[0][1] === 0 && pts[1][0] === 255 && pts[1][1] === 255} onClick={() => setPts(NO_CURVES.rgb)}>
             <RotateCcw data-icon="inline-start" />
             이 채널
