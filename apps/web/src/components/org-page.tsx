@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Contact, Mail, MessageCircle, Phone, PhoneCall, Search, Send, Smartphone } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -10,8 +10,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { Section } from "@/components/home/home-page"
-import { OverlayScrollbar } from "@/components/overlay-scrollbar"
-import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { PageState } from "@/components/page-state"
 import { UserAvatar } from "@/components/user-avatar"
 import { apiFetch } from "@/lib/api"
@@ -296,7 +294,7 @@ function PersonBox({ p, site, canSeeOnline, lead }: { p: TreeMember; site?: OrgM
   const designer = site && (site.role === "designer" || deptKey(site.department) === DESIGN_TEAM)
   const sub = [p.position, p.job].filter(Boolean).join(" · ")
   return (
-    <div className={cn("relative flex w-52 flex-col items-center rounded-xl border bg-card px-3 pt-4 pb-3.5 text-center shadow-xs", lead && "w-56 border-primary/60")}>
+    <div className={cn("relative flex w-40 flex-col items-center rounded-xl border bg-card px-2.5 pt-4 pb-3.5 text-center shadow-xs", lead && "w-48 border-primary/60")}>
       {designer && site && (
         <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
           <span className={cn("size-1.5 rounded-full", PRESENCE_DOT[site.presence] ?? PRESENCE_DOT.off)} aria-hidden />
@@ -369,22 +367,31 @@ function MemberStack({ b, siteOf, canSeeOnline }: { b: Built; siteOf: SiteOf; ca
   )
 }
 
-// 가로로 넓으면 옆으로 넘겨 본다(부드러운 스크롤 + 아래 스크롤 막대)
+// 조직도는 가로 스크롤 없이 한 화면에: 칸 너비보다 넓으면 그만큼 통째로 줄인다(CSS zoom — 글자·선이 함께 줄고 레이아웃도 줄어든 크기로 잡힌다)
 function ChartScroll({ children }: { children: React.ReactNode }) {
-  const box = useRef<HTMLDivElement>(null)
-  // 처음에는 가운데(맨 위 상자)가 보이게
-  useEffect(() => {
-    const el = box.current?.firstElementChild as HTMLElement | null
-    if (!el) return
-    const id = requestAnimationFrame(() => el.scrollTo({ left: Math.max(0, (el.scrollWidth - el.clientWidth) / 2), behavior: "instant" as ScrollBehavior }))
-    return () => cancelAnimationFrame(id)
+  const outer = useRef<HTMLDivElement>(null)
+  const inner = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const o = outer.current
+    const i = inner.current
+    if (!o || !i) return
+    const fit = () => {
+      const cur = Number(i.style.zoom || 1)
+      const natural = i.getBoundingClientRect().width / cur
+      if (!natural) return
+      const next = Math.min(1, o.clientWidth / natural)
+      if (Math.abs(next - cur) > 0.003) i.style.zoom = String(next)
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(o)
+    return () => ro.disconnect()
   }, [])
   return (
-    <div ref={box} className="relative">
-      <SmoothScrollArea orientation="horizontal" className="overflow-x-auto pb-4" contentClassName="org-tree mx-auto w-max min-w-full py-2">
+    <div ref={outer} className="flex w-full justify-center overflow-hidden">
+      <div ref={inner} className="org-tree w-max py-2">
         {children}
-      </SmoothScrollArea>
-      <OverlayScrollbar always orientation="horizontal" target={() => box.current?.firstElementChild as HTMLElement | null} className="absolute right-1 bottom-0.5 left-1 h-1.5" />
+      </div>
     </div>
   )
 }
@@ -413,7 +420,7 @@ function OverviewChart({ root, siteOf, canSeeOnline, onOpen }: { root: Built; si
                   ))}
                   {/* 팀 이름: 위 카드와 같은 너비. 아래 팀이 없는 부서(본부)는 칸을 넓히지 않는다 */}
                   {d.children.length > 0 && (
-                    <div className="mt-1 flex w-52 flex-col gap-1.5">
+                    <div className="mt-1 flex w-40 flex-col gap-1.5">
                       {(d.children.length === 1 && d.children[0].children.length ? d.children[0].children : d.children).map((t) => (
                         <DeptLabel key={t.node.id} name={t.node.name} count={t.total} onClick={() => onOpen(d.node.id)} className="w-full justify-between" />
                       ))}
@@ -455,7 +462,7 @@ function DivisionChart({ d, siteOf, canSeeOnline }: { d: Built; siteOf: SiteOf; 
           </div>
           {d.children.length === 0 ? (
             // 아래 팀이 없는 부서(본부): 사람을 여러 줄로
-            <div className="mt-4 grid grid-cols-[repeat(auto-fill,13rem)] justify-center gap-2">
+            <div className="mt-4 grid justify-center gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(6, d.node.members.length)}, 10rem)` }}>
               {d.node.members.map((p) => (
                 <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
               ))}
@@ -465,7 +472,7 @@ function DivisionChart({ d, siteOf, canSeeOnline }: { d: Built; siteOf: SiteOf; 
               <li>
                 <DeptLabel name={only.node.name} count={only.total} />
                 {only.node.members.length > 0 && (
-                  <div className="mt-3 grid grid-cols-[repeat(auto-fit,13rem)] justify-center gap-2" style={{ maxWidth: "calc(13rem * 4 + 1.5rem)" }}>
+                  <div className="mt-3 grid justify-center gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(4, only.node.members.length)}, 10rem)` }}>
                     {only.node.members.map((p) => (
                       <PersonBox key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
                     ))}
