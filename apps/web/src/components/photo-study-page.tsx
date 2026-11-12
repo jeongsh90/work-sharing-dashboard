@@ -304,12 +304,13 @@ function PostCard({ post, session }: { post: Post; session: Session }) {
       </div>
 
       {files.length > 0 && (
-        <ul className={`grid gap-2 ${files.length === 1 ? "grid-cols-1 sm:max-w-md" : "grid-cols-2 sm:grid-cols-3"}`}>
+        // 올라온 사진은 100px 썸네일로 늘어놓고, 누르면 크게 본다
+        <ul className="flex flex-wrap gap-2">
           {files.map((f, i) => (
             <li key={f.id} className="group/img relative">
               <Tip content="크게 보기">
-                <button type="button" className="block w-full overflow-hidden rounded-lg border bg-muted" onClick={() => setPreview(i)}>
-                  <AuthImage fileId={f.id} alt={f.name} size={files.length === 1 ? "w960" : "thumb"} className={files.length === 1 ? "max-h-[28rem] w-full object-contain" : "aspect-square w-full object-cover"} />
+                <button type="button" className="block size-[100px] overflow-hidden rounded-lg border bg-muted" onClick={() => setPreview(i)} aria-label={`${f.name} 크게 보기`}>
+                  <AuthImage fileId={f.id} alt={f.name} size="thumb" className="size-full object-cover" />
                 </button>
               </Tip>
               {editing && (
@@ -496,12 +497,34 @@ function Composer({ topicId }: { topicId: number }) {
     }
   }
 
+  // 화면 어디서든 Ctrl+V 로 캡처(이미지)를 붙이면 첨부한다(댓글 칸 등 다른 입력 칸에 붙일 때는 빼고)
+  const form = useRef<HTMLFormElement>(null)
+  const attachRef = useRef(attach)
+  attachRef.current = attach
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (form.current?.contains(target)) return // 입력 칸 안은 form 의 onPaste 가 받는다
+      if (target?.closest("input, textarea, [contenteditable=true]")) return
+      const imgs = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"))
+      if (imgs.length === 0) return
+      e.preventDefault()
+      void attachRef.current(imgs)
+    }
+    window.addEventListener("paste", onPaste)
+    return () => window.removeEventListener("paste", onPaste)
+  }, [])
+
+  const busy = files.length + uploading >= FILES_MAX
+
   return (
     <form
-      className={`flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors ${dragOver ? "border-primary bg-primary/5" : ""}`}
+      ref={form}
+      // 화면 아래에 붙는 입력 줄: 위에 첨부한 사진(작게), 아래에 사진 첨부 버튼 + 한 줄 입력 + 보내기
+      className={`sticky bottom-3 z-20 flex flex-col gap-2 rounded-xl border bg-card/95 p-2.5 shadow-lg backdrop-blur transition-colors supports-[backdrop-filter]:bg-card/85 ${dragOver ? "border-primary bg-primary/5" : ""}`}
       onPaste={(e) => {
         const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"))
-        if (imgs.length === 0 || e.clipboardData.getData("text/plain")) return
+        if (imgs.length === 0) return
         e.preventDefault()
         void attach(imgs)
       }}
@@ -523,75 +546,70 @@ function Composer({ topicId }: { topicId: number }) {
         e.preventDefault()
         void submit()
       }}
-      onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-          e.preventDefault()
-          void submit()
-        }
-      }}
     >
-      <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold">사진 올리기</h3>
-        {files.length > 0 && <span className="text-xs text-muted-foreground tabular-nums">{files.length}장</span>}
-        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => fileInput.current?.click()} disabled={files.length + uploading >= FILES_MAX}>
-          <ImagePlus data-icon="inline-start" />
-          사진 첨부
-        </Button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onChange={(e) => {
-            const list = [...(e.target.files ?? [])]
-            e.target.value = ""
-            if (list.length) void attach(list)
-          }}
-        />
-      </div>
-      {files.length === 0 && uploading === 0 ? (
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          className="rounded-lg border border-dashed px-3 py-6 text-center text-xs break-keep text-muted-foreground hover:bg-muted/50"
-        >
-          사진을 끌어다 놓거나, 눌러서 고르거나, 캡처를 Ctrl+V 로 붙여 넣으세요.
-        </button>
-      ) : (
-        <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-          {files.map((f, i) => (
-            <li key={f.id} className="group/img relative">
-              <button type="button" className="block w-full overflow-hidden rounded-lg border" onClick={() => setPreview(i)} aria-label={`${f.name} 크게 보기`}>
-                <AuthImage fileId={f.id} alt={f.name} size="thumb" className="aspect-square w-full object-cover" />
-              </button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon-xs"
-                className="absolute top-1 right-1 rounded-full opacity-90 shadow-sm sm:opacity-0 sm:group-hover/img:opacity-100 sm:focus-visible:opacity-100"
-                aria-label={`${f.name} 빼기`}
-                onClick={() => setFiles((fs) => fs.filter((x) => x.id !== f.id))}
-              >
-                <X />
-              </Button>
-            </li>
-          ))}
-          {Array.from({ length: uploading }, (_, i) => (
-            <li key={`up${i}`} className="flex aspect-square items-center justify-center rounded-lg border bg-muted">
-              <LoaderCircle className="size-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="올리는 중" />
-            </li>
-          ))}
-        </ul>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          const list = [...(e.target.files ?? [])]
+          e.target.value = ""
+          if (list.length) void attach(list)
+        }}
+      />
+      {/* 위: 첨부한 사진(작은 썸네일). 가로로 넘치면 옆으로 넘겨 본다 */}
+      {(files.length > 0 || uploading > 0) && (
+        <div className="flex items-center gap-2">
+          <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1" aria-label={`첨부한 사진 ${files.length}장`}>
+            {files.map((f, i) => (
+              <li key={f.id} className="group/img relative shrink-0">
+                <button type="button" className="block size-16 overflow-hidden rounded-lg border bg-muted" onClick={() => setPreview(i)} aria-label={`${f.name} 크게 보기`}>
+                  <AuthImage fileId={f.id} alt={f.name} size="thumb" className="size-full object-cover" />
+                </button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon-xs"
+                  className="absolute top-0.5 right-0.5 size-5 rounded-full opacity-90 shadow-sm"
+                  aria-label={`${f.name} 빼기`}
+                  onClick={() => setFiles((fs) => fs.filter((x) => x.id !== f.id))}
+                >
+                  <X className="size-3" />
+                </Button>
+              </li>
+            ))}
+            {Array.from({ length: uploading }, (_, i) => (
+              <li key={`up${i}`} className="flex size-16 shrink-0 items-center justify-center rounded-lg border bg-muted">
+                <LoaderCircle className="size-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="올리는 중" />
+              </li>
+            ))}
+          </ul>
+          <span className="shrink-0 self-start text-xs text-muted-foreground tabular-nums">
+            {files.length}/{FILES_MAX}
+          </span>
+        </div>
       )}
       <ImageLightbox images={files.map(asInfo)} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />
-      <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={5000} placeholder="사진 설명, 촬영 포인트, 받고 싶은 피드백 등을 적어 주세요" aria-label="사진 설명·피드백" className="min-h-24 break-keep" />
-      {error && <FieldError>{error}</FieldError>}
+      {error && <FieldError className="px-1">{error}</FieldError>}
+      {/* 아래: 사진 첨부 버튼 + 한 줄 입력 + 보내기 */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Ctrl+Enter 로 올리기</span>
-        <Button type="submit" size="sm" className="ml-auto" disabled={pending || uploading > 0 || (!body.trim() && files.length === 0)}>
+        <Button type="button" variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}>
+          <ImagePlus data-icon="inline-start" />
+          <span className="max-sm:sr-only">사진 첨부</span>
+        </Button>
+        <Input
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          maxLength={5000}
+          placeholder={dragOver ? "여기에 놓으면 사진이 첨부됩니다" : "사진 설명·피드백을 적고 Enter (캡처는 Ctrl+V 로 붙여 넣기)"}
+          aria-label="사진 설명·피드백"
+          className="min-w-0 flex-1"
+        />
+        <Button type="submit" disabled={pending || uploading > 0 || (!body.trim() && files.length === 0)}>
           <Send data-icon="inline-start" />
-          {pending ? "올리는 중…" : "올리기"}
+          <span className="max-sm:sr-only">{pending ? "올리는 중…" : "올리기"}</span>
         </Button>
       </div>
     </form>
