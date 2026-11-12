@@ -146,8 +146,9 @@ const topicDto = (t: TopicRow) => ({
 
 const TOPIC_SELECT = `SELECT t.*, u.name AS author_name FROM photo_topics t LEFT JOIN users u ON u.id = t.author_id`
 
-// 예약 글은 공개 전까지 쓴 사람·관리자만 본다
-const visibleTo = (user: PublicUser, t: TopicRow) => !t.publish_at || t.publish_at <= Date.now() || t.author_id === user.id || isManager(user)
+// 예약 글은 공개 전까지 쓴 사람과, 사진공부방 접근 권한이 있는 관리자·슈퍼관리자만 본다(다른 멤버는 공개 때까지 못 본다)
+const visibleTo = (user: PublicUser, t: TopicRow) =>
+  !t.publish_at || t.publish_at <= Date.now() || t.author_id === user.id || (isManager(user) && isPhotoMember(user))
 
 function loadTopic(id: number, user?: PublicUser) {
   const row = get<TopicRow>(`${TOPIC_SELECT} WHERE t.id = :id`, { id })
