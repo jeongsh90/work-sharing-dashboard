@@ -10,6 +10,7 @@ import { invalidate } from "@/lib/store"
 import { deserializeSections, serializeSections } from "./drafts"
 import { assetDataUrls, b64ToBytes, bytesToB64, Preview, SectionEditor, squareJpg, THUMB_SIZE, toDataUrl } from "./detail-page-tool"
 import { autoAlt, buildDocument, KIND_LABEL, newSection, plan, type Kind, type Picture, type Section } from "./sections"
+import { copyText } from "@/lib/clipboard"
 
 // 디자인 툴 > 상세페이지 섹션 앱: 상세페이지 도구의 섹션 하나(썸네일·인트로·타이틀·Q&A·레시피·WHY)만 따로 만든다(같은 입력·같은 디자인).
 // 썸네일은 사진을 1200×1200 정사각 JPG 로, 나머지는 서버가 Edge 로 찍은 860 폭 JPG 로 내려받는다 + alt 복사.
@@ -124,7 +125,7 @@ export function SectionApp({ kind }: { kind: SectionAppKind }) {
   }
 
   const copyAlt = async () => {
-    await navigator.clipboard.writeText(alt)
+    await copyText(alt)
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }

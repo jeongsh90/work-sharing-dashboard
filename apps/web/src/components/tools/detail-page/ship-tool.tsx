@@ -10,6 +10,7 @@ import { invalidate } from "@/lib/store"
 import { deserializeSections, serializeSections } from "./drafts"
 import { assetDataUrls, b64ToBytes, Preview, ShipGroup, toDataUrl } from "./detail-page-tool"
 import { autoAlt, buildDocument, newSection, plan, type Picture, type Section } from "./sections"
+import { copyText } from "@/lib/clipboard"
 
 // 디자인 툴 > 이렇게 보내드려요: 상세페이지 도구의 "이렇게 보내드려요" 섹션만 따로 만든다(같은 입력·같은 디자인).
 // 내용량·아이스박스 포장(정사각형 사진 최대 4개 + 사진 아래 글 + ※ 안내) → 서버가 Edge 로 찍은 860 폭 JPG(p.jpg) 내려받기 + alt 복사.
@@ -90,7 +91,7 @@ export function ShipTool() {
   }
 
   const copyAlt = async () => {
-    await navigator.clipboard.writeText(alt)
+    await copyText(alt)
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }

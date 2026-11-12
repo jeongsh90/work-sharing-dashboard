@@ -32,6 +32,7 @@ import { openRequest } from "@/lib/router"
 import { useApi, useUserNames } from "@/lib/store"
 import { SmoothScrollArea } from "@/components/smooth-scroll-area"
 import { Tip } from "@/components/tip"
+import { copyText } from "@/lib/clipboard"
 
 type ArchiveItem = RequestSummaryDto & { files: FileInfo[] }
 
@@ -95,7 +96,7 @@ function CopyLinkButton({ id }: { id: string | number }) {
   const copy = async () => {
     const url = `${location.origin}${location.pathname}#/requests/${id}`
     try {
-      await navigator.clipboard.writeText(url)
+      await copyText(url)
     } catch {
       const ta = document.createElement("textarea")
       ta.value = url

@@ -19,6 +19,7 @@ import { PRESENCE_DOT, PRESENCE_LABEL, type Presence } from "@/lib/presence"
 import { initials } from "@/lib/requests"
 import { DESIGN_TEAM, useApi } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import { copyText } from "@/lib/clipboard"
 
 // 조직도: 회사 조직도(하이웍스에서 가져온 부서 나무)를 본부 → 팀 → 파트 순서대로 보여 준다.
 // 사이트 계정과 이름이 같은 사람은 상태(디자인팀)·접속 여부·1:1 채팅을 함께 붙인다.
@@ -221,7 +222,7 @@ function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
   ].filter(Boolean) as { key: string; icon: typeof Phone; label: string; text: string; href: string }[]
   const copy = async (key: string, text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
+      await copyText(text)
       setCopied(key)
       setTimeout(() => setCopied((k) => (k === key ? null : k)), 1500)
     } catch {

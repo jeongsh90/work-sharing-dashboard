@@ -43,6 +43,7 @@ import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime, type FileInfo } from "@/lib/requests"
 import { invalidate, useApi } from "@/lib/store"
 import { Tip } from "@/components/tip"
+import { copyText } from "@/lib/clipboard"
 
 // 파일공유자료실: 로그인한 누구나 글과 파일을 올려 함께 본다(부서 상관없이).
 // 위: 분류 · 검색 · 형식 · 올린 사람 · 기간 필터 / 아래: 공유한 글(내용 + 첨부 파일)
@@ -453,7 +454,7 @@ function PostLink({ id }: { id: number }) {
   const copy = async () => {
     const url = `${window.location.origin}${window.location.pathname}#/share/${id}`
     try {
-      await navigator.clipboard.writeText(url)
+      await copyText(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {

@@ -30,6 +30,7 @@ import { EVENT_LABEL, STATUS_LABEL, WORK_TYPES, type RequestStatus } from "@/lib
 import { openRequest } from "@/lib/router"
 import { STATUS_BG, STATUS_TEXT } from "@/lib/status-colors"
 import { invalidate, useApi } from "@/lib/store"
+import { copyText } from "@/lib/clipboard"
 
 // 업무일지(디자인팀 작업자): 이 시스템에서 내가 한 일(진행 기록)이 날짜별로 자동으로 적히고,
 // 날마다 직접 메모를 더 쓸 수 있다. 일간·주간·월간으로 보고, 보고용 글로 복사할 수 있다.
@@ -409,7 +410,7 @@ export function WorklogPage({ session }: { session: Session }) {
           .map((m) => reportText(title, daysOf("month", from, to, m).filter(hasContent), m.user.name))
           .join("\n\n")
       : reportText(title, days)
-    await navigator.clipboard.writeText(text)
+    await copyText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }

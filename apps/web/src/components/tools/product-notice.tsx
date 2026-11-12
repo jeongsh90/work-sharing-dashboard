@@ -12,6 +12,7 @@ import { SortableList } from "@/components/sortable-list"
 import { api } from "@/lib/api"
 import { applyFont, fillRich, loadFonts, stripEmphasis, wrapRich, wrapText, type RichRun, type TextStyle } from "@/lib/canvas-text"
 import { invalidate } from "@/lib/store"
+import { copyText } from "@/lib/clipboard"
 
 // 디자인 툴 > 상품정보고시: 고시 항목·주의사항·영양정보를 입력하면 상세페이지용 이미지(가로 860)를 만든다.
 // 사양: docs/tools/상품정보고시_툴_사양.md (Figma 셰프애찬 235:291). 글은 입력한 그대로 쓴다(법적 표기).
@@ -353,7 +354,7 @@ export function ProductNoticeTool() {
   }
 
   const copyAlt = async () => {
-    await navigator.clipboard.writeText(altText(form))
+    await copyText(altText(form))
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }

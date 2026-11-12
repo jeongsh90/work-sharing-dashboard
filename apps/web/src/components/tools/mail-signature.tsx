@@ -9,6 +9,7 @@ import step1 from "@/assets/guides/mail-signature/step1.png"
 import step2 from "@/assets/guides/mail-signature/step2.png"
 import step3 from "@/assets/guides/mail-signature/step3.png"
 import step4 from "@/assets/guides/mail-signature/step4.png"
+import { copyHtml } from "@/lib/clipboard"
 
 // 디자인 툴 > 메일 서명: 회사 서명 양식(셰프애찬)에 부서·팀·이름·연락처를 넣어 메일 서명 HTML 을 만든다.
 // 메일 프로그램에 붙여 넣을 수 있게 "서명 복사"는 서식째(HTML) 클립보드에 담는다.
@@ -156,16 +157,7 @@ export function MailSignatureTool() {
 
   const copyRich = guard(async () => {
     // 서식째 복사(메일 서명 칸에 붙여 넣으면 양식 그대로). 지원하지 않는 브라우저는 HTML 글자로 복사
-    if (window.ClipboardItem) {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([html], { type: "text/plain" }),
-        }),
-      ])
-    } else {
-      await navigator.clipboard.writeText(html)
-    }
+    await copyHtml(html)
   }, "rich")
   // 작성 완료: 필수 칸을 확인하고, 통과하면 서명 복사 버튼으로 옮겨 눈에 띄게 한다
   const copyRef = useRef<HTMLButtonElement>(null)

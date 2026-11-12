@@ -18,6 +18,7 @@ import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { useApi } from "@/lib/store"
 import { Tip } from "@/components/tip"
+import { copyText } from "@/lib/clipboard"
 
 // FTP: 슈퍼관리자가 등록한 FTP 서버(카페24 등)를 사이트 안에서 쓴다(서버 apps/api/src/ftp.ts 가 대신 접속).
 // 폴더를 눌러 들어가고, 파일을 끌어다 놓거나 "파일 업로드"로 올리고, 줄의 받기 버튼으로 내려받는다. 지우기는 관리자만.
@@ -206,7 +207,7 @@ export function FtpPage({ session }: { session: Session }) {
   const copySrc = async (item: Item) => {
     if (!item.url) return
     try {
-      await navigator.clipboard.writeText(imgTag(item.url))
+      await copyText(imgTag(item.url))
       setCopied(item.name)
       setTimeout(() => setCopied((c) => (c === item.name ? null : c)), 1800)
     } catch {

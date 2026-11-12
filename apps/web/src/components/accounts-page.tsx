@@ -19,6 +19,7 @@ import { api, ApiError } from "@/lib/api"
 import { PAGE_GRID } from "@/lib/layout"
 import { formatDateTime } from "@/lib/requests"
 import { invalidate, useApi } from "@/lib/store"
+import { copyText } from "@/lib/clipboard"
 
 // 관리 → 계정 정보(슈퍼관리자): 회사에서 쓰는 외부 서비스 계정 모음(서버 apps/api/src/accounts.ts).
 // 목록에는 비밀번호가 오지 않는다. 보기·복사를 누를 때만 서버에서 하나씩 꺼낸다(암호화해 저장).
@@ -123,7 +124,7 @@ function CopyButton({ label, get }: { label: string; get: () => string | Promise
         onClick={async (e) => {
           e.stopPropagation()
           try {
-            await navigator.clipboard.writeText(await get())
+            await copyText(await get())
             setDone(true)
             setTimeout(() => setDone(false), 1200)
           } catch {
