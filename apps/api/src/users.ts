@@ -2,7 +2,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 
 import { hiddenFromOrg, ONLINE_MS, REMEMBER_TTL_MS, SESSION_TTL_MS } from './config.ts'
-import { all, get, run } from './db.ts'
+import { all, get, run, transaction } from './db.ts'
 
 const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>
 
@@ -103,6 +103,14 @@ export function findUser(id: string) {
 
 export function listUsers() {
   return all<UserRow>('SELECT * FROM users ORDER BY sort, created_at').map(toPublic)
+}
+
+// 순서 바꾸기(홈 디자인팀 카드 노출 순서): 받은 아이디 순서대로 sort 를 0, 1, 2 … 로 둔다. 없는 아이디는 건너뛴다
+export function reorderUsers(ids: unknown) {
+  if (!Array.isArray(ids) || ids.length > 500 || !ids.every((x) => typeof x === 'string')) return listUsers()
+  const known = new Set(listUsers().map((u) => u.id))
+  transaction(() => (ids as string[]).filter((id) => known.has(id)).forEach((id, i) => run('UPDATE users SET sort = :i WHERE id = :id', { id, i })))
+  return listUsers()
 }
 
 async function hashPassword(password: string, salt: Buffer) {

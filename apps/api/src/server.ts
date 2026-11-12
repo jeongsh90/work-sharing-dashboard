@@ -91,6 +91,7 @@ import {
   isManager,
   listUsers,
   PRESENCES,
+  reorderUsers,
   ROLES,
   sessionUser,
   setAvatar,
@@ -559,6 +560,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       if (body.password) await setPassword(id, checkPassword(body.password))
       return sendJson(res, 201, { user: findUser(id) })
     }
+  }
+  // 홈 디자인팀 카드 노출 순서(관리자)
+  if (path === '/api/users/order' && method === 'POST') {
+    requireManager(user)
+    const body = await readJson(req)
+    reorderUsers(body.ids)
+    return sendJson(res, 200, { ok: true })
   }
   if ((m = path.match(/^\/api\/users\/([^/]+)\/(approve|reject)$/)) && method === 'POST') {
     requireSuperadmin(user)
