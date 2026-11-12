@@ -15,6 +15,8 @@ function parse(hash: string): Route {
   if (parts[0] === 'notices' && parts[1]) return { page: 'notice-detail', id: parts[1] }
   // 사진공부방: #/photo-study/12 = 12번 공지
   if (parts[0] === 'photo-study' && parts[1]) return { page: 'photo-study', id: parts[1] }
+  // 파일공유자료실: #/share/12 = 12번 글로 바로 가기
+  if (parts[0] === 'share' && parts[1]) return { page: 'share', id: parts[1] }
   return { page: parts[0] || 'home' }
 }
 
@@ -43,6 +45,8 @@ export function navigate(page: string, id?: string) {
           ? id === 'new' ? '#/notices/new' : `#/notices/${id}/edit`
           : page === 'photo-study' && id
             ? `#/photo-study/${id}`
+          : page === 'share' && id
+            ? `#/share/${id}`
           : page === 'home'
             ? '#/'
             : `#/${page}`

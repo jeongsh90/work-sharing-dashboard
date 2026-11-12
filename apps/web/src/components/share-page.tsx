@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react"
-import { Download, EllipsisVertical, FilePlus2, FileText, ImageIcon, Paperclip, Pencil, Search, Trash2, Upload, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Check, Download, EllipsisVertical, Link2, FilePlus2, FileText, ImageIcon, Paperclip, Pencil, Search, Trash2, Upload, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -94,7 +94,7 @@ function order(c: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export function SharePage({ session }: { session: Session }) {
+export function SharePage({ session, id }: { session: Session; id?: string }) {
   const { data, error } = useApi<SharePost[]>("/share", 60_000)
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState<string | null>(null)
@@ -105,6 +105,29 @@ export function SharePage({ session }: { session: Session }) {
   const [writing, setWriting] = useState<{ post?: SharePost; files: File[] } | null>(null)
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0)
+  // #/share/12 로 들어오면 그 글이 있는 장을 열고, 글까지 내려가 잠깐 테두리로 표시한다
+  const [highlight, setHighlight] = useState<number | null>(null)
+  const loaded = !!data
+  useEffect(() => {
+    const target = Number(id)
+    if (!loaded || !target || !data) return
+    const index = data.findIndex((p) => p.id === target)
+    if (index < 0) return
+    setQuery("")
+    setCategory(null)
+    setKind("all")
+    setAuthor("all")
+    setRange(undefined)
+    setPage(Math.floor(index / PAGE_SIZE) + 1)
+    setHighlight(target)
+    const scroll = setTimeout(() => document.getElementById(`share-post-${target}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 150)
+    const off = setTimeout(() => setHighlight(null), 3000)
+    return () => {
+      clearTimeout(scroll)
+      clearTimeout(off)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, loaded])
 
   const categories = useMemo(() => {
     const used = new Map<string, number>()
@@ -302,6 +325,7 @@ export function SharePage({ session }: { session: Session }) {
               <PostCard
                 key={post.id}
                 post={post}
+                highlighted={highlight === post.id}
                 canEdit={post.authorId === session.id || isManager(session)}
                 onEdit={() => setWriting({ post, files: [] })}
                 onRemove={() => void remove(post)}
@@ -354,16 +378,22 @@ function CategoryChip({ active, label, count, onClick }: { active: boolean; labe
 }
 
 // 글 한 건(최종 파일 보관함 카드와 같은 구조): 분류·제목·올린 사람 + 오른쪽 다운로드 / 내용(길면 접힘) / 이미지 미리보기(4장까지) + 파일
-function PostCard({ post, canEdit, onEdit, onRemove }: { post: SharePost; canEdit: boolean; onEdit: () => void; onRemove: () => void }) {
+function PostCard({ post, highlighted, canEdit, onEdit, onRemove }: { post: SharePost; highlighted: boolean; canEdit: boolean; onEdit: () => void; onRemove: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const long = post.body.length > 120 || post.body.split("\n").length > 3
   const files: FileInfo[] = post.files.map((f) => ({ ...f, kind: null, uploaderId: post.authorId, createdAt: post.createdAt }))
 
   return (
-    <li className="col-span-12 flex flex-col gap-3 rounded-xl border bg-card p-4 md:col-span-6 xl:col-span-4">
+    <li
+      id={`share-post-${post.id}`}
+      className={`col-span-12 flex scroll-mt-24 flex-col gap-3 rounded-xl border bg-card p-4 transition-shadow md:col-span-6 xl:col-span-4 ${highlighted ? "ring-2 ring-primary" : ""}`}
+    >
       <div className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">{post.category || NO_CATEGORY}</span>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <PostLink id={post.id} />
+            {post.category || NO_CATEGORY}
+          </span>
           <Tip content={post.title}><span className="truncate font-medium">
             {post.title}
           </span></Tip>
@@ -414,6 +444,33 @@ function PostCard({ post, canEdit, onEdit, onRemove }: { post: SharePost; canEdi
 
       <FileGallery files={files} maxImages={4} />
     </li>
+  )
+}
+
+// 글 번호(#12): 누르면 이 글로 바로 오는 주소(#/share/12)를 복사한다
+function PostLink({ id }: { id: number }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    const url = `${window.location.origin}${window.location.pathname}#/share/${id}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      window.prompt("글 주소", url)
+    }
+  }
+  return (
+    <Tip content={copied ? "주소를 복사했습니다" : "이 글 주소 복사"}>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={`${id}번 글 주소 복사`}
+        className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 font-medium text-foreground tabular-nums hover:bg-muted/70"
+      >
+        {copied ? <Check className="size-3" /> : <Link2 className="size-3" />}#{id}
+      </button>
+    </Tip>
   )
 }
 

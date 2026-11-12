@@ -227,7 +227,7 @@ export default function App() {
       case 'photo-study':
         return <PhotoStudyPage session={session} id={route.id} />
       case 'share':
-        return <SharePage session={session} />
+        return <SharePage session={session} id={route.id} />
       case 'library':
         return <LibraryPage session={session} />
       case 'notifications':
