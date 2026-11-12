@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { DesignerCards } from "@/components/home/designer-cards"
 import { RequestTable } from "@/components/home/request-table"
 import { PresenceBatchDialog } from "@/components/home/presence-batch-dialog"
+import { HomeVisiblePicker } from "@/components/home/home-visible-picker"
 import { PageState } from "@/components/page-state"
 import { updateStoredUser, type Session } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
@@ -70,11 +71,17 @@ export function HomePage({ session, onSessionChange }: { session: Session; onSes
         title="디자인팀"
         aside={<span className="text-sm text-muted-foreground">{designers.length}명</span>}
         action={
-          manager && designers.length > 0 ? (
-            <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)}>
-              <UsersRound data-icon="inline-start" />
-              상태 일괄 변경
-            </Button>
+          manager ? (
+            <div className="flex items-center gap-2">
+              {designers.length > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)}>
+                  <UsersRound data-icon="inline-start" />
+                  상태 일괄 변경
+                </Button>
+              )}
+              {/* 홈 카드에 보일 작업자 고르기(팀 관리의 메인 노출) */}
+              <HomeVisiblePicker designers={allDesigners ?? []} session={session} />
+            </div>
           ) : undefined
         }
       >
