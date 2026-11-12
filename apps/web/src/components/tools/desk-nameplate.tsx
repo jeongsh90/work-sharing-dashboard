@@ -54,16 +54,21 @@ const fit = (text: string, size: number, advance: number, spacing: number, max: 
 
 // 직급 글자 사이: 두 글자(과장·팀장)는 Figma 처럼 넓게, 길수록 좁게
 const rankSpacing = (n: number) => (n <= 2 ? 0.73 : n === 3 ? 0.3 : 0.05)
+// 이름 글자 사이: 외자 이름(두 글자)은 세 글자 이름과 같은 너비가 되게 벌린다(0.94 + 0.03×2 = 1.0em). 그 밖은 0.03em
+const nameSpacing = (n: number) => (n === 2 ? 1.0 : 0.03)
+// 이름은 띄어쓰기를 빼고 쓴다(외자 이름을 "이 지"처럼 띄워 넣어도 같은 결과)
+const cleanName = (s: string) => s.replace(/\s+/g, "")
 
 // 명찰 한 장(850×550)의 그림
 function cardSvg(f: Form) {
   const team = f.team.trim()
   const rank = f.rank.trim()
-  const name = f.name.trim()
+  const name = cleanName(f.name)
+  const nameGap = nameSpacing([...name].length)
   const teamSize = fit(team, 54, 0.962, 0.2, W - TEAM_X - PAD)
   const rankSize = fit(rank, 80, 0.962, rankSpacing([...rank].length), W - PAD * 2)
   // SB 어그로 한글 폭 0.94em, 글자는 기준선 위 0.75em·아래 0.14em
-  const nameSize = fit(name, 250, 0.94, 0.03, W - PAD * 2)
+  const nameSize = fit(name, 250, 0.94, nameGap, W - PAD * 2)
   const color = colorOf(f.color)
   // 팀 이름은 색 띠(높이 125) 가운데에 심볼과 나란히. 이름은 글자 가운데를 372 에 둔다(Figma 는 358)
   const nameY = 372 + nameSize * 0.3
@@ -72,7 +77,7 @@ function cardSvg(f: Form) {
 ${SYMBOL}
 <text x="${TEAM_X}" y="${62.5 + (teamSize * (0.75 - 0.1)) / 2}" fill="#fff" font-family="GmarketSans" font-weight="500" font-size="${teamSize}" letter-spacing="${0.2 * teamSize}">${esc(team)}</text>
 ${rank ? `<text x="40.6" y="221" fill="#FF4D00" font-family="GmarketSans" font-weight="500" font-size="${rankSize}" letter-spacing="${rankSpacing([...rank].length) * rankSize}">${esc(rank)}</text>` : ""}
-<text x="${PAD}" y="${nameY}" fill="${color.name}" font-family="SBAggro" font-weight="500" font-size="${nameSize}" letter-spacing="${0.03 * nameSize}">${esc(name)}</text>
+<text x="${PAD}" y="${nameY}" fill="${color.name}" font-family="SBAggro" font-weight="500" font-size="${nameSize}" letter-spacing="${nameGap * nameSize}">${esc(name)}</text>
 <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="none" stroke="#e4e5e7" stroke-width="2"/>`
 }
 
@@ -103,14 +108,14 @@ const MAX_ENTRIES = PER_PAGE // 한 번에 넣을 수 있는 사람 수(A4 한 �
 const slot = (i: number) => ({ left: MARGIN.left + (i % COLS) * (CARD.w + GAP.x), top: MARGIN.top + Math.floor(i / COLS) * (CARD.h + GAP.y) })
 const pagesOf = <T,>(list: T[]) => Array.from({ length: Math.ceil(list.length / PER_PAGE) }, (_, p) => list.slice(p * PER_PAGE, (p + 1) * PER_PAGE))
 
-const trimmed = (f: Form): Form => ({ team: f.team.trim(), rank: f.rank.trim(), name: f.name.trim(), color: f.color })
+const trimmed = (f: Form): Form => ({ team: f.team.trim(), rank: f.rank.trim(), name: cleanName(f.name), color: f.color })
 // 이름·직급이 모두 비면 아직 안 쓴 칸(추가하기로 팀 이름만 이어 받은 칸 포함)이라 미리보기·인쇄에서 뺀다
 const isBlank = (f: Form) => !f.rank.trim() && !f.name.trim()
 
 function validate(f: Form) {
   const e: Errors = {}
   if (!f.name.trim()) e.name = "이름을 입력해 주세요."
-  for (const k of ["team", "rank", "name"] as const) if (hasSpace(f[k])) e[k] = "띄어쓰기 없이 입력해 주세요."
+  for (const k of ["team", "rank"] as const) if (hasSpace(f[k])) e[k] = "띄어쓰기 없이 입력해 주세요."
   return e
 }
 
@@ -173,7 +178,7 @@ export function DeskNameplateTool() {
     const value = ev.target.value
     patch(id, { [key]: value })
     // 쓰는 중에도 띄어쓰기가 들어가면 바로 알려 준다
-    setErrors((er) => ({ ...er, [id]: { ...er[id], [key]: hasSpace(value) ? "띄어쓰기 없이 입력해 주세요." : undefined } }))
+    setErrors((er) => ({ ...er, [id]: { ...er[id], [key]: key !== "name" && hasSpace(value) ? "띄어쓰기 없이 입력해 주세요." : undefined } }))
   }
   // 최대 A4 한 장(4명)까지만 늘릴 수 있다
   const full = entries.length >= MAX_ENTRIES
@@ -234,7 +239,7 @@ export function DeskNameplateTool() {
           <AlertDescription className="break-keep">
             <ul className="list-disc pl-4">
               <li>
-                모든 칸은 <b className="text-foreground">띄어쓰기 없이</b> 써 주세요. (예: 디자인 팀 → 디자인팀)
+                모든 칸은 <b className="text-foreground">띄어쓰기 없이</b> 써 주세요. (예: 디자인 팀 → 디자인팀) 외자 이름(예: 이지)은 붙여 써도 세 글자 이름 너비로 자동으로 벌어집니다.
               </li>
               <li>팀 이름, 직급(직책), 이름 순서로 넣어 주세요. 직급과 직책 가운데 명찰에 보일 것 하나만 넣습니다.</li>
               <li>한 사람마다 명찰이 위아래 2장(위는 거꾸로) 붙어 나옵니다. 테두리를 따라 자르고 가운데 선을 접으면 앞뒤로 보이는 탁상 명찰이 됩니다.</li>
