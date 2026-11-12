@@ -34,7 +34,8 @@ type Comment = { id: number; authorId: string; authorName: string; avatarId: str
 type Post = { id: number; authorId: string; authorName: string; avatarId: string | null; body: string; createdAt: number; updatedAt: number; files: PhotoFile[]; comments: Comment[] }
 type Topic = { id: number; day: string; title: string; body: string; link: string; publishAt: number | null; scheduled: boolean; authorId: string; authorName: string; createdAt: number; updatedAt: number }
 type TopicSummary = Topic & { posts: number; people: number; photos: number; lastPostAt: number | null }
-type TopicDetail = Topic & { posts: Post[] }
+// me: 이 공지에서 "나"로 보는 계정(계정 전환 묶음은 대표 계정 정상훈)
+type TopicDetail = Topic & { posts: Post[]; me?: string }
 
 const FILES_MAX = 30
 const asInfo = (f: PhotoFile): FileInfo => ({ ...f, kind: null, uploaderId: "", createdAt: 0 })
@@ -156,7 +157,8 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
 function TopicView({ id, session, onEdit }: { id: number; session: Session; onEdit: (t: Topic) => void }) {
   const { data, error } = useApi<TopicDetail>(`/photo-study/${id}`, 15_000)
   if (!data) return <PageState error={error} />
-  const canEditTopic = data.authorId === session.id || isManager(session)
+  const me = data.me ?? session.id
+  const canEditTopic = data.authorId === me || isManager(session)
 
   const remove = async () => {
     if (!(await confirmDialog({ title: `"${data.title}" 공지를 지울까요?`, description: "올라온 사진과 댓글도 모두 지워지고 되돌릴 수 없습니다.", confirmText: "삭제", destructive: true }))) return
@@ -223,7 +225,7 @@ function TopicView({ id, session, onEdit }: { id: number; session: Session; onEd
       ) : (
         <ul className="flex flex-col gap-3">
           {data.posts.map((p) => (
-            <PostCard key={p.id} post={p} session={session} />
+            <PostCard key={p.id} post={p} session={session} me={me} />
           ))}
         </ul>
       )}
@@ -233,8 +235,8 @@ function TopicView({ id, session, onEdit }: { id: number; session: Session; onEd
   )
 }
 
-function PostCard({ post, session }: { post: Post; session: Session }) {
-  const mine = post.authorId === session.id
+function PostCard({ post, session, me }: { post: Post; session: Session; me: string }) {
+  const mine = post.authorId === me
   const canEdit = mine || isManager(session)
   const [preview, setPreview] = useState<number | null>(null)
   const [editing, setEditing] = useState(false)
@@ -356,12 +358,12 @@ function PostCard({ post, session }: { post: Post; session: Session }) {
         </>
       )}
 
-      <Comments post={post} session={session} />
+      <Comments post={post} session={session} me={me} />
     </li>
   )
 }
 
-function Comments({ post, session }: { post: Post; session: Session }) {
+function Comments({ post, session, me }: { post: Post; session: Session; me: string }) {
   const [body, setBody] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -404,7 +406,7 @@ function Comments({ post, session }: { post: Post; session: Session }) {
                 </p>
                 <p className="mt-0.5 text-sm break-keep whitespace-pre-line [overflow-wrap:anywhere]">{c.body}</p>
               </div>
-              {(c.authorId === session.id || isManager(session)) && (
+              {(c.authorId === me || isManager(session)) && (
                 <Button variant="ghost" size="icon-xs" className="shrink-0 sm:opacity-0 sm:group-hover/c:opacity-100 sm:focus-visible:opacity-100" aria-label="댓글 지우기" onClick={() => void remove(c)}>
                   <Trash2 />
                 </Button>

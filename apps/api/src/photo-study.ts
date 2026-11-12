@@ -1,7 +1,7 @@
 import { unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { SWITCH_ACCOUNTS, UPLOAD_DIR } from './config.ts'
+import { SWITCH_ACCOUNTS, SWITCH_PRIMARY, UPLOAD_DIR } from './config.ts'
 import { addColumn, all, db, get, run, transaction } from './db.ts'
 import { HttpError, notifyLink } from './requests.ts'
 import { isManager, listUsers, type PublicUser } from './users.ts'
@@ -101,10 +101,15 @@ export const isPhotoMember = (u: PublicUser) => memberIds()?.has(u.id) ?? true
 const member = (u: PublicUser) => {
   if (!isPhotoMember(u)) throw new HttpError(403, '사진공부방 권한이 없습니다.')
 }
-// 알림 받을 멤버(로그인할 수 있는 사람만)
+// 글쓴이 계정: 계정 전환 묶음(admin·테스트·애찬_Ai 등)으로 쓰면 대표 계정(정상훈)으로 올린다
+const actorOf = (user: PublicUser) => (SWITCH_ACCOUNTS.includes(user.id) ? SWITCH_PRIMARY : user.id)
+// 같은 사람(본인 또는 같은 전환 묶음)인지
+const samePerson = (a: string, b: string) => a === b || (SWITCH_ACCOUNTS.includes(a) && SWITCH_ACCOUNTS.includes(b))
+
+// 알림 받을 멤버(로그인할 수 있는 사람만). 글쓴이와 같은 전환 묶음 계정은 뺀다
 const memberReceivers = (except: string) =>
   listUsers()
-    .filter((u) => u.active && u.approved && u.id !== except && isPhotoMember(u))
+    .filter((u) => u.active && u.approved && !samePerson(u.id, except) && isPhotoMember(u))
     .map((u) => u.id)
 
 // 사진공부방 사진은 멤버만 본다
@@ -121,7 +126,7 @@ function text(value: unknown, label: string, max: number) {
 const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 // 공지 고치기·지우기: 쓴 사람 또는 관리자
 const topicOwner = (user: PublicUser, t: { author_id: string }) => {
-  if (t.author_id !== user.id && !isManager(user)) throw new HttpError(403, '공지는 쓴 사람이나 관리자만 고칠 수 있습니다.')
+  if (!samePerson(t.author_id, user.id) && !isManager(user)) throw new HttpError(403, '공지는 쓴 사람이나 관리자만 고칠 수 있습니다.')
 }
 
 type TopicRow = { id: number; day: string; title: string; body: string; link: string; publish_at: number | null; notified: number; author_id: string; author_name: string | null; created_at: number; updated_at: number }
@@ -148,7 +153,7 @@ const TOPIC_SELECT = `SELECT t.*, u.name AS author_name FROM photo_topics t LEFT
 
 // 예약 글은 공개 전까지 쓴 사람과, 사진공부방 접근 권한이 있는 관리자·슈퍼관리자만 본다(다른 멤버는 공개 때까지 못 본다)
 const visibleTo = (user: PublicUser, t: TopicRow) =>
-  !t.publish_at || t.publish_at <= Date.now() || t.author_id === user.id || (isManager(user) && isPhotoMember(user))
+  !t.publish_at || t.publish_at <= Date.now() || samePerson(t.author_id, user.id) || (isManager(user) && isPhotoMember(user))
 
 function loadTopic(id: number, user?: PublicUser) {
   const row = get<TopicRow>(`${TOPIC_SELECT} WHERE t.id = :id`, { id })
@@ -202,6 +207,7 @@ export function photoTopicDetail(user: PublicUser, id: number) {
   }
   return {
     ...topic,
+    me: actorOf(user),
     posts: posts.map((p) => ({
       id: p.id,
       authorId: p.author_id,
@@ -266,10 +272,10 @@ export function createPhotoTopic(user: PublicUser, body: Record<string, unknown>
     run(
       `INSERT INTO photo_topics (day, title, body, link, publish_at, notified, author_id, created_at, updated_at)
        VALUES (:day, :title, :body, :link, :publishAt, :notified, :me, :now, :now)`,
-      { ...f, notified: f.publishAt ? 0 : 1, me: user.id, now },
+      { ...f, notified: f.publishAt ? 0 : 1, me: actorOf(user), now },
     ).lastInsertRowid,
   )
-  if (!f.publishAt) announce({ id, title: f.title, author_id: user.id })
+  if (!f.publishAt) announce({ id, title: f.title, author_id: actorOf(user) })
   return photoTopicDetail(user, id)
 }
 
@@ -335,16 +341,18 @@ export function createPhotoPost(user: PublicUser, topicId: number, body: Record<
     const postId = Number(
       run('INSERT INTO photo_posts (topic_id, author_id, body, created_at, updated_at) VALUES (:topicId, :me, :body, :now, :now)', {
         topicId,
-        me: user.id,
+        me: actorOf(user),
         body: content,
         now,
       }).lastInsertRowid,
     )
     attach(user, postId, fileIds)
   })
-  notifyLink(participants(topicId, topic.author_id, user.id), `사진공부방 「${topic.title}」에 ${user.name}님이 사진을 올렸습니다`, `photo-study/${topicId}`)
+  notifyLink(participants(topicId, topic.author_id, user.id), `사진공부방 「${topic.title}」에 ${actorName(user)}님이 사진을 올렸습니다`, `photo-study/${topicId}`)
   return photoTopicDetail(user, topicId)
 }
+
+const actorName = (user: PublicUser) => listUsers().find((u) => u.id === actorOf(user))?.name ?? user.name
 
 function participants(topicId: number, topicAuthor: string, except: string) {
   const people = new Set([
@@ -364,7 +372,7 @@ function loadPost(id: number) {
   return row
 }
 const ownOrManager = (user: PublicUser, authorId: string) => {
-  if (authorId !== user.id && !isManager(user)) throw new HttpError(403, '올린 사람이나 관리자만 고칠 수 있습니다.')
+  if (!samePerson(authorId, user.id) && !isManager(user)) throw new HttpError(403, '올린 사람이나 관리자만 고칠 수 있습니다.')
 }
 
 // 글 고치기(내용만, 사진 빼기): 올린 사람 또는 관리자. body = { body, removeFileIds }
@@ -398,9 +406,9 @@ export function createPhotoComment(user: PublicUser, postId: number, body: Recor
   const post = loadPost(postId)
   const content = text(body.body, '댓글', 2000)
   if (!content) throw new HttpError(400, '댓글을 입력해 주세요.')
-  run('INSERT INTO photo_comments (post_id, author_id, body, created_at) VALUES (:postId, :me, :body, :now)', { postId, me: user.id, body: content, now: Date.now() })
+  run('INSERT INTO photo_comments (post_id, author_id, body, created_at) VALUES (:postId, :me, :body, :now)', { postId, me: actorOf(user), body: content, now: Date.now() })
   const topic = loadTopic(post.topic_id)
-  notifyLink(participants(post.topic_id, topic.author_id, user.id), `사진공부방 「${topic.title}」에 ${user.name}님이 댓글을 남겼습니다`, `photo-study/${post.topic_id}`)
+  notifyLink(participants(post.topic_id, topic.author_id, user.id), `사진공부방 「${topic.title}」에 ${actorName(user)}님이 댓글을 남겼습니다`, `photo-study/${post.topic_id}`)
   return photoTopicDetail(user, post.topic_id)
 }
 

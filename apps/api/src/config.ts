@@ -46,6 +46,8 @@ export function hiddenFromOrg(u: { id: string; department: string }) {
 }
 
 export const SWITCH_ACCOUNTS = ['admin', 'test1', 'test2', 'test3', '49634613@owenfood.com', 'owenfood_ai']
+// 계정 전환 묶음의 대표 계정(정상훈). 사진공부방에서 묶음 계정으로 쓴 공지·글·댓글은 이 계정 이름으로 올라간다
+export const SWITCH_PRIMARY = '49634613@owenfood.com'
 
 // 계정 전환 묶음(SWITCH_ACCOUNTS)은 개인 메뉴(체크리스트·메모)를 함께 쓴다: 이 사람과 내용을 같이 보는 계정 id 목록(JSON, SQL json_each 용)
 export const personalGroup = (userId: string) => JSON.stringify(SWITCH_ACCOUNTS.includes(userId) ? SWITCH_ACCOUNTS : [userId])
