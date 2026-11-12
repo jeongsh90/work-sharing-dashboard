@@ -306,6 +306,8 @@ ${s.items.map(card).join("\n")}
       const group = (label: string, items: ShipProduct[], note: string) => {
         const size = items.length >= 4 ? 152 : 210
         const sq = `width:${size}px;height:${size}px;`
+        // 안내는 Enter 로 나눈 줄마다 ※ 를 붙인다(빈 줄은 뺀다)
+        const lines = note.split("\n").map((l) => l.trim()).filter(Boolean)
         const item = (pr: ShipProduct) => {
           const src = pictureUrl(pr.image, urls)
           const img = src ? `<img src="${src}" alt="" style="${sq}">` : `<div class="ph-empty" style="${sq}">${PHOTO_ICON}</div>`
@@ -315,7 +317,7 @@ ${s.items.map(card).join("\n")}
     <div class="label t-label">${label}</div>
     <div class="box"><div class="products">
 ${items.map(item).join("\n")}
-    </div></div>${note.trim() ? `\n    <div class="notes"><div class="note t-body3"><span class="mark">※</span><span class="pre">${esc(note.trim())}</span></div></div>` : ""}
+    </div></div>${lines.length ? `\n    <div class="notes">${lines.map((l) => `<div class="note t-body3"><span class="mark">※</span><span class="pre">${esc(l)}</span></div>`).join("")}</div>` : ""}
   </div>`
       }
       return `<section${out}${idx} class="ship">

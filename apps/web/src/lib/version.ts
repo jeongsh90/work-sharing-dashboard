@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.15',
+    date: '2026-11-13',
+    changes: [
+      '이렇게 보내드려요: 안내 글을 Enter 로 줄을 바꾸면 줄마다 ※ 가 붙음',
+    ],
+  },
+  {
     version: '0.6.14',
     date: '2026-11-12',
     changes: [
