@@ -78,7 +78,7 @@ import {
   updateFtpServer,
 } from './ftp.ts'
 import { readOrgPhoto, readOrgTree, saveOrgTree } from './org-tree.ts'
-import { canSeePhotoFile, createPhotoComment, createPhotoPost, createPhotoTopic, deletePhotoComment, deletePhotoPost, deletePhotoTopic, listPhotoTopics, photoTopicDetail, updatePhotoPost, updatePhotoTopic } from './photo-study.ts'
+import { canSeePhotoFile, photoStudyAccess, photoStudyMembers, setPhotoStudyMembers, createPhotoComment, createPhotoPost, createPhotoTopic, deletePhotoComment, deletePhotoPost, deletePhotoTopic, listPhotoTopics, photoTopicDetail, updatePhotoPost, updatePhotoTopic } from './photo-study.ts'
 import { canSeeShareFile, createSharePost, deleteSharePost, listShare, updateSharePost } from './share.ts'
 import { canSeeNoticeFile, createNotice, deleteNotice, listNotices, noticeDetail, updateNotice } from './notices.ts'
 import {
@@ -700,6 +700,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   // ── 파일공유자료실 ──
   // 사진공부방: 공지(관리자) · 사진 글 · 댓글(누구나)
+  // 사진공부방 접근 권한: 내 권한(누구나), 멤버 고르기(슈퍼관리자, 메뉴 관리 → 메뉴 권한)
+  if (path === '/api/photo-study/access' && method === 'GET') return sendJson(res, 200, photoStudyAccess(user))
+  if (path === '/api/photo-study/members') {
+    if (method === 'GET') return sendJson(res, 200, photoStudyMembers(user))
+    if (method === 'PUT') return sendJson(res, 200, setPhotoStudyMembers(user, await readJson(req)))
+  }
   if (path === '/api/photo-study') {
     if (method === 'GET') return sendJson(res, 200, listPhotoTopics(user))
     if (method === 'POST') return sendJson(res, 201, createPhotoTopic(user, await readJson(req)))

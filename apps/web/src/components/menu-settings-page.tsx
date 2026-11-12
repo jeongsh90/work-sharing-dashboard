@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, Check, GripVertical, Lock, RotateCcw, Save, Undo2 }
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -27,12 +29,13 @@ import {
   orderedGroups,
   PERSONAL_GROUP,
   rolesOf,
+  useHiddenMenus,
   type MenuItem,
   type MenuPrefs,
   type MenuSettings,
 } from "@/lib/menu"
 import { formatDateTime } from "@/lib/requests"
-import { invalidate, useApi, useUserNames } from "@/lib/store"
+import { invalidate, useApi, useUserNames, useUsers, type UserInfo } from "@/lib/store"
 
 // 개인 → 메뉴 관리
 // - 내 메뉴(누구나 자기 것): 묶음 안 메뉴 순서(끌어 옮기기·화살표), "버튼" 체크 시 디자인 요청처럼 사이드메뉴 맨 위 큰 버튼, 버튼 색
@@ -127,7 +130,8 @@ function MyMenu({ session, settings, saved }: { session: Session; settings: Menu
   useLeaveGuard(dirty)
 
   // 내게 보이는 메뉴만(순서는 초안대로)
-  const groups = menuFor(session, settings, draft)
+  const hidden = useHiddenMenus()
+  const groups = menuFor(session, settings, draft, hidden)
 
   const move = (group: string, id: string, to: number) =>
     setDraft((d) => {
@@ -246,7 +250,7 @@ function MyMenu({ session, settings, saved }: { session: Session; settings: Menu
         ))}
       </Section>
 
-      <Preview settings={settings} prefs={draft} role={session.role} department={session.department} />
+      <Preview settings={settings} prefs={draft} role={session.role} department={session.department} hidden={hidden} />
     </div>
   )
 }
@@ -421,6 +425,8 @@ function RoleEditor({ saved, prefs }: { saved: MenuSettings; prefs: MenuPrefs })
       </Section>
 
       <RolePreview settings={{ roles: draft }} prefs={prefs} />
+
+      <PhotoAccess />
     </div>
   )
 }
@@ -464,14 +470,16 @@ function Preview({
   role,
   department,
   action,
+  hidden = [],
 }: {
   settings: Pick<MenuSettings, "roles">
   prefs: Pick<MenuPrefs, "order" | "buttons" | "colors">
   role: Role
   department: string
   action?: React.ReactNode
+  hidden?: string[]
 }) {
-  const groups = menuFor({ role, department }, settings, prefs)
+  const groups = menuFor({ role, department }, settings, prefs, hidden)
   const asButton = buttonIds(prefs)
   const buttons = groups.flatMap((g) => g.items).filter((i) => asButton.has(i.id))
 
@@ -505,6 +513,115 @@ function Preview({
               ))}
             </div>
           ))}
+      </div>
+    </Section>
+  )
+}
+
+// ── 사진공부방 접근 권한(슈퍼관리자): 계정을 골라 준다 ──
+// 고른 계정만 사진공부방 메뉴를 보고 공지(예약)·사진·댓글을 올리며, 새 공지·글·댓글 알림도 이 사람들에게만 간다.
+// 계정 전환으로 연결된 계정 중 하나를 고르면 연결 계정 모두 함께 허용된다(서버가 묶음으로 넓힌다)
+type PhotoMembers = { members: string[] | null; linked: string[] }
+
+function PhotoAccess() {
+  const { data, error } = useApi<PhotoMembers>("/photo-study/members")
+  const { users } = useUsers()
+  if (!data || !users) return <PageState error={error} />
+  return <PhotoAccessEditor key={JSON.stringify(data.members)} saved={data} users={users} />
+}
+
+function PhotoAccessEditor({ saved, users }: { saved: PhotoMembers; users: UserInfo[] }) {
+  const [limited, setLimited] = useState(saved.members !== null)
+  const [picked, setPicked] = useState<string[]>(saved.members ?? [])
+  const [query, setQuery] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const active = users.filter((u) => u.active && u.approved).sort((a, b) => a.department.localeCompare(b.department, "ko") || a.name.localeCompare(b.name, "ko"))
+  const q = query.trim().toLowerCase()
+  const shown = active.filter((u) => !q || `${u.name} ${u.department} ${u.id}`.toLowerCase().includes(q))
+  const linkedOn = picked.some((id) => saved.linked.includes(id))
+  // 실제로 들어갈 수 있는 계정(연결 계정 포함)
+  const effective = new Set([...picked, ...(linkedOn ? saved.linked : [])])
+  const draftKey = JSON.stringify(limited ? [...picked].sort() : null)
+  const savedKey = JSON.stringify(saved.members ? [...saved.members].sort() : null)
+  const dirty = draftKey !== savedKey
+
+  const toggle = (id: string, on: boolean) => setPicked((p) => (on ? [...p, id] : p.filter((x) => x !== id)))
+
+  const save = async () => {
+    if (limited && picked.length === 0 && !(await confirmDialog({ title: "아무도 고르지 않았습니다", description: "이대로 저장하면 아무도 사진공부방에 들어갈 수 없습니다.", confirmText: "저장" })))
+      return
+    setBusy(true)
+    setMessage(null)
+    try {
+      await api("/photo-study/members", { method: "PUT", body: { members: limited ? picked : null } })
+      invalidate()
+      setMessage({ ok: true, text: "저장했습니다. 다른 사람 화면에는 1분 안에 반영됩니다." })
+    } catch (e) {
+      setMessage({ ok: false, text: e instanceof ApiError ? e.message : "저장하지 못했습니다." })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Section
+      title="사진공부방 접근 권한"
+      className="col-span-12 lg:col-span-8"
+      aside={<span className="text-sm text-muted-foreground tabular-nums">{limited ? `${effective.size}명 허용` : "모두 허용"}</span>}
+      action={
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!dirty}
+            onClick={() => {
+              setLimited(saved.members !== null)
+              setPicked(saved.members ?? [])
+            }}
+          >
+            <Undo2 data-icon="inline-start" />
+            되돌리기
+          </Button>
+          <Button size="sm" disabled={!dirty || busy} onClick={() => void save()}>
+            <Save data-icon="inline-start" />
+            저장
+          </Button>
+        </div>
+      }
+    >
+      <p className="text-sm break-keep text-muted-foreground">
+        고른 계정만 사진공부방 메뉴가 보이고, 공지(예약 포함)·사진·댓글을 올리며, 새 공지·글·댓글 알림도 이 사람들에게만 갑니다. 계정 전환으로 연결된 계정 중
+        하나를 고르면 연결된 계정 모두 함께 허용됩니다.
+      </p>
+      <Message message={message} />
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+        <label className="flex items-center gap-2 text-sm">
+          <Switch checked={limited} onCheckedChange={setLimited} aria-label="계정을 골라 허용" />
+          <span className="font-medium">계정을 골라 허용</span>
+          <span className="text-muted-foreground">(끄면 모든 직원이 들어갑니다)</span>
+        </label>
+        {limited && (
+          <>
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·부서 검색" aria-label="계정 검색" className="sm:max-w-xs" />
+            <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+              {shown.map((u) => {
+                const linkedOnly = !picked.includes(u.id) && effective.has(u.id)
+                return (
+                  <li key={u.id}>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+                      <Checkbox checked={picked.includes(u.id) || linkedOnly} disabled={linkedOnly} onCheckedChange={(v) => toggle(u.id, v === true)} aria-label={`${u.name} 사진공부방 허용`} />
+                      <span className="font-medium">{u.name}</span>
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">{u.department || "-"}</span>
+                      {linkedOnly && <span className="ml-auto shrink-0 text-xs text-muted-foreground">연결 계정</span>}
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
+        )}
       </div>
     </Section>
   )

@@ -161,8 +161,10 @@ export function rolesOf(group: string, item: MenuItem, settings?: Pick<MenuSetti
   return saved ? base.filter((r) => saved.includes(r)) : base
 }
 
-export function menuFor(user: { role: Role; department: string }, settings?: Pick<MenuSettings, "roles"> | null, prefs?: Pick<MenuPrefs, "order"> | null) {
-  const visible = (group: string, i: MenuItem) => rolesOf(group, i, settings).includes(user.role) && (!i.designTeam || isDesignWorker(user))
+// hidden: 계정별 권한으로 막힌 메뉴(예: 사진공부방 접근 권한이 없으면 photo-study)
+export function menuFor(user: { role: Role; department: string }, settings?: Pick<MenuSettings, "roles"> | null, prefs?: Pick<MenuPrefs, "order"> | null, hidden: string[] = []) {
+  const visible = (group: string, i: MenuItem) =>
+    !hidden.includes(i.id) && rolesOf(group, i, settings).includes(user.role) && (!i.designTeam || isDesignWorker(user))
   return orderedGroups(prefs)
     .map((g) => ({ ...g, items: g.items.filter((i) => visible(g.label, i)) }))
     .filter((g) => g.items.length > 0)
@@ -184,3 +186,9 @@ export const PAGE_TITLES: Record<string, string> = {
 // 메뉴 권한(사이드메뉴·주소 막기에 함께 쓴다)과 내 메뉴. 받기 전에는 기본 메뉴
 export const useMenuSettings = (enabled = true) => useApi<MenuSettings>(enabled ? "/menu-settings" : null, 60_000).data
 export const useMenuPrefs = (enabled = true) => useApi<MenuPrefs>(enabled ? "/menu-prefs" : null, 300_000).data
+
+// 계정별 권한으로 막힌 메뉴: 사진공부방 접근 권한(메뉴 관리 → 메뉴 권한에서 계정을 고른다)
+export function useHiddenMenus(enabled = true) {
+  const photo = useApi<{ member: boolean }>(enabled ? "/photo-study/access" : null, 60_000).data
+  return photo?.member === false ? ["photo-study"] : []
+}

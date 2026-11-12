@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 import { isManager, type Session } from "@/lib/auth"
-import { buttonColor, buttonIds, menuFor, useMenuPrefs, useMenuSettings } from "@/lib/menu"
+import { buttonColor, buttonIds, menuFor, useHiddenMenus, useMenuPrefs, useMenuSettings } from "@/lib/menu"
 import type { NoticeSummary } from "@/lib/notices"
 import { useNotifications } from "@/lib/notifications"
 import { isRequesterOf, type RequestSummaryDto } from "@/lib/requests"
@@ -101,7 +101,8 @@ export function AppSidebar({
   // 메뉴 권한(슈퍼관리자) + 내 메뉴(순서·버튼·색). "버튼"으로 고른 메뉴(기본: 디자인 요청)는 목록 대신 로고 아래 큰 버튼으로 둔다
   const settings = useMenuSettings()
   const prefs = useMenuPrefs()
-  const groups = menuFor(session, settings, prefs)
+  const hidden = useHiddenMenus()
+  const groups = menuFor(session, settings, prefs, hidden)
   const asButton = buttonIds(prefs)
   const buttons = groups.flatMap((g) => g.items).filter((i) => asButton.has(i.id))
   // 1차 묶음(업무·관리·개인·지원) 아코디언: 기본은 모두 접힘, 지금 보는 메뉴의 묶음만 펼친다.

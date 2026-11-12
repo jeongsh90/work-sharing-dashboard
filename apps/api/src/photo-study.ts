@@ -1,8 +1,8 @@
 import { unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { UPLOAD_DIR } from './config.ts'
-import { all, db, get, run, transaction } from './db.ts'
+import { SWITCH_ACCOUNTS, UPLOAD_DIR } from './config.ts'
+import { addColumn, all, db, get, run, transaction } from './db.ts'
 import { HttpError, notifyLink } from './requests.ts'
 import { isManager, listUsers, type PublicUser } from './users.ts'
 
@@ -46,8 +46,69 @@ CREATE TABLE IF NOT EXISTS photo_comments (
 CREATE INDEX IF NOT EXISTS photo_comments_post ON photo_comments(post_id);
 `)
 
-// 사진공부방 사진은 로그인한 누구나 본다
-export const canSeePhotoFile = (_u: PublicUser) => true
+// 예약 등록: publish_at 이 있으면 그때 목록에 보이고 알림이 간다(그 전에는 쓴 사람·관리자만 본다).
+// notified = 0 이면 아직 새 공지 알림을 보내지 않은 글(예약 글). 1분마다 확인해 때가 되면 보낸다
+if (addColumn('photo_topics', 'publish_at', 'INTEGER')) {
+  /* 예전 공지는 바로 공개 */
+}
+addColumn('photo_topics', 'notified', 'INTEGER NOT NULL DEFAULT 1')
+
+// ── 사진공부방 접근 권한(멤버) ──
+// 슈퍼관리자가 메뉴 관리 → 메뉴 권한에서 계정을 골라 준다(app_settings 'photo-study-members' = { members: [계정 id] }).
+// 계정 전환 묶음(SWITCH_ACCOUNTS)에 든 계정이 하나라도 있으면 묶음 전체가 멤버다(예: 정상훈 연결 계정).
+// 멤버만 메뉴를 보고, 공지(예약 포함)·사진·댓글을 올리고, 알림을 받는다. 아직 정하지 않았으면 예전처럼 모두가 멤버
+db.exec(`CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at INTEGER NOT NULL);`)
+const MEMBERS_KEY = 'photo-study-members'
+
+function savedMembers(): string[] | null {
+  const row = get<{ value: string }>('SELECT value FROM app_settings WHERE key = :key', { key: MEMBERS_KEY })
+  if (!row) return null
+  try {
+    const list = (JSON.parse(row.value) as { members?: unknown }).members
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+function memberIds(): Set<string> | null {
+  const list = savedMembers()
+  if (!list) return null
+  const ids = new Set(list)
+  if (SWITCH_ACCOUNTS.some((id) => ids.has(id))) for (const id of SWITCH_ACCOUNTS) ids.add(id)
+  return ids
+}
+
+// 권한 보기(슈퍼관리자): 고른 계정, 아직 정하지 않았으면 null
+export function photoStudyMembers(user: PublicUser) {
+  if (user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자만 볼 수 있습니다.')
+  return { members: savedMembers(), linked: [...SWITCH_ACCOUNTS] }
+}
+export function setPhotoStudyMembers(user: PublicUser, body: Record<string, unknown>) {
+  if (user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자만 정할 수 있습니다.')
+  const known = new Set(listUsers().map((u) => u.id))
+  const members = body.members === null ? null : [...new Set(ids(body.members).filter((id) => known.has(id)))]
+  if (members === null) run('DELETE FROM app_settings WHERE key = :key', { key: MEMBERS_KEY })
+  else
+    run(
+      `INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (:key, :value, :me, :now)
+       ON CONFLICT(key) DO UPDATE SET value = :value, updated_by = :me, updated_at = :now`,
+      { key: MEMBERS_KEY, value: JSON.stringify({ members }), me: user.id, now: Date.now() },
+    )
+  return photoStudyMembers(user)
+}
+export const photoStudyAccess = (user: PublicUser) => ({ member: isPhotoMember(user) })
+export const isPhotoMember = (u: PublicUser) => memberIds()?.has(u.id) ?? true
+const member = (u: PublicUser) => {
+  if (!isPhotoMember(u)) throw new HttpError(403, '사진공부방 권한이 없습니다.')
+}
+// 알림 받을 멤버(로그인할 수 있는 사람만)
+const memberReceivers = (except: string) =>
+  listUsers()
+    .filter((u) => u.active && u.approved && u.id !== except && isPhotoMember(u))
+    .map((u) => u.id)
+
+// 사진공부방 사진은 멤버만 본다
+export const canSeePhotoFile = (u: PublicUser) => isPhotoMember(u)
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const FILES_MAX = 30
@@ -58,11 +119,12 @@ function text(value: unknown, label: string, max: number) {
   return v
 }
 const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
-const manager = (user: PublicUser) => {
-  if (!isManager(user)) throw new HttpError(403, '공지는 관리자만 올리고 고칠 수 있습니다.')
+// 공지 고치기·지우기: 쓴 사람 또는 관리자
+const topicOwner = (user: PublicUser, t: { author_id: string }) => {
+  if (t.author_id !== user.id && !isManager(user)) throw new HttpError(403, '공지는 쓴 사람이나 관리자만 고칠 수 있습니다.')
 }
 
-type TopicRow = { id: number; day: string; title: string; body: string; link: string; author_id: string; author_name: string | null; created_at: number; updated_at: number }
+type TopicRow = { id: number; day: string; title: string; body: string; link: string; publish_at: number | null; notified: number; author_id: string; author_name: string | null; created_at: number; updated_at: number }
 type PostRow = { id: number; topic_id: number; author_id: string; author_name: string | null; avatar_id: string | null; body: string; created_at: number; updated_at: number }
 type FileRow = { post_id: number; id: string; name: string; mime: string; size: number }
 type CommentRow = { id: number; post_id: number; author_id: string; author_name: string | null; avatar_id: string | null; body: string; created_at: number }
@@ -73,6 +135,9 @@ const topicDto = (t: TopicRow) => ({
   title: t.title,
   body: t.body,
   link: t.link,
+  // 예약 글: 공개될 때(그 전이면 scheduled = true)
+  publishAt: t.publish_at,
+  scheduled: !!t.publish_at && t.publish_at > Date.now(),
   authorId: t.author_id,
   authorName: t.author_name ?? t.author_id,
   createdAt: t.created_at,
@@ -81,14 +146,18 @@ const topicDto = (t: TopicRow) => ({
 
 const TOPIC_SELECT = `SELECT t.*, u.name AS author_name FROM photo_topics t LEFT JOIN users u ON u.id = t.author_id`
 
-function loadTopic(id: number) {
+// 예약 글은 공개 전까지 쓴 사람·관리자만 본다
+const visibleTo = (user: PublicUser, t: TopicRow) => !t.publish_at || t.publish_at <= Date.now() || t.author_id === user.id || isManager(user)
+
+function loadTopic(id: number, user?: PublicUser) {
   const row = get<TopicRow>(`${TOPIC_SELECT} WHERE t.id = :id`, { id })
-  if (!row) throw new HttpError(404, '공지를 찾을 수 없습니다.')
+  if (!row || (user && !visibleTo(user, row))) throw new HttpError(404, '공지를 찾을 수 없습니다.')
   return row
 }
 
 // 목록: 날짜 최신순. 글 수·사진 수·참여한 사람 수·마지막 글 시각을 함께
-export function listPhotoTopics(_user: PublicUser) {
+export function listPhotoTopics(user: PublicUser) {
+  member(user)
   const stats = new Map(
     all<{ topic_id: number; posts: number; people: number; last: number }>(
       'SELECT topic_id, COUNT(*) AS posts, COUNT(DISTINCT author_id) AS people, MAX(created_at) AS last FROM photo_posts GROUP BY topic_id',
@@ -97,7 +166,7 @@ export function listPhotoTopics(_user: PublicUser) {
   const photos = new Map(
     all<{ topic_id: number; n: number }>('SELECT p.topic_id, COUNT(*) AS n FROM photo_files f JOIN photo_posts p ON p.id = f.post_id GROUP BY p.topic_id').map((r) => [r.topic_id, r.n]),
   )
-  return all<TopicRow>(`${TOPIC_SELECT} ORDER BY t.day DESC, t.id DESC`).map((t) => ({
+  return all<TopicRow>(`${TOPIC_SELECT} ORDER BY t.day DESC, t.id DESC`).filter((t) => visibleTo(user, t)).map((t) => ({
     ...topicDto(t),
     posts: stats.get(t.id)?.posts ?? 0,
     people: stats.get(t.id)?.people ?? 0,
@@ -107,8 +176,9 @@ export function listPhotoTopics(_user: PublicUser) {
 }
 
 // 공지 하나 + 그 아래 글(오래된 순) · 사진 · 댓글
-export function photoTopicDetail(_user: PublicUser, id: number) {
-  const topic = topicDto(loadTopic(id))
+export function photoTopicDetail(user: PublicUser, id: number) {
+  member(user)
+  const topic = topicDto(loadTopic(id, user))
   const posts = all<PostRow>(
     `SELECT p.*, u.name AS author_name, u.avatar_id FROM photo_posts p LEFT JOIN users u ON u.id = p.author_id WHERE p.topic_id = :id ORDER BY p.created_at, p.id`,
     { id },
@@ -161,35 +231,61 @@ function topicFields(body: Record<string, unknown>) {
   if (!title) throw new HttpError(400, '제목을 입력해 주세요.')
   const link = text(body.link, '링크', 500)
   if (link && !/^https?:\/\/\S+$/i.test(link)) throw new HttpError(400, '링크는 http:// 또는 https:// 로 시작하는 주소를 넣어 주세요.')
-  return { day, title, body: text(body.body, '공지 내용', 5000), link }
+  // 예약 등록 시각(ms). 없거나 30초 안이면 바로 공개
+  const at = Number(body.publishAt)
+  const publishAt = body.publishAt != null && Number.isFinite(at) && at > Date.now() + 30_000 ? Math.floor(at) : null
+  if (publishAt && publishAt > Date.now() + 366 * 24 * 60 * 60_000) throw new HttpError(400, '예약은 1년 안으로 잡아 주세요.')
+  return { day, title, body: text(body.body, '공지 내용', 5000), link, publishAt }
 }
 
-// 새 공지: 관리자. 로그인할 수 있는 모든 직원에게 알린다(올린 사람 빼고)
+// 새 공지 알림: 사진공부방 멤버에게(쓴 사람 빼고)
+function announce(t: Pick<TopicRow, 'id' | 'title' | 'author_id'>) {
+  run('UPDATE photo_topics SET notified = 1 WHERE id = :id', { id: t.id })
+  notifyLink(memberReceivers(t.author_id), `사진공부방 새 공지: ${t.title}`, `photo-study/${t.id}`)
+}
+
+// 예약 시각이 된 공지를 알린다(1분마다)
+export function publishDuePhotoTopics() {
+  for (const t of all<TopicRow>(`${TOPIC_SELECT} WHERE t.notified = 0 AND t.publish_at IS NOT NULL AND t.publish_at <= :now`, { now: Date.now() })) announce(t)
+}
+setInterval(() => {
+  try {
+    publishDuePhotoTopics()
+  } catch (e) {
+    console.error('사진공부방 예약 공지 확인 실패:', e)
+  }
+}, 60_000).unref()
+
+// 새 공지: 멤버. 바로 올리면 멤버에게 바로 알리고, 예약이면 그 시각에 공개·알림
 export function createPhotoTopic(user: PublicUser, body: Record<string, unknown>) {
-  manager(user)
+  member(user)
   const f = topicFields(body)
   const now = Date.now()
   const id = Number(
     run(
-      `INSERT INTO photo_topics (day, title, body, link, author_id, created_at, updated_at) VALUES (:day, :title, :body, :link, :me, :now, :now)`,
-      { ...f, me: user.id, now },
+      `INSERT INTO photo_topics (day, title, body, link, publish_at, notified, author_id, created_at, updated_at)
+       VALUES (:day, :title, :body, :link, :publishAt, :notified, :me, :now, :now)`,
+      { ...f, notified: f.publishAt ? 0 : 1, me: user.id, now },
     ).lastInsertRowid,
   )
-  const receivers = listUsers()
-    .filter((u) => u.active && u.approved && u.id !== user.id)
-    .map((u) => u.id)
-  notifyLink(receivers, `사진공부방 새 공지: ${f.title}`, `photo-study/${id}`)
+  if (!f.publishAt) announce({ id, title: f.title, author_id: user.id })
   return photoTopicDetail(user, id)
 }
 
+// 공지 고치기: 쓴 사람·관리자. 아직 알리지 않은 예약 글은 예약 시각도 바꾸거나 비워서 바로 공개할 수 있다
 export function updatePhotoTopic(user: PublicUser, id: number, body: Record<string, unknown>) {
-  manager(user)
-  loadTopic(id)
-  run('UPDATE photo_topics SET day = :day, title = :title, body = :body, link = :link, updated_at = :now WHERE id = :id', {
-    ...topicFields(body),
+  member(user)
+  const t = loadTopic(id, user)
+  topicOwner(user, t)
+  const f = topicFields(body)
+  const pending = t.notified === 0
+  run('UPDATE photo_topics SET day = :day, title = :title, body = :body, link = :link, publish_at = :publishAt, updated_at = :now WHERE id = :id', {
+    ...f,
+    publishAt: pending ? f.publishAt : t.publish_at,
     id,
     now: Date.now(),
   })
+  if (pending && !f.publishAt) announce({ id, title: f.title, author_id: t.author_id })
   return photoTopicDetail(user, id)
 }
 
@@ -200,8 +296,8 @@ const removeFiles = async (fileIds: string[]) => {
 
 // 공지 지우기: 관리자. 그 아래 글·사진·댓글도 함께 지운다(사진 파일은 백업에는 남는다)
 export async function deletePhotoTopic(user: PublicUser, id: number) {
-  manager(user)
-  loadTopic(id)
+  member(user)
+  topicOwner(user, loadTopic(id, user))
   const fileIds = all<{ file_id: string }>('SELECT f.file_id FROM photo_files f JOIN photo_posts p ON p.id = f.post_id WHERE p.topic_id = :id', { id }).map((r) => r.file_id)
   run('DELETE FROM photo_topics WHERE id = :id', { id })
   await removeFiles(fileIds)
@@ -227,7 +323,8 @@ function attach(user: PublicUser, postId: number, fileIds: string[]) {
 // 사진 글 올리기: 누구나. body = { body, fileIds }. 사진이나 글 중 하나는 있어야 한다
 // 공지 올린 사람과 이 공지에 글·댓글을 남긴 사람에게 알린다
 export function createPhotoPost(user: PublicUser, topicId: number, body: Record<string, unknown>) {
-  const topic = loadTopic(topicId)
+  member(user)
+  const topic = loadTopic(topicId, user)
   const content = text(body.body, '내용', 5000)
   const fileIds = [...new Set(ids(body.fileIds))]
   if (fileIds.length > FILES_MAX) throw new HttpError(400, `사진은 한 번에 ${FILES_MAX}장까지 올릴 수 있습니다.`)
@@ -255,7 +352,9 @@ function participants(topicId: number, topicAuthor: string, except: string) {
     ...all<{ author_id: string }>('SELECT DISTINCT c.author_id FROM photo_comments c JOIN photo_posts p ON p.id = c.post_id WHERE p.topic_id = :topicId', { topicId }).map((r) => r.author_id),
   ])
   people.delete(except)
-  return [...people]
+  // 알림은 지금 멤버에게만
+  const allowed = new Set(memberReceivers(except))
+  return [...people].filter((id) => allowed.has(id))
 }
 
 function loadPost(id: number) {
@@ -269,6 +368,7 @@ const ownOrManager = (user: PublicUser, authorId: string) => {
 
 // 글 고치기(내용만, 사진 빼기): 올린 사람 또는 관리자. body = { body, removeFileIds }
 export async function updatePhotoPost(user: PublicUser, id: number, body: Record<string, unknown>) {
+  member(user)
   const post = loadPost(id)
   ownOrManager(user, post.author_id)
   const content = text(body.body, '내용', 5000)
@@ -282,6 +382,7 @@ export async function updatePhotoPost(user: PublicUser, id: number, body: Record
 }
 
 export async function deletePhotoPost(user: PublicUser, id: number) {
+  member(user)
   const post = loadPost(id)
   ownOrManager(user, post.author_id)
   const fileIds = all<{ file_id: string }>('SELECT file_id FROM photo_files WHERE post_id = :id', { id }).map((r) => r.file_id)
@@ -292,6 +393,7 @@ export async function deletePhotoPost(user: PublicUser, id: number) {
 
 // 댓글: 누구나. 글 올린 사람(과 이 공지 참여자)에게 알린다
 export function createPhotoComment(user: PublicUser, postId: number, body: Record<string, unknown>) {
+  member(user)
   const post = loadPost(postId)
   const content = text(body.body, '댓글', 2000)
   if (!content) throw new HttpError(400, '댓글을 입력해 주세요.')
@@ -302,6 +404,7 @@ export function createPhotoComment(user: PublicUser, postId: number, body: Recor
 }
 
 export function deletePhotoComment(user: PublicUser, id: number) {
+  member(user)
   const row = get<{ post_id: number; author_id: string }>('SELECT post_id, author_id FROM photo_comments WHERE id = :id', { id })
   if (!row) throw new HttpError(404, '댓글을 찾을 수 없습니다.')
   ownOrManager(user, row.author_id)

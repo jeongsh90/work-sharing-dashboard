@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
-import { ArrowLeft, Camera, EllipsisVertical, ExternalLink, ImageIcon, ImagePlus, LoaderCircle, MessageCircle, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react"
+import { ArrowLeft, Camera, Clock, EllipsisVertical, ExternalLink, ImageIcon, ImagePlus, LoaderCircle, MessageCircle, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { confirmDialog } from "@/components/confirm-dialog"
 import { DateRangePicker } from "@/components/date-range-picker"
@@ -23,14 +25,14 @@ import { formatDateTime, type FileInfo } from "@/lib/requests"
 import { navigate } from "@/lib/router"
 import { invalidate, useApi } from "@/lib/store"
 
-// 사진공부방(서버 apps/api/src/photo-study.ts): 관리자가 날짜마다 공지(제목·내용·링크)를 올리면
+// 사진공부방(서버 apps/api/src/photo-study.ts): 접근 권한이 있는 사람(메뉴 관리 → 메뉴 권한)이 날짜마다 공지(제목·내용·링크)를 올리면(예약 가능)
 // 직원들이 그 아래에 사진과 사진에 대한 설명·피드백을 올리고, 서로 댓글로 이야기한다.
 // 처음: 날짜별 공지 목록 / 공지를 누르면: 공지 + 올라온 사진 글(오래된 순) + 맨 아래 올리기 칸
 
 type PhotoFile = { id: string; name: string; mime: string; size: number }
 type Comment = { id: number; authorId: string; authorName: string; avatarId: string | null; body: string; createdAt: number }
 type Post = { id: number; authorId: string; authorName: string; avatarId: string | null; body: string; createdAt: number; updatedAt: number; files: PhotoFile[]; comments: Comment[] }
-type Topic = { id: number; day: string; title: string; body: string; link: string; authorId: string; authorName: string; createdAt: number; updatedAt: number }
+type Topic = { id: number; day: string; title: string; body: string; link: string; publishAt: number | null; scheduled: boolean; authorId: string; authorName: string; createdAt: number; updatedAt: number }
 type TopicSummary = Topic & { posts: number; people: number; photos: number; lastPostAt: number | null }
 type TopicDetail = Topic & { posts: Post[] }
 
@@ -48,7 +50,6 @@ const named = (f: File) =>
 
 export function PhotoStudyPage({ session, id }: { session: Session; id?: string }) {
   const { data: topics, error } = useApi<TopicSummary[]>("/photo-study")
-  const manager = isManager(session)
   const [query, setQuery] = useState("")
   const [editing, setEditing] = useState<Topic | "new" | null>(null)
 
@@ -93,11 +94,9 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
           <div className="flex min-h-8 items-center gap-2">
             <h2 className="text-base font-semibold">날짜별 공지</h2>
             <span className="text-sm text-muted-foreground tabular-nums">{topics.length}개</span>
-            {manager && (
-              <Button size="sm" className="ml-auto" onClick={() => setEditing("new")}>
-                <Plus data-icon="inline-start" />새 공지
-              </Button>
-            )}
+            <Button size="sm" className="ml-auto" onClick={() => setEditing("new")}>
+              <Plus data-icon="inline-start" />새 공지
+            </Button>
           </div>
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -111,7 +110,7 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
           {topics.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center text-sm break-keep text-muted-foreground">
               <Camera className="size-8" aria-hidden />
-              {manager ? "아직 공지가 없습니다. 새 공지를 올리면 직원들이 사진을 올릴 수 있습니다." : "아직 공지가 없습니다. 관리자가 공지를 올리면 여기에 날짜별로 쌓입니다."}
+아직 공지가 없습니다. 새 공지를 올리면(예약도 가능) 사진공부방 멤버들이 사진을 올릴 수 있습니다.
             </div>
           ) : list.length === 0 ? (
             <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">"{query}" 와 맞는 공지가 없습니다.</p>
@@ -124,7 +123,10 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
                     onClick={() => navigate("photo-study", String(t.id))}
                     className="flex w-full flex-col gap-1.5 rounded-xl border bg-card p-4 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
-                    <span className="text-xs font-medium text-primary tabular-nums">{dayShort(t.day)}</span>
+                    <span className="flex items-center gap-2 text-xs font-medium text-primary tabular-nums">
+                      {dayShort(t.day)}
+                      {t.scheduled && t.publishAt && <ScheduledBadge at={t.publishAt} />}
+                    </span>
                     <span className="line-clamp-2 font-medium break-keep">{t.title}</span>
                     {t.body && <span className="line-clamp-2 text-sm break-keep text-muted-foreground [overflow-wrap:anywhere]">{t.body}</span>}
                     <span className="flex items-center gap-3 pt-1 text-xs text-muted-foreground tabular-nums">
@@ -153,8 +155,8 @@ export function PhotoStudyPage({ session, id }: { session: Session; id?: string 
 // 공지 하나: 공지 카드 → 사진 글(오래된 순) → 올리기 칸. 15초마다 새 글을 받는다
 function TopicView({ id, session, onEdit }: { id: number; session: Session; onEdit: (t: Topic) => void }) {
   const { data, error } = useApi<TopicDetail>(`/photo-study/${id}`, 15_000)
-  const manager = isManager(session)
   if (!data) return <PageState error={error} />
+  const canEditTopic = data.authorId === session.id || isManager(session)
 
   const remove = async () => {
     if (!(await confirmDialog({ title: `"${data.title}" 공지를 지울까요?`, description: "올라온 사진과 댓글도 모두 지워지고 되돌릴 수 없습니다.", confirmText: "삭제", destructive: true }))) return
@@ -173,10 +175,13 @@ function TopicView({ id, session, onEdit }: { id: number; session: Session; onEd
       <article className="flex min-w-0 flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 p-4 md:p-5">
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-primary tabular-nums">{dayLabel(data.day)}</p>
+            <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-primary tabular-nums">
+              {dayLabel(data.day)}
+              {data.scheduled && data.publishAt && <ScheduledBadge at={data.publishAt} long />}
+            </p>
             <h2 className="mt-1 text-lg font-semibold break-keep">{data.title}</h2>
           </div>
-          {manager && (
+          {canEditTopic && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" aria-label="공지 메뉴">
@@ -616,34 +621,61 @@ function Composer({ topicId }: { topicId: number }) {
   )
 }
 
-// 공지 쓰기·고치기(관리자): 날짜 · 제목 · 내용 · 링크
+// 예약 표시: 공개 전 공지(쓴 사람·관리자에게만 보인다)
+function ScheduledBadge({ at, long = false }: { at: number; long?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+      <Clock className="size-3" aria-hidden />
+      예약 {format(new Date(at), long ? "M월 d일 (EEE) HH:mm" : "M.d HH:mm", { locale: ko })}
+      {long && " 공개"}
+    </span>
+  )
+}
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"))
+const MINUTES = ["00", "10", "20", "30", "40", "50"]
+
+// 공지 쓰기·고치기(사진공부방 멤버, 고치기는 쓴 사람·관리자): 날짜 · (예약 시각) · 제목 · 내용 · 링크
+// 예약을 켜면 고른 날짜·시각에 공개되고 그때 멤버에게 알림이 간다. 그 전에는 쓴 사람·관리자만 본다
 function TopicDialog({ topic, onClose, onSaved }: { topic: Topic | "new" | null; onClose: () => void; onSaved: (t: TopicDetail) => void }) {
   const [day, setDay] = useState<Date | undefined>(new Date())
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [link, setLink] = useState("")
+  const [schedule, setSchedule] = useState(false)
+  const [hour, setHour] = useState("09")
+  const [minute, setMinute] = useState("00")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const editing = topic && topic !== "new" ? topic : null
+  // 이미 공개된 공지는 예약을 바꿀 수 없다
+  const canSchedule = !editing || editing.scheduled
 
   useEffect(() => {
     if (!topic) return
-    setDay(editing ? new Date(Number(editing.day.slice(0, 4)), Number(editing.day.slice(5, 7)) - 1, Number(editing.day.slice(8, 10))) : new Date())
+    setDay(editing ? dayDate(editing.day) : new Date())
     setTitle(editing?.title ?? "")
     setBody(editing?.body ?? "")
     setLink(editing?.link ?? "")
+    const at = editing?.scheduled && editing.publishAt ? new Date(editing.publishAt) : null
+    setSchedule(!!at)
+    setHour(at ? String(at.getHours()).padStart(2, "0") : "09")
+    setMinute(at ? String(Math.floor(at.getMinutes() / 10) * 10).padStart(2, "0") : "00")
     setError(null)
   }, [topic]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const publishAt = schedule && day ? new Date(day.getFullYear(), day.getMonth(), day.getDate(), Number(hour), Number(minute)).getTime() : null
 
   const save = async () => {
     if (!day) return setError("날짜를 골라 주세요.")
     if (!title.trim()) return setError("제목을 입력해 주세요.")
+    if (publishAt !== null && publishAt <= Date.now() + 60_000) return setError("예약 시각은 지금보다 뒤로 골라 주세요.")
     let url = link.trim()
     if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`
     setPending(true)
     setError(null)
     try {
-      const payload = { day: toDay(day), title, body, link: url }
+      const payload = { day: toDay(day), title, body, link: url, publishAt: canSchedule ? publishAt : undefined }
       const saved = editing
         ? await api<TopicDetail>(`/photo-study/${editing.id}`, { method: "PATCH", body: payload })
         : await api<TopicDetail>("/photo-study", { body: payload })
@@ -655,12 +687,18 @@ function TopicDialog({ topic, onClose, onSaved }: { topic: Topic | "new" | null;
     }
   }
 
+  const description = editing
+    ? editing.scheduled
+      ? "아직 공개 전인 예약 공지입니다. 예약을 끄고 저장하면 바로 공개되고 알림이 갑니다."
+      : "고친 내용은 바로 사진공부방 멤버에게 보입니다."
+    : "바로 올리면 사진공부방 멤버에게 알림이 갑니다. 예약하면 고른 날짜·시각에 올라가고 그때 알림이 갑니다."
+
   return (
     <Dialog open={topic !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "공지 고치기" : "새 공지"}</DialogTitle>
-          <DialogDescription className="break-keep">{editing ? "고친 내용은 바로 모든 직원에게 보입니다." : "올리면 모든 직원에게 알림이 갑니다. 직원들은 이 공지 아래에 사진과 피드백을 올립니다."}</DialogDescription>
+          <DialogDescription className="break-keep">{description}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -674,6 +712,46 @@ function TopicDialog({ topic, onClose, onSaved }: { topic: Topic | "new" | null;
               <FieldLabel htmlFor="ps-day">날짜</FieldLabel>
               <DateRangePicker id="ps-day" single value={day ? { from: day, to: undefined } : undefined} onChange={(r) => setDay(r?.from)} placeholder="날짜를 골라 주세요" />
             </Field>
+            {canSchedule && (
+              <Field>
+                <div className="flex items-center gap-2">
+                  <Switch id="ps-schedule" checked={schedule} onCheckedChange={setSchedule} />
+                  <FieldLabel htmlFor="ps-schedule">예약 등록</FieldLabel>
+                  <span className="text-xs text-muted-foreground">위 날짜의 정한 시각에 올라갑니다</span>
+                </div>
+                {schedule && (
+                  <div className="flex items-center gap-2">
+                    <Select value={hour} onValueChange={setHour}>
+                      <SelectTrigger className="w-24" aria-label="시">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HOURS.map((h) => (
+                          <SelectItem key={h} value={h}>
+                            {h}시
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={minute} onValueChange={setMinute}>
+                      <SelectTrigger className="w-24" aria-label="분">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MINUTES.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m}분
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {publishAt && (
+                      <span className="text-sm text-muted-foreground tabular-nums">{format(new Date(publishAt), "M월 d일 (EEE) HH:mm", { locale: ko })} 공개</span>
+                    )}
+                  </div>
+                )}
+              </Field>
+            )}
             <Field>
               <FieldLabel htmlFor="ps-title">제목</FieldLabel>
               <Input id="ps-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} placeholder="예: 자연광으로 음식 사진 찍기" />
@@ -693,7 +771,7 @@ function TopicDialog({ topic, onClose, onSaved }: { topic: Topic | "new" | null;
               취소
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? "저장 중…" : editing ? "저장" : "공지 올리기"}
+              {pending ? "저장 중…" : editing ? "저장" : schedule ? "예약 등록" : "공지 올리기"}
             </Button>
           </DialogFooter>
         </form>

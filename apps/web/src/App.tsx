@@ -12,7 +12,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { reportLanAfterLogin, UNAUTHORIZED_EVENT } from '@/lib/api'
 import { useAskOnFirstClick } from '@/lib/desktop-notify'
 import { isManager, loadSession, logout, verifySession, writeStored, type Session } from '@/lib/auth'
-import { menuFor, PAGE_TITLES, useMenuPrefs, useMenuSettings } from '@/lib/menu'
+import { menuFor, PAGE_TITLES, useHiddenMenus, useMenuPrefs, useMenuSettings } from '@/lib/menu'
 import { markAllRead, useNotificationSync } from '@/lib/notifications'
 import { navigate, useRoute } from '@/lib/router'
 import { recoverScroll, useSmoothScroll } from '@/lib/smooth-scroll'
@@ -95,6 +95,7 @@ export default function App() {
   // 메뉴 관리 설정(순서·역할): 역할에 없는 메뉴 주소를 막을 때 쓴다
   const menuSettings = useMenuSettings(!!session)
   const menuPrefs = useMenuPrefs(!!session)
+  const hiddenMenus = useHiddenMenus(!!session)
   // 화면에 아무 동작(마우스 이동·클릭·키보드·스크롤·터치)이 3분 동안 없으면 사이트를 새로 받는다(새 버전·데이터 반영).
   // 움직이면 3분을 처음부터 다시 센다. 단, 입력이 날아가지 않게 아래일 때는 새로 고치지 않는다.
   //  - 이 화면에서 무엇이든 입력했으면(다른 화면으로 옮기기 전까지) · 입력 칸에 커서가 있으면 · 창(대화상자)이 열려 있으면
@@ -189,7 +190,7 @@ export default function App() {
   }
 
   // 역할에 없는 메뉴 주소로 들어오면 홈을 보여 준다.
-  const allowed = new Set(menuFor(session, menuSettings, menuPrefs).flatMap((g) => g.items.map((i) => i.id)))
+  const allowed = new Set(menuFor(session, menuSettings, menuPrefs, hiddenMenus).flatMap((g) => g.items.map((i) => i.id)))
   // 공지사항 상세는 누구나, 쓰기·고치기는 관리자만
   if (allowed.has('notices')) allowed.add('notice-detail')
   if (isManager(session)) allowed.add('notice-edit')
