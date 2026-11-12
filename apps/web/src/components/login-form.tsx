@@ -1,7 +1,7 @@
 import { useState } from "react"
 
 import { cn } from "cn"
-import { COMPANY_EMAIL_DOMAIN, login, rememberedId, type Session } from "@/lib/auth"
+import { login, rememberedId, type Session } from "@/lib/auth"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -55,18 +55,18 @@ export function LoginForm({
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">로그인</h1>
                 <p className="text-balance text-muted-foreground">
-                  회사 이메일 계정으로 로그인하세요
+                  아이디로 로그인하세요
                 </p>
               </div>
               <Field data-invalid={error ? true : undefined}>
-                <FieldLabel htmlFor="id">회사 이메일</FieldLabel>
+                <FieldLabel htmlFor="id">아이디</FieldLabel>
                 <Input
                   id="id"
                   name="id"
                   type="text"
-                  inputMode="email"
+                  autoCapitalize="none"
                   autoComplete="username"
-                  placeholder={`휴대폰번호@${COMPANY_EMAIL_DOMAIN}`}
+                  placeholder="아이디"
                   defaultValue={savedId}
                   aria-invalid={error ? true : undefined}
                   required
