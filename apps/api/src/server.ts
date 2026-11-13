@@ -92,6 +92,7 @@ import {
   listUsers,
   PRESENCES,
   reorderUsers,
+  deleteUser,
   ROLES,
   sessionUser,
   setAvatar,
@@ -552,7 +553,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       if (id.includes('@') && !id.endsWith(`@${COMPANY_EMAIL_DOMAIN}`)) {
         throw new HttpError(400, `이메일 아이디는 @${COMPANY_EMAIL_DOMAIN} 만 쓸 수 있습니다.`)
       }
-      if (findUser(id)) throw new HttpError(409, '이미 있는 아이디입니다.')
+      const existing = findUser(id)
+      if (existing) throw new HttpError(409, existing.deleted ? '삭제한 계정의 아이디라 다시 쓸 수 없습니다. 다른 아이디를 정해 주세요.' : '이미 있는 아이디입니다.')
       const f = userFields(body)
       if (!f.name || !f.role) throw new HttpError(400, '이름과 역할을 입력해 주세요.')
       if (f.role === 'superadmin' && user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자만 슈퍼관리자를 만들 수 있습니다.')
@@ -581,10 +583,20 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     approveUser(target.id, role)
     return sendJson(res, 200, { user: findUser(target.id) })
   }
+  // 계정 삭제(관리자): 슈퍼관리자 계정은 슈퍼관리자만, 내 계정은 지울 수 없다
+  if ((m = path.match(/^\/api\/users\/([^/]+)$/)) && method === 'DELETE') {
+    requireManager(user)
+    const target = findUser(decodeURIComponent(m[1]))
+    if (!target || target.deleted || !target.approved) throw new HttpError(404, '계정을 찾을 수 없습니다.')
+    if (target.id === user.id) throw new HttpError(400, '내 계정은 삭제할 수 없습니다.')
+    if (target.role === 'superadmin' && user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자 계정은 삭제할 수 없습니다.')
+    deleteUser(target.id)
+    return sendJson(res, 200, { ok: true })
+  }
   if ((m = path.match(/^\/api\/users\/([^/]+)$/)) && method === 'PATCH') {
     requireManager(user)
     const target = findUser(decodeURIComponent(m[1]))
-    if (!target) throw new HttpError(404, '계정을 찾을 수 없습니다.')
+    if (!target || target.deleted) throw new HttpError(404, '계정을 찾을 수 없습니다.')
     if (target.role === 'superadmin' && user.role !== 'superadmin') throw new HttpError(403, '슈퍼관리자 계정은 바꿀 수 없습니다.')
     const body = await readJson(req)
     const f = userFields(body)

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, Plus, X } from "lucide-react"
+import { Check, Plus, Trash2, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -37,7 +37,8 @@ export function TeamPage({ session }: { session: Session }) {
 
   // 승인 전 계정은 슈퍼관리자에게만 온다. 위쪽 가입 승인 대기에서 따로 처리한다.
   const pending = users.filter((u) => !u.approved)
-  const members = users.filter((u) => u.approved)
+  // 삭제한 계정은 이름 표시용으로만 남아 있으니 목록에서 뺀다
+  const members = users.filter((u) => u.approved && !u.deleted)
   // 부서별로 묶는다. 디자인팀이 맨 앞, 나머지는 부서 이름 순. 부서가 비면 "부서 미지정"
   // 띄어쓰기만 다른 부서("마케팅 1팀"·"마케팅1팀")는 한 부서로 묶고, 이름은 가장 많이 쓴 표기로 보여 준다.
   const NO_TEAM = "부서 미지정"
@@ -275,6 +276,28 @@ function UserDialog({ user, session, onClose }: { user: UserInfo | null; session
 
   const roles = (Object.keys(ROLE_LABEL) as Role[]).filter((r) => r !== "superadmin" || session.role === "superadmin")
 
+  // 계정 삭제: 목록·로그인에서 빠지고, 남긴 요청·댓글·히스토리는 그대로 남는다
+  const remove = async () => {
+    if (!user) return
+    const ok = await confirmDialog({
+      title: `${user.name}(${user.id}) 계정을 삭제할까요?`,
+      description: "팀 목록에서 빠지고 로그인할 수 없게 됩니다. 이 사람이 남긴 요청·댓글·디자인툴 히스토리는 그대로 남습니다. 삭제한 아이디는 다시 쓸 수 없습니다.",
+      confirmText: "삭제",
+      destructive: true,
+    })
+    if (!ok) return
+    setPending(true)
+    setError(null)
+    try {
+      await api(`/users/${encodeURIComponent(user.id)}`, { method: "DELETE" })
+      invalidate()
+      onClose()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "삭제하지 못했습니다.")
+      setPending(false)
+    }
+  }
+
   const save = async () => {
     if (!user && !form.id.trim()) return setError("아이디를 입력해 주세요.")
     if (!form.name.trim()) return setError("이름을 입력해 주세요.")
@@ -369,6 +392,12 @@ function UserDialog({ user, session, onClose }: { user: UserInfo | null; session
           {error && <FieldError>{error}</FieldError>}
         </FieldGroup>
         <DialogFooter>
+          {user && !self && (
+            <Button variant="ghost" className="mr-auto text-destructive" onClick={remove} disabled={pending}>
+              <Trash2 data-icon="inline-start" />
+              계정 삭제
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose} disabled={pending}>
             닫기
           </Button>

@@ -196,6 +196,8 @@ addColumn('users', 'last_seen_at', 'INTEGER')
 addColumn('events', 'undone', 'INTEGER NOT NULL DEFAULT 0')
 // 홈 디자인팀 카드에 보일지(작업자만 의미 있다). 0 이면 카드에서 뺀다. 담당 지정 목록에는 그대로 나온다.
 addColumn('users', 'show_on_home', 'INTEGER NOT NULL DEFAULT 1')
+// 팀 관리에서 삭제한 계정이면 1. 남긴 기록(요청·댓글·히스토리)의 이름이 보이도록 행은 지우지 않고 목록에서만 뺀다.
+addColumn('users', 'deleted', 'INTEGER NOT NULL DEFAULT 0')
 // 계속 업무(마감 없음). 1 이면 due_at 에는 아주 먼 날짜(ONGOING_DUE)를 넣어 마감 정렬에서 맨 뒤로 간다.
 addColumn('requests', 'ongoing', 'INTEGER NOT NULL DEFAULT 0')
 // 보류(요청 수정에서 체크): 일정은 그대로 두고 잠시 멈춘 요청. 마감 지남·이번 주 마감에 걸리지 않는다.

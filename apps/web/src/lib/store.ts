@@ -116,6 +116,7 @@ export type UserInfo = Designer & {
   approved: boolean // 회원가입 후 슈퍼관리자 승인 여부
   avatarId: string | null // 프로필 사진 파일 id
   showOnHome: boolean // 홈 디자인팀 카드에 보일지(팀 관리의 메인 노출)
+  deleted: boolean // 팀 관리에서 삭제한 계정(이름 표시용으로만 남는다)
   createdAt: number
 }
 

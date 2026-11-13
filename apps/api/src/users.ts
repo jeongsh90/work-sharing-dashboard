@@ -26,6 +26,7 @@ export type PublicUser = {
   createdAt: number
   avatarId: string | null // 프로필 사진 파일 id
   showOnHome: boolean // 홈 디자인팀 카드에 보일지
+  deleted: boolean // 팀 관리에서 삭제됨(목록에서 빼고 이름만 남긴다)
 }
 
 type UserRow = {
@@ -42,6 +43,7 @@ type UserRow = {
   approved: number
   avatar_id: string | null
   show_on_home: number
+  deleted: number
   created_at: number
 }
 
@@ -60,6 +62,7 @@ function toPublic(u: UserRow): PublicUser {
     createdAt: u.created_at,
     avatarId: u.avatar_id,
     showOnHome: u.show_on_home !== 0,
+    deleted: u.deleted === 1,
   }
 }
 
@@ -158,6 +161,16 @@ export function approveUser(id: string, role: Role) {
 // 가입 거절: 승인 전 계정은 남긴 기록이 없으므로 지운다.
 export function deletePendingUser(id: string) {
   run('DELETE FROM users WHERE id = :id AND approved = 0', { id })
+}
+
+// 계정 삭제(팀 관리): 로그인·목록에서 빼고 비밀번호·세션·최종 컨펌자 지정은 지운다.
+// 이 사람이 남긴 요청·댓글·파일·디자인툴 히스토리는 그대로 두려고 행은 남긴다(이름 표시용).
+export function deleteUser(id: string) {
+  transaction(() => {
+    run('UPDATE users SET deleted = 1, active = 0, show_on_home = 0, salt = NULL, hash = NULL WHERE id = :id', { id })
+    run('DELETE FROM sessions WHERE user_id = :id', { id })
+    run('DELETE FROM dept_approvers WHERE user_id = :id', { id })
+  })
 }
 
 // 프로필 사진 바꾸기. fileId 는 이 사람이 방금 올린(아직 어디에도 붙지 않은) 이미지여야 한다.
