@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, useState } from "react"
-import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, ShieldCheck, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, QrCode, Search, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
+import { ClipboardList, Clapperboard, LoaderCircle, FileCheck2, ShieldCheck, HelpCircle, IdCard, LayoutTemplate, ListChecks, Mail, MessageSquareText, Package, PanelTop, QrCode, Search, Shrink, Square, Type, UtensilsCrossed, X, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -21,6 +21,7 @@ const DetailPageTool = lazy(() => import("@/components/tools/detail-page/detail-
 const ShipTool = lazy(() => import("@/components/tools/detail-page/ship-tool").then((m) => ({ default: m.ShipTool })))
 const TalkMessageTool = lazy(() => import("@/components/tools/talk-message").then((m) => ({ default: m.TalkMessageTool })))
 const QrCodeTool = lazy(() => import("@/components/tools/qr-code").then((m) => ({ default: m.QrCodeTool })))
+const ImageResizeTool = lazy(() => import("@/components/tools/image-resize").then((m) => ({ default: m.ImageResizeTool })))
 const SectionApp = lazy(() => import("@/components/tools/detail-page/section-app").then((m) => ({ default: m.SectionApp })))
 
 // 디자인 툴(메뉴 이름): 디자인팀 작업에 쓰는 도구 모음. 아이폰 홈 화면처럼 앱 아이콘을 늘어놓고,
@@ -30,7 +31,7 @@ const SectionApp = lazy(() => import("@/components/tools/detail-page/section-app
 const CATEGORIES = [
   { id: "cert", name: "인증·고시", description: "확인서·상품정보고시 이미지" },
   { id: "detail", name: "상세페이지", description: "상세페이지 전체와 섹션별 이미지" },
-  { id: "marketing", name: "마케팅·영상", description: "메시지 이미지·움짤·QR" },
+  { id: "marketing", name: "마케팅·영상", description: "메시지 이미지·움짤·리사이즈·QR" },
   { id: "office", name: "사내 업무", description: "메일 서명·명찰" },
 ] as const
 type CategoryId = (typeof CATEGORIES)[number]["id"]
@@ -165,6 +166,15 @@ const TOOLS: Tool[] = [
     color: "from-fuchsia-400 to-purple-600",
     body: <VideoConvertTool />,
     fill: true,
+  },
+  {
+    id: "image-resize",
+    category: "marketing",
+    name: "이미지 리사이즈",
+    description: "큰 사진을 정한 크기(px)로 줄여 내려받는 도구. 여러 장을 넣으면 한 번에 줄여 ZIP 으로 받습니다",
+    icon: Shrink,
+    color: "from-sky-400 to-blue-600",
+    body: <ImageResizeTool />,
   },
   {
     id: "qr-code",
