@@ -8,6 +8,7 @@ import {
   FileSearch,
   FolderArchive,
   FolderOpen,
+  Globe,
   HardDrive,
   House,
   Inbox,
@@ -100,6 +101,8 @@ export const MENU_GROUPS: { label: string; items: MenuItem[]; bottom?: boolean }
     bottom: true,
     items: [
       { id: "feedback", title: "건의게시판", icon: MessageSquareText },
+      // 접속 주소·IP: 회사 밖·사무실 안에서 들어오는 주소와 서버 PC IP 모음(누구나)
+      { id: "access", title: "접속 주소·IP", icon: Globe },
       { id: "version", title: "버전 정보", icon: Info },
     ],
   },

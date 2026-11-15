@@ -52,6 +52,7 @@ const ChecklistPage = lazyPage(() => import('@/components/checklist-page'), (m) 
 const MemoPage = lazyPage(() => import('@/components/memo-page'), (m) => m.MemoPage)
 const MenuSettingsPage = lazyPage(() => import('@/components/menu-settings-page'), (m) => m.MenuSettingsPage)
 const IndexReportPage = lazyPage(() => import('@/components/index-report-page'), (m) => m.IndexReportPage)
+const AccessPage = lazyPage(() => import('@/components/access-page'), (m) => m.AccessPage)
 const VersionPage = lazyPage(() => import('@/components/version-page'), (m) => m.VersionPage)
 
 // 새 버전을 올리면 예전 화면 조각 파일이 사라진다. 그 조각을 못 받으면 새로 고쳐 새 버전을 받는다.
@@ -251,6 +252,8 @@ export default function App() {
         return <TeamPage session={session} />
       case 'feedback':
         return <FeedbackPage session={session} />
+      case 'access':
+        return <AccessPage />
       case 'version':
         return <VersionPage session={session} />
       case 'schedule':

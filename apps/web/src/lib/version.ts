@@ -11,6 +11,13 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.16',
+    date: '2026-11-15',
+    changes: [
+      '지원 > "접속 주소·IP" 메뉴 추가(회사 밖·사무실 안 접속 주소와 서버 IP, 복사·열기 버튼)',
+    ],
+  },
+  {
     version: '0.6.15',
     date: '2026-11-13',
     changes: [
