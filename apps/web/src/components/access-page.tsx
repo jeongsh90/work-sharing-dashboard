@@ -7,7 +7,7 @@ import { Section } from "@/components/home/home-page"
 import { PAGE_GRID } from "@/lib/layout"
 import { copyText } from "@/lib/clipboard"
 
-// 지원 > 접속 주소·IP: 디자인 요청 시스템(과 영업 대시보드)에 들어오는 주소와 서버 PC 의 IP 를 한 곳에 모은다.
+// 지원 > 접속 주소·IP: 디자인 요청 시스템에 들어오는 주소와 서버 PC 의 IP 를 한 곳에 모은다.
 // 주소·IP 가 바뀌면 아래 값만 고치면 된다(사내 IP 는 공유기가 바꿀 수 있다. 빠른 주소는 서버가 5분마다 저절로 맞춘다).
 
 type Address = { url: string; where: string; note: string }
@@ -20,14 +20,6 @@ const SITES: { title: string; addresses: Address[] }[] = [
       { url: "https://owenfood-wsd.duckdns.org:4443", where: "사무실 안", note: "사무실 와이파이·유선에서만. 큰 파일 올리고 받기가 가장 빠릅니다." },
       { url: "http://192.168.219.101:4173", where: "사무실 안", note: "IP 로 바로 들어가는 주소." },
       { url: "http://100.126.235.112:4173", where: "Tailscale", note: "Tailscale 을 켠 PC·휴대폰에서." },
-    ],
-  },
-  {
-    title: "영업 대시보드",
-    addresses: [
-      { url: "https://desktop-ai8fjlj.tail1460cb.ts.net:8443", where: "어디서나", note: "회사 밖·휴대폰(데이터)에서도 들어옵니다." },
-      { url: "http://192.168.219.101:4174", where: "사무실 안", note: "IP 로 바로 들어가는 주소." },
-      { url: "http://100.126.235.112:4174", where: "Tailscale", note: "Tailscale 을 켠 PC·휴대폰에서." },
     ],
   },
 ]
