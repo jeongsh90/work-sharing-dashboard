@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowLeft, Check, Download } from "lucide-react"
+import { ArrowLeft, Check, Download, Link2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -138,6 +138,18 @@ export function RequestDetailPage({ id, session, onBack }: { id: string; session
                     </span>
                   </div>
                   <p className="leading-relaxed whitespace-pre-wrap break-words text-muted-foreground">{item.body}</p>
+                  {item.links?.length > 0 && (
+                    <ul className="flex flex-col gap-1">
+                      {item.links.map((url, k) => (
+                        <li key={k} className="flex min-w-0 items-start gap-1.5">
+                          <Link2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          <a href={url} target="_blank" rel="noreferrer" className="min-w-0 break-all text-blue-600 underline-offset-4 hover:underline dark:text-blue-400">
+                            {url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ol>

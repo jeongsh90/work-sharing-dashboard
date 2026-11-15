@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react"
-import { Plus, Save, Trash2, X } from "lucide-react"
+import { Link2, Plus, Save, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -51,19 +51,22 @@ function withTime(day: Date, time: string) {
   return d
 }
 
-// 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 요청 내용. 숫자 칸은 입력 중 빈 값도 받으려고 글자로 둔다.
-type ItemRow = { label: string; width: string; height: string; body: string }
+// 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 요청 내용 + 참고 링크. 숫자 칸은 입력 중 빈 값도 받으려고 글자로 둔다.
+// 링크 칸은 늘 한 칸 이상 보이게 빈 칸 하나로 시작한다.
+type ItemRow = { label: string; width: string; height: string; body: string; links: string[] }
 
-const EMPTY_ITEM: ItemRow = { label: "", width: "", height: "", body: "" }
+const EMPTY_ITEM: ItemRow = { label: "", width: "", height: "", body: "", links: [""] }
 
 const toRow = (item: RequestItem): ItemRow => ({
   label: item.label,
   width: item.width === null ? "" : String(item.width),
   height: item.height === null ? "" : String(item.height),
   body: item.body,
+  links: item.links?.length ? item.links : [""],
 })
 
-const isBlank = (row: ItemRow) => !row.label.trim() && !row.width && !row.height && !row.body.trim()
+const isBlank = (row: ItemRow) =>
+  !row.label.trim() && !row.width && !row.height && !row.body.trim() && !row.links.some((l) => l.trim())
 
 // 이 묶음에서 빠진 값. 너비·높이는 비워 두면 자유라 검사하지 않는다.
 function missing(row: ItemRow) {
@@ -81,7 +84,8 @@ function ItemFields({
   showErrors: boolean
   error?: string // 내용 추가 버튼 위에 보인다
 }) {
-  const update = (i: number, key: keyof ItemRow, value: string) =>
+  const setLinks = (i: number, links: string[]) => onChange(rows.map((r, j) => (j === i ? { ...r, links } : r)))
+  const update = (i: number, key: Exclude<keyof ItemRow, "links">, value: string) =>
     onChange(
       rows.map((r, j) =>
         j === i ? { ...r, [key]: key === "width" || key === "height" ? value.replace(/[^0-9]/g, "") : value } : r,
@@ -138,12 +142,53 @@ function ItemFields({
               <Textarea
                 value={row.body}
                 onChange={(e) => update(i, "body", e.target.value)}
-                placeholder={"들어갈 문구, 참고할 링크 등 이 사이즈에 필요한 내용을 적어 주세요.\n예: 문구: 겨울엔 뜨끈한 국밥 한 그릇"}
+                placeholder={"들어갈 문구 등 이 사이즈에 필요한 내용을 적어 주세요. 참고 링크는 아래 칸에 넣어 주세요.\n예: 문구: 겨울엔 뜨끈한 국밥 한 그릇"}
                 aria-label={`내용 ${i + 1} 요청 내용`}
                 aria-invalid={miss.body || undefined}
                 maxLength={5000}
                 className="min-h-28"
               />
+              {/* 참고 링크: 내용 아래 여러 개. 마지막 칸 옆 + 로 칸을 늘린다 */}
+              <ul className="flex flex-col gap-2">
+                {row.links.map((link, k) => (
+                  <li key={k} className="flex items-center gap-2">
+                    <Link2 className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <Input
+                      value={link}
+                      onChange={(e) => setLinks(i, row.links.map((l, m) => (m === k ? e.target.value : l)))}
+                      placeholder="참고 링크 (예: https://www.chefechan.com/...)"
+                      aria-label={`내용 ${i + 1} 링크 ${k + 1}`}
+                      inputMode="url"
+                      maxLength={2000}
+                      className="min-w-0 flex-1"
+                    />
+                    {k === row.links.length - 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`내용 ${i + 1} 링크 추가`}
+                        disabled={row.links.length >= 20}
+                        onClick={() => setLinks(i, [...row.links, ""])}
+                      >
+                        <Plus />
+                      </Button>
+                    ) : (
+                      <span className="size-7 shrink-0" aria-hidden />
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`내용 ${i + 1} 링크 ${k + 1} 삭제`}
+                      disabled={row.links.length === 1 && !link}
+                      onClick={() => setLinks(i, row.links.length === 1 ? [""] : row.links.filter((_, m) => m !== k))}
+                    >
+                      <X />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             </li>
           )
         })}
@@ -367,6 +412,7 @@ export function RequestForm({
           width: r.width ? Number(r.width) : null,
           height: r.height ? Number(r.height) : null,
           body: r.body.trim(),
+          links: r.links.map((l) => l.trim()).filter(Boolean),
         })),
         requestedStartAt: startDay!.getTime(),
         ongoing,

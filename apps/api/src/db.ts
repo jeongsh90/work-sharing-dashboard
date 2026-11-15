@@ -235,6 +235,8 @@ CREATE TABLE IF NOT EXISTS request_coowners (
 `)
 // 개별 컨펌: 작업자가 여럿일 때 작업자마다 시안을 올리고, 모두 올리면 시안 확인으로 넘어간다
 addColumn('requests', 'individual_confirm', 'INTEGER NOT NULL DEFAULT 0')
+// 요청 내용 묶음마다 참고 링크(여러 개, JSON 배열)
+addColumn('request_items', 'links', "TEXT NOT NULL DEFAULT '[]'")
 // 개별 컨펌에서 한 차수(submission)에 누가 올렸는지(작업자마다 한 줄)
 db.exec(`
 CREATE TABLE IF NOT EXISTS submission_parts (

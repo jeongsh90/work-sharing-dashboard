@@ -440,7 +440,26 @@ function timestamp(value: unknown, label: string) {
 
 // 요청 내용 묶음: 사이즈(제목·너비·높이) + 요청 내용. 모두 빈 묶음은 건너뛰고, 한 개 이상 있어야 한다.
 // 너비·높이는 비워 두면 자유(정해지지 않음)
-type Item = { label: string; width: number | null; height: number | null; body: string }
+type Item = { label: string; width: number | null; height: number | null; body: string; links: string[] }
+
+// 참고 링크: 앞뒤 공백을 빼고, http(s):// 가 없으면 https:// 를 붙인다. 빈 칸은 건너뛴다
+function links(value: unknown, n: number) {
+  const list = Array.isArray(value) ? value : []
+  const result: string[] = []
+  for (const raw of list.slice(0, 20)) {
+    if (typeof raw !== 'string' || !raw.trim()) continue
+    const v = raw.trim()
+    const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v}`
+    let ok = false
+    try {
+      const u = new URL(url)
+      ok = (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname.includes('.') && url.length <= 2000
+    } catch {}
+    if (!ok) throw new HttpError(400, `${n}번 내용의 링크 주소를 확인해 주세요: ${v.slice(0, 80)}`)
+    result.push(url)
+  }
+  return result
+}
 
 function items(value: unknown) {
   const rows = Array.isArray(value) ? value : []
@@ -448,7 +467,8 @@ function items(value: unknown) {
   const empty = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && !v.trim())
   for (const raw of rows.slice(0, 30)) {
     const r = (raw ?? {}) as Record<string, unknown>
-    if (empty(r.label) && empty(r.width) && empty(r.height) && empty(r.body)) continue
+    const linkList = Array.isArray(r.links) ? r.links.filter((l) => typeof l === 'string' && l.trim()) : []
+    if (empty(r.label) && empty(r.width) && empty(r.height) && empty(r.body) && linkList.length === 0) continue
     const n = result.length + 1
     const label = text(r.label, `${n}번 내용의 제목`, { required: true, max: 60 })
     const body = text(r.body, `${n}번 요청 내용`, { required: true, max: 5000 })
@@ -457,7 +477,7 @@ function items(value: unknown) {
     const ok = (v: number) => Number.isInteger(v) && v > 0 && v <= 100_000
     if (width !== null && !ok(width)) throw new HttpError(400, `${n}번 내용의 너비를 숫자로 입력해 주세요.`)
     if (height !== null && !ok(height)) throw new HttpError(400, `${n}번 내용의 높이를 숫자로 입력해 주세요.`)
-    result.push({ label, width, height, body })
+    result.push({ label, width, height, body, links: links(linkList, n) })
   }
   if (result.length === 0) throw new HttpError(400, '요청 내용을 한 개 이상 입력해 주세요.')
   return result
@@ -467,15 +487,26 @@ function saveItems(requestId: number, list: Item[]) {
   run('DELETE FROM request_items WHERE request_id = :requestId', { requestId })
   list.forEach((item, ord) =>
     run(
-      'INSERT INTO request_items (request_id, ord, label, width, height, body) VALUES (:requestId, :ord, :label, :width, :height, :body)',
-      { requestId, ord, ...item },
+      'INSERT INTO request_items (request_id, ord, label, width, height, body, links) VALUES (:requestId, :ord, :label, :width, :height, :body, :links)',
+      { requestId, ord, ...item, links: JSON.stringify(item.links) },
     ),
   )
 }
 
 // requests.description 에는 묶음을 글로 이어 붙여 둔다(검색·예전 화면용).
 const describe = (list: Item[]) =>
-  list.map((i) => `[${i.label} ${i.width ?? '자유'}×${i.height ?? '자유'}]\n${i.body}`).join('\n\n')
+  list
+    .map((i) => `[${i.label} ${i.width ?? '자유'}×${i.height ?? '자유'}]\n${i.body}${i.links.length ? `\n링크: ${i.links.join(' ')}` : ''}`)
+    .join('\n\n')
+
+function parseLinks(raw: string) {
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
 
 // 작업 기간: 시작일(선택)과 마감 일시. 시작일이 마감보다 늦으면 안 된다.
 // 계속 업무(마감 없음)의 due_at. 마감 정렬에서 맨 뒤로 가고, 마감 지남·이번 주 마감에 걸리지 않는다.
@@ -671,10 +702,10 @@ export function requestDetail(user: PublicUser, id: number) {
   return {
     ...summary(row),
     description: row.description,
-    items: all<{ label: string; width: number | null; height: number | null; body: string }>(
-      'SELECT label, width, height, body FROM request_items WHERE request_id = :id ORDER BY ord',
+    items: all<{ label: string; width: number | null; height: number | null; body: string; links: string }>(
+      'SELECT label, width, height, body, links FROM request_items WHERE request_id = :id ORDER BY ord',
       { id },
-    ),
+    ).map((i) => ({ ...i, links: parseLinks(i.links) })),
     references: files.filter((f) => f.kind === 'reference').map(fileInfo),
     finals: files.filter((f) => f.kind === 'final').map(fileInfo),
     submissions,

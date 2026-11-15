@@ -337,7 +337,7 @@ export type RequestAction =
   | 'ask-requester'
 
 // 요청 내용 한 묶음: 사이즈(제목·너비·높이) + 그 사이즈의 요청 내용. 높이가 null 이면 자유(제한 없음)
-export type RequestItem = { label: string; width: number | null; height: number | null; body: string }
+export type RequestItem = { label: string; width: number | null; height: number | null; body: string; links: string[] }
 
 export type RequestDetailDto = RequestSummaryDto & {
   description: string
