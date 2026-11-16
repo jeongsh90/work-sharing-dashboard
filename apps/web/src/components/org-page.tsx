@@ -639,7 +639,7 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
         action={
           <div className="relative w-40 sm:w-56">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름·직급·부서 찾기" className="h-8 pl-8" aria-label="조직도에서 찾기" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름·부서 찾기" className="h-8 pl-8" aria-label="조직도에서 찾기" />
           </div>
         }
       >
@@ -667,16 +667,16 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
           )
         ) : (
           <Tabs value={division || (tab === "ai" && notInTree.length) ? tab : "all"} onValueChange={setTab} className="gap-4">
-            <TabsList className="h-auto flex-wrap justify-start">
-              <TabsTrigger value="all">전체보기</TabsTrigger>
+            <TabsList className="h-auto flex-wrap justify-start group-data-horizontal/tabs:h-auto">
+              <TabsTrigger value="all" className="h-7 flex-none">전체보기</TabsTrigger>
               {full.children.map((d) => (
-                <TabsTrigger key={d.node.id} value={d.node.id}>
+                <TabsTrigger key={d.node.id} value={d.node.id} className="h-7 flex-none">
                   {d.node.name}
                   <span className="text-xs text-muted-foreground tabular-nums">{d.total}</span>
                 </TabsTrigger>
               ))}
               {notInTree.length > 0 && (
-                <TabsTrigger value="ai">
+                <TabsTrigger value="ai" className="h-7 flex-none">
                   Ai
                   <span className="text-xs text-muted-foreground tabular-nums">{notInTree.length}</span>
                 </TabsTrigger>
