@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Contact, Mail, MessageCircle, Phone, PhoneCall, Search, Send, Smartphone } from "lucide-react"
+import { Contact, Mail, MessageCircle, Phone, PhoneCall, Search, Send, Smartphone, UserPlus } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Section } from "@/components/home/home-page"
 import { PageState } from "@/components/page-state"
 import { UserAvatar } from "@/components/user-avatar"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { apiFetch } from "@/lib/api"
 import { loadSession, type Role } from "@/lib/auth"
 import { PAGE_GRID } from "@/lib/layout"
@@ -210,9 +211,37 @@ function fmtTel(v: string) {
   return v
 }
 
+// 연락처 파일(vCard 3.0). 휴대폰에서 받으면 주소록 "새 연락처 추가" 화면이 뜬다
+const COMPANY = "오웬푸드셰프애찬"
+const vEsc = (v: string) => v.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1")
+function saveContact(p: TreeMember) {
+  const title = [p.position, p.job].filter(Boolean).join(" · ")
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `N:${vEsc(p.name)};;;;`,
+    `FN:${vEsc(p.name)}`,
+    `ORG:${vEsc(COMPANY)}`,
+    title && `TITLE:${vEsc(title)}`,
+    p.cell && `TEL;TYPE=CELL:${p.cell.replace(/[^0-9+]/g, "")}`,
+    p.phone && `TEL;TYPE=WORK,VOICE:${p.phone.replace(/[^0-9+]/g, "")}`,
+    p.email && `EMAIL;TYPE=INTERNET:${p.email}`,
+    "END:VCARD",
+  ].filter(Boolean)
+  const blob = new Blob([lines.join("\r\n") + "\r\n"], { type: "text/vcard;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `${p.name}.vcf`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
 // 연락처 메뉴(사이드 메뉴의 계정 메뉴와 같은 모양): 위에 사진·이름·직급, 아래 휴대폰·회사 전화·메일.
 // 줄을 누르면 복사(메뉴는 열린 채 "복사됨"), 전화 줄 오른쪽 버튼은 바로 걸기, 메일은 메일 쓰기
-function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
+function ContactMenu({ p, site, side = "right" }: { p: TreeMember; site?: OrgMember; side?: "right" | "bottom" }) {
   const [copied, setCopied] = useState<string | null>(null)
   const sub = [p.position, p.job].filter(Boolean).join(" · ")
   const rows = [
@@ -241,7 +270,7 @@ function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
         </TooltipTrigger>
         <TooltipContent>연락처</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent className="min-w-72 rounded-lg" side="right" align="start" sideOffset={4}>
+      <DropdownMenuContent className="min-w-72 rounded-lg" side={side} align={side === "bottom" ? "end" : "start"} sideOffset={4}>
         <DropdownMenuLabel className="p-0 font-normal">
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
             <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className="size-8" />
@@ -284,6 +313,16 @@ function ContactMenu({ p, site }: { p: TreeMember; site?: OrgMember }) {
             ))}
           </DropdownMenuGroup>
         )}
+        {rows.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => saveContact(p)}>
+              <UserPlus />
+              연락처 저장
+              <span className="ml-auto text-xs text-muted-foreground">주소록에 추가</span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -319,6 +358,69 @@ function PersonBox({ p, site, canSeeOnline, lead }: { p: TreeMember; site?: OrgM
         )}
       </div>
       {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+    </div>
+  )
+}
+
+// 좁은 화면(휴대폰) 목록의 한 사람 줄: 사진 · 이름·직급·직무 · 상태 · 채팅·연락처
+function PersonRow({ p, site, canSeeOnline, path }: { p: TreeMember; site?: OrgMember; canSeeOnline: boolean; path?: string }) {
+  const designer = site && (site.role === "designer" || deptKey(site.department) === DESIGN_TEAM)
+  const sub = [p.position, p.job].filter(Boolean).join(" · ")
+  return (
+    <li className="flex items-center gap-3 px-4 py-3">
+      <span className="relative shrink-0">
+        <PersonAvatar name={p.name} photoId={p.photo ? p.id : null} avatarId={site?.avatarId ?? null} className="size-10" />
+        {canSeeOnline && site && <OnlineDot online={site.online} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium">{p.name}</span>
+          {p.rest && (
+            <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
+              휴직
+            </Badge>
+          )}
+        </div>
+        {sub && <p className="truncate text-xs text-muted-foreground">{sub}</p>}
+        {path && <p className="truncate text-xs text-muted-foreground">{path}</p>}
+        {designer && site && (
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className={cn("size-1.5 rounded-full", PRESENCE_DOT[site.presence] ?? PRESENCE_DOT.off)} aria-hidden />
+            {PRESENCE_LABEL[site.presence] ?? PRESENCE_LABEL.off}
+          </p>
+        )}
+      </div>
+      {site && <ChatButton m={site} />}
+      <ContactMenu p={p} site={site} side="bottom" />
+    </li>
+  )
+}
+
+// 좁은 화면(휴대폰)용 조직도: 나무 대신 부서(본부 › 팀 › 파트)마다 묶은 목록. 사람이 없는 부서는 건너뛴다
+function OrgList({ b, siteOf, canSeeOnline }: { b: Built; siteOf: SiteOf; canSeeOnline: boolean }) {
+  const groups: { id: string; path: string; members: TreeMember[]; strong: boolean }[] = []
+  // 경로는 회사 이름(맨 위)을 빼고 본부부터 적는다
+  const walk = (x: Built, path: string[]) => {
+    const here = x === b ? [x.node.name] : [...path, x.node.name]
+    if (x.node.members.length) groups.push({ id: x.node.id, path: here.join(" › "), members: x.node.members, strong: x === b })
+    x.children.forEach((c) => walk(c, x === b && !b.node.parent ? [] : here))
+  }
+  walk(b, [])
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map((g) => (
+        <section key={g.id} className="overflow-hidden rounded-xl border bg-card">
+          <h3 className={cn("flex items-center gap-2 border-b px-4 py-2.5 text-sm break-keep", g.strong ? "bg-primary/10 font-semibold" : "bg-muted/50 font-medium")}>
+            <span className="min-w-0 flex-1">{g.path}</span>
+            <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{g.members.length}명</span>
+          </h3>
+          <ul className="flex flex-col divide-y">
+            {g.members.map((p) => (
+              <PersonRow key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} />
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   )
 }
@@ -495,6 +597,7 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
   const { canSeeOnline, members } = data
   const [q, setQ] = useState("")
   const [tab, setTab] = useState("all")
+  const mobile = useIsMobile()
   const full = useMemo(() => buildTree(tree.nodes, ""), [tree])
   const found = useMemo(() => (q.trim() ? buildTree(tree.nodes, q) : null), [tree, q])
   // 같은 이름의 사이트 계정(이름이 겹치는 계정이 둘 이상이면 붙이지 않는다)
@@ -534,7 +637,7 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
           </span>
         }
         action={
-          <div className="relative w-56 max-w-[60vw]">
+          <div className="relative w-40 sm:w-56">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름·직급·부서 찾기" className="h-8 pl-8" aria-label="조직도에서 찾기" />
           </div>
@@ -546,6 +649,12 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
         {found !== null || q.trim() ? (
           results.length === 0 ? (
             <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">찾는 사람이 없습니다.</p>
+          ) : mobile ? (
+            <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
+              {results.map(({ p, path }) => (
+                <PersonRow key={p.id} p={p} site={siteOf(p.name)} canSeeOnline={canSeeOnline} path={path} />
+              ))}
+            </ul>
           ) : (
             <ul className="flex flex-wrap gap-3">
               {results.map(({ p, path }) => (
@@ -584,6 +693,8 @@ function CompanyTree({ data, tree }: { data: OrgData; tree: OrgTree }) {
                   />
                 ))}
               </div>
+            ) : mobile ? (
+              <OrgList key={division?.node.id ?? "all"} b={division ?? full} siteOf={siteOf} canSeeOnline={canSeeOnline} />
             ) : division ? (
               <DivisionChart key={division.node.id} d={division} siteOf={siteOf} canSeeOnline={canSeeOnline} />
             ) : (

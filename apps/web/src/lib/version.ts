@@ -11,6 +11,15 @@ export type Release = { version: string; date: string; changes: string[] }
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.6.17',
+    date: '2026-11-16',
+    changes: [
+      '조직도: 휴대폰(좁은 화면)에서는 부서별 목록으로 보기',
+      '조직도 > 연락처: "연락처 저장" 버튼 추가(휴대폰 주소록에 바로 추가)',
+      '촬영요청: 요청 수정 저장 때 나던 서버 오류 수정',
+    ],
+  },
+  {
     version: '0.6.16',
     date: '2026-11-15',
     changes: [
